@@ -1,0 +1,21 @@
+{
+    "name": "ZulfarakRPGEditor",
+    "rootNamespace": "ZulfarakRPG",
+    "references": [
+        "ZulfarakRPG",
+        "Unity.TextMeshPro",
+        "Unity.InputSystem",
+        "Unity.ugui",
+        "Unity.RenderPipelines.Universal.Runtime",
+        "Unity.RenderPipelines.Universal.Editor",
+        "Unity.RenderPipelines.Core.Runtime"
+    ],
+    "includePlatforms": ["Editor"],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

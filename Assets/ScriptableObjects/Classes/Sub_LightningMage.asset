@@ -1,0 +1,27 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 45e29963e5b740045aa680803b414b47, type: 3}
+  m_Name: Sub_LightningMage
+  m_EditorClassIdentifier: ZulfarakRPG::ZulfarakRPG.SubclassData
+  subclassType: 3
+  parentClass: 0
+  role: 0
+  displayName: Mago do Raio
+  description: "Velocidade acima da m\xE9dia. Raios encadeiam dano entre alvos."
+  icon: {fileID: 0}
+  hpMultiplier: 0.85
+  attackMultiplier: 1.4
+  defenseMultiplier: 0.75
+  speedMultiplier: 1.3
+  healPowerMultiplier: 1
+  passiveAbilityName: 
+  passiveAbilityDescription: 

@@ -1,0 +1,35 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 69b9968fc790954449b289fe2c50d59b, type: 3}
+  m_Name: Mission_PatrulhaDeserto
+  m_EditorClassIdentifier: ZulfarakRPG::ZulfarakRPG.MissionData
+  missionId: solo_patrulha_deserto
+  missionName: Patrulha do Deserto
+  description: "Bandidos atacam as caravanas nos arredores de Zulfarak. Elimine-os
+    antes que cheguem \xE0 cidade."
+  missionType: 0
+  requiredLevel: 1
+  durationSeconds: 30
+  expReward: 72
+  goldReward: 33
+  itemRewards: []
+  requiredPlayers: 5
+  enemies:
+  - {fileID: 11400000, guid: 9ab2b2aa9c66a5b4a9b5bace4238a7b0, type: 2}
+  - {fileID: 11400000, guid: 9ab2b2aa9c66a5b4a9b5bace4238a7b0, type: 2}
+  - {fileID: 11400000, guid: a4e5cd83bee8fbf4d9928afdbba3c498, type: 2}
+  - {fileID: 11400000, guid: ad6d052bb2da0a941b1757a2a06f82bb, type: 2}
+  tankSuccessBonus: 0.1
+  healerSuccessBonus: 0.15
+  dpsSuccessBonus: 0.05
+  missionIcon: {fileID: 0}
+  locationName: Zulfarak

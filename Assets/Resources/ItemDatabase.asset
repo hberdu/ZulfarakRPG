@@ -1,0 +1,34 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: db9afb40d0270624da2a4dd4a396b679, type: 3}
+  m_Name: ItemDatabase
+  m_EditorClassIdentifier: ZulfarakRPG::ZulfarakRPG.ItemDatabase
+  items:
+  - {fileID: 11400000, guid: 62f17fa4ca1fe234fbc4e827a6b0a8c0, type: 2}
+  - {fileID: 11400000, guid: e479b624f0f18ba409010d669627040a, type: 2}
+  - {fileID: 11400000, guid: cfea9fb1299843a499b6fbe0ffa058a0, type: 2}
+  - {fileID: 11400000, guid: 524abb0acd77c0949900c608c2e413e8, type: 2}
+  - {fileID: 11400000, guid: 1fe83bad3f5292b47b49c5f69a970c04, type: 2}
+  - {fileID: 11400000, guid: 1836a13e5840055469580da4c3064d6e, type: 2}
+  - {fileID: 11400000, guid: 410df37ae1d82a54ba0d3f997d2d20c6, type: 2}
+  - {fileID: 11400000, guid: acae17864ca931b4eaf5f1a60a96c8f2, type: 2}
+  - {fileID: 11400000, guid: be94897b3af8f1d4e82aa7ae2c76baa9, type: 2}
+  - {fileID: 11400000, guid: 5ba947e41105f5543a19ce910a598171, type: 2}
+  - {fileID: 11400000, guid: faa745a2785699a43b3b94ec59d78fef, type: 2}
+  - {fileID: 11400000, guid: a445336582f9c2949a7284db9d6f02b7, type: 2}
+  - {fileID: 11400000, guid: 8ca491d02b07e144eaabf268b6a82ccc, type: 2}
+  - {fileID: 11400000, guid: cd5ad5c39c078834d8d5f9622e0a26b3, type: 2}
+  - {fileID: 11400000, guid: cd305bd3ee75bf04386a4536e070bb26, type: 2}
+  - {fileID: 11400000, guid: b6356fcd710d6f247be53004678dd2d4, type: 2}
+  - {fileID: 11400000, guid: c310f067b28977e4bb11a6ee1fb09f8f, type: 2}
+  - {fileID: 11400000, guid: 556d6e8cbbf3e924fb5a0b08e1a471fd, type: 2}
+  - {fileID: 11400000, guid: 9c5f6da9ce59edc43bcef488929e609b, type: 2}

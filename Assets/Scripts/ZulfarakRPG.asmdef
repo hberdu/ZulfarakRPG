@@ -1,0 +1,21 @@
+{
+    "name": "ZulfarakRPG",
+    "rootNamespace": "ZulfarakRPG",
+    "references": [
+        "Unity.TextMeshPro",
+        "Unity.InputSystem",
+        "Unity.ugui",
+        "Newtonsoft.Json",
+        "com.rlabrecque.steamworks.net",
+        "Unity.RenderPipelines.Universal.Runtime",
+        "Unity.RenderPipelines.Core.Runtime"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
