@@ -118,10 +118,10 @@ namespace ZulfarakRPG
             // onto the ground line. Deterministic; no reliance on alpha-readable art.
             RestOnGroundAtSpawn();
 
-            // Archer is a ranged class — much longer reach than Warrior/Mage melee so it
-            // snipes the wave from afar (enemies now spawn further back).
-            if (_classType == ClassType.Archer)
-                attackRange *= 3f;
+            // Class-specific reach (overrides the authored value): the archer snipes from
+            // range, while melee (Warrior/Mage) must close right up to the enemy before it
+            // swings.
+            attackRange = (_classType == ClassType.Archer) ? 6f : 1.1f;
 
             // Tight GREEN HP bar: width and Y both auto-detected from the sprite alpha.
             _hpBar?.AttachAbove(_sr,

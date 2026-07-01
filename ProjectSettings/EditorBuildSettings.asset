@@ -5,7 +5,7 @@ EditorBuildSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 2
   m_Scenes:
-  - enabled: 1
+  - enabled: 0
     path: Assets/Scenes/Bootstrap.unity
     guid: 03ce8c282d679a049b0cd55c9630e07d
   - enabled: 1
@@ -18,4 +18,5 @@ EditorBuildSettings:
     path: Assets/Scenes/Dungeon.unity
     guid: ce1c1b5c8a3994d499f2d001cd4f6eb2
   m_configObjects:
+    com.unity.addressableassets: {fileID: 11400000, guid: b422421dd71a81643b8761bfa651a665, type: 2}
     com.unity.dt.app-ui: {fileID: 11400000, guid: 1b1c20d82303e4b5781c3ef50ac1449f, type: 2}
