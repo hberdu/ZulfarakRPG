@@ -1,0 +1,17 @@
+{
+  "name": "zulfarak-rpg-server",
+  "version": "1.0.0",
+  "description": "ZulfarakRPG game server",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "dependencies": {
+    "ws": "^8.17.0",
+    "uuid": "^9.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  }
+}
