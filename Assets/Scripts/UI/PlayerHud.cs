@@ -4,22 +4,27 @@ using UnityEngine.SceneManagement;
 
 namespace ZulfarakRPG
 {
-    // Bottom-left HUD built from the GandalfHardcore HP-bar art:
-    //   • A single round vessel (the "pote") holding red liquid that drains with health.
-    // The source frame sprite is 116×64 (round orb ring on the left + a meter housing on
-    // the right). We crop it to the left 64×64 square so ONLY the round pot is shown — the
-    // meter beside it is dropped, and there is no mana/MP bar.
+    // Bottom-left HUD: the character portrait frame ("face") from the GandalfHardcore
+    // HP-bar art, followed by four square action buttons of the same dimension.
+    // The old round HP orb (red liquid meter) is removed — health is tracked via the
+    // world-space bar over the character's head, not here.
     public class PlayerHud : MonoBehaviour
     {
         static PlayerHud _instance;
-
         Canvas _canvas;
-        Image  _hpFill;     // red liquid, fillAmount tracks health
-        PlayerController2D _player;
 
-        // Where the liquid sits inside the 64×64 ring crop (matches the frame art).
-        static readonly Vector2 OrbMin = new Vector2( 3f / 64f,  5f / 64f);
-        static readonly Vector2 OrbMax = new Vector2(59f / 64f, 59f / 64f);
+        const float SIZE   = 40f;   // square edge of face + each button
+        const float MARGIN = 8f;    // gap from screen edge
+        const float GAP    = 4f;    // gap between squares
+
+        // Four action-button labels + their tap handlers (placeholder popups for now).
+        static readonly (string label, string title, string body)[] Buttons = new []
+        {
+            ("Inv",  "Inventário",  "Inventário em construção.\n\nEm breve você poderá gerenciar seus itens aqui."),
+            ("Per",  "Personagem",  "Ficha do personagem em construção.\n\nAtributos, equipamentos e progresso ficarão aqui."),
+            ("Hab",  "Habilidades", "Árvore de habilidades em construção.\n\nInvista pontos de talento para evoluir sua classe."),
+            ("Mis",  "Missões",     "Quadro de missões em construção.\n\nAceite tarefas e acompanhe recompensas aqui."),
+        };
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         static void Hook()
@@ -46,78 +51,105 @@ namespace ZulfarakRPG
             canvas.sortingOrder = 700;                         // below native popups (800)
             var scaler = root.AddComponent<CanvasScaler>();
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ConstantPixelSize;
+            root.AddComponent<GraphicRaycaster>();
             _instance._canvas = canvas;
 
-            _instance._hpFill = BuildOrb(canvas.transform);
-        }
+            // Bar container: one row = face + four square buttons.
+            var bar = new GameObject("HudBar", typeof(RectTransform));
+            bar.transform.SetParent(canvas.transform, false);
+            var brt = (RectTransform)bar.transform;
+            brt.anchorMin = brt.anchorMax = brt.pivot = new Vector2(0f, 0f);
+            brt.anchoredPosition = new Vector2(MARGIN, MARGIN);
+            brt.sizeDelta        = new Vector2(SIZE * 5 + GAP * 4, SIZE);
 
-        // Builds the round HP vessel pinned to the bottom-left corner: red liquid
-        // (drains with health) over a dark "empty glass" backing, with the frame's
-        // ring on top. Returns the liquid image so Update() can drive its fillAmount.
-        static Image BuildOrb(Transform parent)
-        {
-            const float SIZE = 40f, margin = 8f;   // display size in px — shrink here to taste
+            // Face square (the character-portrait frame, no HP orb inside).
+            BuildFace(brt, 0f);
 
-            var group = new GameObject("HP", typeof(RectTransform));
-            group.transform.SetParent(parent, false);
-            var grt = (RectTransform)group.transform;
-            grt.anchorMin = grt.anchorMax = grt.pivot = new Vector2(0f, 0f); // bottom-left
-            grt.sizeDelta = new Vector2(SIZE, SIZE);
-            grt.anchoredPosition = new Vector2(margin, margin);
-
-            var orbSprite = Resources.Load<Sprite>("HpBarOrb");   // red liquid globe
-            var ring      = RingSprite();                          // frame cropped to the pot
-
-            // Dark backing so the drained (empty) part reads as dark glass, not desktop.
-            var back = MakeImage("Empty", grt, orbSprite, new Color(0.12f, 0.02f, 0.02f, 1f));
-            SetRect(back, OrbMin, OrbMax);
-
-            // Red liquid — vertical Filled so it lowers from the top as health drops.
-            var fill = MakeImage("Liquid", grt, orbSprite, Color.white);
-            SetRect(fill, OrbMin, OrbMax);
-            fill.type       = Image.Type.Filled;
-            fill.fillMethod = Image.FillMethod.Vertical;
-            fill.fillOrigin = (int)Image.OriginVertical.Bottom;
-            fill.fillAmount = 1f;
-
-            // Ring / vessel frame on top.
-            if (ring != null)
+            // Four square action buttons to the RIGHT of the face.
+            for (int i = 0; i < Buttons.Length; i++)
             {
-                var fr = MakeImage("Ring", grt, ring, Color.white);
-                SetRect(fr, Vector2.zero, Vector2.one);
+                float x = (i + 1) * (SIZE + GAP);
+                var (label, title, body) = Buttons[i];
+                BuildButton(brt, x, label, title, body);
             }
-
-            return fill;
         }
 
-        void Update()
+        static void BuildFace(Transform parent, float xOffset)
         {
-            if (_hpFill == null) return;
-            if (_player == null) _player = FindAnyObjectByType<PlayerController2D>();
-            if (_player != null) _hpFill.fillAmount = _player.HealthFraction;
-        }
-
-        // ── UI helpers ────────────────────────────────────────────────────
-        static Image MakeImage(string name, Transform parent, Sprite sprite, Color color)
-        {
-            var go = new GameObject(name, typeof(RectTransform));
+            var go = new GameObject("Face", typeof(RectTransform));
             go.transform.SetParent(parent, false);
-            var img = go.AddComponent<Image>();
-            img.sprite        = sprite;
-            img.color         = color;
-            img.raycastTarget = false;
-            return img;
+            var rt = (RectTransform)go.transform;
+            rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0f, 0f);
+            rt.anchoredPosition = new Vector2(xOffset, 0f);
+            rt.sizeDelta        = new Vector2(SIZE, SIZE);
+
+            // Dark backing so the frame has a solid base regardless of desktop behind.
+            var bg = go.AddComponent<Image>();
+            bg.color         = new Color(0.08f, 0.06f, 0.05f, 0.95f);
+            bg.raycastTarget = false;
+
+            // Portrait frame sprite (left 64×64 of the HpBarFrame — the ring / face plate).
+            var frame = RingSprite();
+            if (frame != null)
+            {
+                var fg = new GameObject("Frame", typeof(RectTransform));
+                fg.transform.SetParent(go.transform, false);
+                var frt = (RectTransform)fg.transform;
+                frt.anchorMin = Vector2.zero; frt.anchorMax = Vector2.one;
+                frt.offsetMin = Vector2.zero; frt.offsetMax = Vector2.zero;
+                var img = fg.AddComponent<Image>();
+                img.sprite        = frame;
+                img.color         = Color.white;
+                img.raycastTarget = false;
+            }
         }
 
-        static void SetRect(Image img, Vector2 anchorMin, Vector2 anchorMax)
+        static void BuildButton(Transform parent, float xOffset, string label, string title, string body)
         {
-            var rt = (RectTransform)img.transform;
-            rt.anchorMin = anchorMin; rt.anchorMax = anchorMax;
-            rt.offsetMin = Vector2.zero; rt.offsetMax = Vector2.zero;
+            var go = new GameObject($"Btn_{label}", typeof(RectTransform));
+            go.transform.SetParent(parent, false);
+            var rt = (RectTransform)go.transform;
+            rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0f, 0f);
+            rt.anchoredPosition = new Vector2(xOffset, 0f);
+            rt.sizeDelta        = new Vector2(SIZE, SIZE);
+
+            // Gold border + dark inner panel — matches the tooltip theme.
+            var border = go.AddComponent<Image>();
+            border.color         = new Color(0.85f, 0.65f, 0.20f, 1f);
+            border.raycastTarget = true;
+
+            var innerGO = new GameObject("Inner", typeof(RectTransform));
+            innerGO.transform.SetParent(go.transform, false);
+            var irt = (RectTransform)innerGO.transform;
+            irt.anchorMin = Vector2.zero; irt.anchorMax = Vector2.one;
+            irt.offsetMin = new Vector2( 2f,  2f);
+            irt.offsetMax = new Vector2(-2f, -2f);
+            var inner = innerGO.AddComponent<Image>();
+            inner.color         = new Color(0.10f, 0.08f, 0.06f, 0.95f);
+            inner.raycastTarget = false;
+
+            // Centered label (3-letter cue) so we don't depend on TMP font assets here.
+            var txtGO = new GameObject("Label", typeof(RectTransform));
+            txtGO.transform.SetParent(innerGO.transform, false);
+            var trt = (RectTransform)txtGO.transform;
+            trt.anchorMin = Vector2.zero; trt.anchorMax = Vector2.one;
+            trt.offsetMin = Vector2.zero; trt.offsetMax = Vector2.zero;
+            var txt = txtGO.AddComponent<Text>();
+            txt.text     = label;
+            txt.font     = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            txt.fontSize = 14;
+            txt.alignment = TextAnchor.MiddleCenter;
+            txt.color    = new Color(1f, 0.93f, 0.72f, 1f);
+            txt.raycastTarget = false;
+
+            // Click handler: opens a themed popup as a placeholder for each system.
+            var btn = go.AddComponent<Button>();
+            btn.targetGraphic = border;
+            btn.onClick.AddListener(() => NPCMenuUI.Show(title, body));
         }
 
-        // Frame is 116×64: the round orb ring occupies the left 64px, the meter housing
-        // the rest. Cropping to the left square yields just the round pot.
+        // Frame is 116×64: the portrait ring occupies the left 64px. Cropping to that
+        // square isolates the "face" plate without the meter housing beside it.
         static Sprite _ring;
         static Sprite RingSprite()
         {

@@ -39,28 +39,48 @@ namespace ZulfarakRPG
             var player = Object.FindAnyObjectByType<PlayerController2D>();
             Vector3 center = player != null ? player.transform.position : new Vector3(2.5f, -0.9f, 0f);
 
-            // Bloom a cluster of drifting puffs, then let them fade as the wave starts.
-            const int puffs = 14;
-            for (int i = 0; i < puffs; i++)
-                SpawnPuff(center + new Vector3(Random.Range(-0.5f, 0.5f), Random.Range(-0.15f, 0.5f), 0f));
+            // MASSIVE bloom: three staggered waves of large, drifting puffs so the
+            // effect reads as a dense violet explosion instead of a subtle wisp.
+            for (int wave = 0; wave < 3; wave++)
+            {
+                const int puffsPerWave = 22;
+                for (int i = 0; i < puffsPerWave; i++)
+                    SpawnPuff(center + new Vector3(Random.Range(-1.4f, 1.4f),
+                                                   Random.Range(-0.35f, 1.10f), 0f));
+                yield return new WaitForSeconds(0.15f);
+            }
 
-            yield return new WaitForSeconds(2.6f);   // roughly the wave warm-up
+            yield return new WaitForSeconds(3.6f);   // enough for the last puffs to fade out
             Destroy(gameObject);
         }
 
         void SpawnPuff(Vector3 pos)
         {
+            SpawnPuffStatic(pos);
+        }
+
+        // Public entry point so callers outside the Dungeon scene (e.g. the portal
+        // absorb routine in Zulfarak) can burst violet smoke around any world point.
+        public static void BurstAt(Vector3 center, int count)
+        {
+            for (int i = 0; i < count; i++)
+                SpawnPuffStatic(center + new Vector3(Random.Range(-0.6f, 0.6f),
+                                                     Random.Range(-0.2f, 0.7f), 0f));
+        }
+
+        static void SpawnPuffStatic(Vector3 pos)
+        {
             var go = new GameObject("SmokePuff");
             go.transform.position   = pos + new Vector3(0f, 0f, -0.5f);
-            go.transform.localScale = Vector3.one * Random.Range(0.35f, 0.7f);
+            go.transform.localScale = Vector3.one * Random.Range(0.9f, 1.7f);
             var sr = go.AddComponent<SpriteRenderer>();
             sr.sprite       = PuffSprite();
-            sr.color        = new Color(Violet.r, Violet.g, Violet.b, Random.Range(0.55f, 0.85f));
+            sr.color        = new Color(Violet.r, Violet.g, Violet.b, Random.Range(0.75f, 0.95f));
             sr.sortingOrder = 40;
             go.AddComponent<SmokePuff>().Init(
-                drift: new Vector3(Random.Range(-0.25f, 0.25f), Random.Range(0.25f, 0.6f), 0f),
-                life:  Random.Range(1.6f, 2.4f),
-                grow:  Random.Range(1.6f, 2.4f));
+                drift: new Vector3(Random.Range(-0.55f, 0.55f), Random.Range(0.45f, 1.10f), 0f),
+                life:  Random.Range(2.4f, 3.4f),
+                grow:  Random.Range(2.4f, 3.6f));
         }
 
         // Soft round puff (radial alpha falloff).

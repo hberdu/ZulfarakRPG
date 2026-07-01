@@ -451,22 +451,23 @@ namespace ZulfarakRPG
             var halo = BuildPortalAbsorbHalo();
             Color baseColor  = _sr != null ? _sr.color : Color.white;
             Vector3 basePos  = transform.position;
-            Vector3 baseScale = transform.localScale;
             float t = 0f;
+            float nextPuff = 0f;
+            // Initial burst so the effect opens with an impact.
+            PortalSmoke.BurstAt(basePos, 14);
             while (t < duration)
             {
                 float p = t / duration;                       // 0 → 1
                 float ramp = p * p;                           // accelerate the "suck-in"
 
-                // Tremble: high-frequency jitter that intensifies toward the end.
-                float shakeAmp = 0.015f + ramp * 0.06f;
+                // Heavy tremble: much larger amplitude, ramps hard toward the end.
+                float shakeAmp = 0.04f + ramp * 0.22f;
                 Vector3 jitter = new Vector3(
-                    (Mathf.PerlinNoise(t * 40f, 0.3f) - 0.5f),
-                    (Mathf.PerlinNoise(0.7f, t * 40f) - 0.5f), 0f) * (shakeAmp * 2f);
+                    (Mathf.PerlinNoise(t * 55f, 0.3f) - 0.5f),
+                    (Mathf.PerlinNoise(0.7f, t * 55f) - 0.5f), 0f) * (shakeAmp * 2f);
 
-                // Pulled toward the portal (rings sit up/right of the absorb point) while shrinking.
-                transform.position   = basePos + jitter;
-                transform.localScale = Vector3.Lerp(baseScale, baseScale * 0.12f, ramp);
+                // Trembles in place — no scale change, character stays full size all the way in.
+                transform.position = basePos + jitter;
 
                 // Whole sprite dyes to the portal colour as it dissolves in.
                 if (_sr != null)
@@ -481,9 +482,18 @@ namespace ZulfarakRPG
                         sr.color = new Color(PortalColor.r, PortalColor.g, PortalColor.b, 0.45f + pulse * 0.45f);
                     halo.transform.localScale = Vector3.one * (1.10f + p * 0.90f + pulse * 0.12f);
                 }
+
+                // Continuous smoke stream so the character disappears into a dense cloud.
+                if (t >= nextPuff)
+                {
+                    PortalSmoke.BurstAt(basePos, 3 + Mathf.RoundToInt(ramp * 6f));
+                    nextPuff = t + 0.06f;
+                }
                 t += Time.deltaTime;
                 yield return null;
             }
+            // Final explosive burst as the character vanishes into the portal.
+            PortalSmoke.BurstAt(basePos, 22);
             // Tell the next (Dungeon) scene to bloom purple smoke that dissipates as the wave begins.
             PortalSmoke.PendingAtWaveStart = true;
         }

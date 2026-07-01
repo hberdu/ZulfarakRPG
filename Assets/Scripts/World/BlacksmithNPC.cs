@@ -62,13 +62,21 @@ namespace ZulfarakRPG
             col.size      = new Vector2(0.3f, 0.2f);
             col.offset    = new Vector2(0f, 0.5f);
 
+            // Physics foot: Dynamic rigidbody + non-trigger collider (same footprint as
+            // Kael) so gravity settles the blacksmith onto GroundFloor at exactly Kael's
+            // rest height. The trigger above is preserved for Interactable2D clicks.
+            var rb = go.AddComponent<Rigidbody2D>();
+            rb.bodyType     = RigidbodyType2D.Dynamic;
+            rb.gravityScale = 3f;
+            rb.constraints  = RigidbodyConstraints2D.FreezeRotation | RigidbodyConstraints2D.FreezePositionX;
+            var foot = go.AddComponent<BoxCollider2D>();
+            foot.isTrigger = false;
+            foot.size   = new Vector2(0.3f, 0.2f);
+            foot.offset = new Vector2(0f, 0.5f);
+
             var anim = go.AddComponent<SimpleIdleAnim>();
             anim.frames = idleFrames;
             anim.fps    = 6f;
-
-            // Snap to the ground line by visible feet so the blacksmith stands
-            // on the grass instead of floating above it.
-            GroundAlignUtil.SnapToGround(go.transform, sr);
 
             var inter = go.AddComponent<Interactable2D>();
             inter.tooltipText   = "Ferreiro";

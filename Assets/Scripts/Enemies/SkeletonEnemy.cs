@@ -41,22 +41,19 @@ namespace ZulfarakRPG
         public bool IsAlive => !_dead;
 
         // Resize the BoxCollider2D so its bottom edge sits on the visible feet pixels.
-        // Without this, transparent padding in the 100×100 frame leaves the skeleton floating.
+        // Pivot-agnostic: col.offset is TRANSFORM-relative, but feetFromBottom is
+        // measured from the sprite bottom, so we add sprite.bounds.min.y to convert.
         void FitColliderToVisibleBounds()
         {
             var col = GetComponent<BoxCollider2D>();
             if (col == null || _sr == null || _sr.sprite == null) return;
             var ab = SpriteAlphaBounds.Get(_sr.sprite);
             float spriteH = _sr.sprite.bounds.size.y;
-            // Skip when alpha scan fell back (texture not Read/Write) — otherwise
-            // collider grows to full frame, intersects ground, and physics ejects the
-            // skeleton off-screen.
             if (ab.bottomFromBottom <= 0.001f && ab.topFromBottom >= spriteH - 0.001f) return;
-            // Use feetFromBottom (the bottommost substantial row) instead of the raw
-            // alpha bottom so shadow tips don't push the collider below the feet.
             float h = Mathf.Max(0.05f, ab.topFromBottom - ab.feetFromBottom);
+            float localBottom = _sr.sprite.bounds.min.y + ab.feetFromBottom;
             col.size   = new Vector2(Mathf.Max(0.10f, ab.width * 0.6f), h);
-            col.offset = new Vector2(0f, ab.feetFromBottom + h * 0.5f);
+            col.offset = new Vector2(0f, localBottom + h * 0.5f);
         }
 
         // ── Init ───────────────────────────────────────────────────────────
@@ -75,21 +72,9 @@ namespace ZulfarakRPG
             _player = FindAnyObjectByType<PlayerController2D>();
             if (idleFrames != null && idleFrames.Length > 0 && _sr != null) _sr.sprite = idleFrames[0];
             // Alpha-aware collider fit: shrink the box to the visible body so
-            // the skeleton rests its visible feet on the ground top instead of
-            // floating above it. Internal reliability gate skips when textures
-            // are not Read/Write enabled.
+            // gravity + the shared GroundFloor collider settle the skeleton with its
+            // visible feet on the ground line. No manual snap — physics does it.
             FitColliderToVisibleBounds();
-
-            // Rest the visible feet on the ground line immediately so the skeleton
-            // never floats while it walks in (don't wait for gravity to settle it).
-            var myCol2 = GetComponent<Collider2D>();
-            if (myCol2 != null)
-            {
-                float gt    = GroundAlignUtil.FindGroundTopY();
-                float shift = (gt + 0.002f) - myCol2.bounds.min.y;
-                transform.position += new Vector3(0f, shift, 0f);
-                _rb.linearVelocity = Vector2.zero;
-            }
 
             _hpBar?.AttachAbove(_sr);
             _hpBar?.SetHealth(_hp, maxHealth);

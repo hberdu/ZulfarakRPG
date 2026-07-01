@@ -7,19 +7,18 @@ namespace ZulfarakRPG
     //   • The "Ground" renderer becomes a SOLID dark-earth fill that spans the whole
     //     view width and reaches far below the camera — no tiling pattern, no seams,
     //     no repeated grass line in the dirt body.
-    //   • A thin GRASS FRINGE (top band of the GandalfHardcore foliage tile) is laid
-    //     as a SINGLE row on top, its surface nudged a few pixels ABOVE the physics
-    //     standing line so character feet nestle into the grass instead of floating.
+    //   • A SOLID GRASS BAND is laid on top as a single continuous horizontal strip
+    //     (no per-tile alpha gaps), so the surface reads as one continuous grass
+    //     line rather than a row of separated tufts.
     //
     // The physics standing line (FindGroundTopY == "Ground" sprite top) is preserved
     // exactly on the earth fill's top edge, so every character that snaps to it stays
     // consistent. Auto-runs on Zulfarak + Dungeon load — no scene editing required.
     public class GroundDressing : MonoBehaviour
     {
-        const float GrassBandPx = 34f;    // top slice of the 96px tile = grass + a little dirt
-        const float GrassScale  = 1.5f;   // upscale the fringe → fewer, larger horizontal repeats
-        const float GrassLift   = 0f;     // 0 = grass sits on earth top; any lift creates a transparent gap the desktop bleeds through
+        const float GrassBandH = 0.06f;   // world-unit height of the solid grass strip on top
         static readonly Color Earth = new Color(0.14f, 0.12f, 0.10f, 1f); // matches the tile's dirt
+        static readonly Color Grass = new Color(0.42f, 0.32f, 0.12f, 1f); // warm mossy-brown grass line
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         static void RegisterSceneHook()
@@ -36,9 +35,6 @@ namespace ZulfarakRPG
             if (ground == null) return;
             var sr = ground.GetComponent<SpriteRenderer>();
             if (sr == null) return;
-
-            var foliage = Resources.Load<Sprite>("GroundFoliage");
-            if (foliage == null) { Debug.LogWarning("[GroundDressing] Resources/GroundFoliage not found."); return; }
 
             // Preserve the existing standing line (top edge) so alignment is unchanged.
             float standLine = sr.bounds.max.y;
@@ -76,26 +72,22 @@ namespace ZulfarakRPG
                 col.offset    = Vector2.zero;   // box top = position.y + dirtH/2 = standLine
             }
 
-            // ── Grass fringe: a single row of the tile's grassy top band, surface lifted
-            //    slightly above the feet line so characters plant into the grass.
+            // ── Solid grass band: a continuous horizontal strip on top of the earth
+            //    fill. No per-tile alpha, no gaps — reads as one unbroken grass line.
             var grassGO = ground.transform.Find("GroundGrass")?.gameObject
                           ?? new GameObject("GroundGrass");
             grassGO.transform.SetParent(ground.transform, false);
             var gsr = grassGO.GetComponent<SpriteRenderer>() ?? grassGO.AddComponent<SpriteRenderer>();
 
-            float grassNativeH = GrassBandPx / 100f;          // sprite units before scaling
-            float grassWorldH  = grassNativeH * GrassScale;
-            float grassTop     = standLine + GrassLift;
-
-            grassGO.transform.localScale = new Vector3(GrassScale, GrassScale, 1f);
-            grassGO.transform.position   = new Vector3(camX, grassTop - grassWorldH * 0.5f,
+            grassGO.transform.localScale = Vector3.one;
+            grassGO.transform.position   = new Vector3(camX, standLine - GrassBandH * 0.5f,
                                                        ground.transform.position.z - 0.01f);
 
-            gsr.sprite       = GrassStrip(foliage);
-            gsr.color        = Color.white;
+            gsr.sprite       = SolidSprite();
+            gsr.color        = Grass;
             gsr.drawMode     = SpriteDrawMode.Tiled;
             gsr.tileMode     = SpriteTileMode.Continuous;
-            gsr.size         = new Vector2(worldW / GrassScale, grassNativeH); // one vertical tile
+            gsr.size         = new Vector2(worldW, GrassBandH);
             gsr.sortingOrder = sr.sortingOrder + 1;                            // in front of earth, behind characters
 
             // Consumers recompute the (unchanged) ground top against the new earth fill.
@@ -114,19 +106,6 @@ namespace ZulfarakRPG
             t.SetPixels(px); t.Apply();
             _solid = Sprite.Create(t, new Rect(0, 0, 4, 4), new Vector2(0.5f, 0.5f), 4f);
             return _solid;
-        }
-
-        // Crops the top GrassBandPx rows of the foliage tile (grass + a little dirt) so
-        // the fringe never shows a second grass line lower down.
-        static Sprite _grass;
-        static Sprite GrassStrip(Sprite foliage)
-        {
-            if (_grass != null) return _grass;
-            var tex = foliage.texture;
-            int px  = Mathf.Clamp((int)GrassBandPx, 1, tex.height);
-            _grass  = Sprite.Create(tex, new Rect(0, tex.height - px, tex.width, px),
-                                    new Vector2(0.5f, 0.5f), 100f);
-            return _grass;
         }
     }
 }
