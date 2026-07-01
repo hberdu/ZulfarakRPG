@@ -1120,6 +1120,7 @@ MonoBehaviour:
   - {fileID: -5703199372606414648, guid: e440f76d843c9ec4e937c951a411f0a2, type: 3}
   - {fileID: -8514182677760930749, guid: e440f76d843c9ec4e937c951a411f0a2, type: 3}
   fps: 6
+  nameLabel: Kael
 --- !u!114 &639292165
 MonoBehaviour:
   m_ObjectHideFlags: 0

@@ -9,10 +9,19 @@ namespace ZulfarakRPG
     {
         public Sprite[] frames;
         public float    fps = 6f;
+        // Optional floating name tag (same style/height as the other city NPCs).
+        // Leave empty for NPCs that attach their own tag or need none.
+        public string   nameLabel;
 
         SpriteRenderer _sr;
 
         void Awake() { _sr = GetComponent<SpriteRenderer>(); }
+
+        void Start()
+        {
+            if (!string.IsNullOrEmpty(nameLabel) && _sr != null)
+                NameTag.Attach(_sr, nameLabel, yOffsetWorld: 0.62f);
+        }
 
         void Update()
         {
