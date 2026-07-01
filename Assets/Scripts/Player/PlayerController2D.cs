@@ -26,13 +26,6 @@ namespace ZulfarakRPG
 
         float AttackInterval => 1f / Mathf.Max(0.1f, attackSpeed);
 
-        // City NPCs (ClassMaster / Kael) stand on a foot collider whose BOTTOM sits at
-        // this sprite-local Y (their authored offset.y 0.5 − halfHeight 0.1). The player
-        // shares those exact sprites, so we plant its ground collider on the SAME line —
-        // otherwise the alpha-detected feet (~0.43) rest ~0.06 WU lower and the hero sinks
-        // below the NPCs instead of standing at their height.
-        const float NpcFootRestFromBottom = 0.40f;
-
         [Header("Warrior Sprites")]
         public Sprite[] soldierIdleFrames;
         public Sprite[] soldierWalkFrames;
@@ -120,16 +113,9 @@ namespace ZulfarakRPG
                 Debug.Log($"[Player.Start] sprite={_sr.sprite.name} bottom={ab.bottomFromBottom:F3} top={ab.topFromBottom:F3} spriteH={_sr.sprite.bounds.size.y:F3} pos={transform.position} scale={transform.lossyScale}");
             }
 
-            // Auto-fit collider to the visible body so physics rests the player's
-            // visible feet on the ground top (instead of leaving a gap from the
-            // sprite's transparent padding). FitColliderToVisibleBounds has its
-            // own reliability check + early return for non-readable textures.
-            FitColliderToVisibleBounds();
-
-            // Rest the player ON the ground at spawn. The scene authored the player
-            // BELOW the ground collider top, so the fitted collider overlaps the ground
-            // and Box2D violently ejects it (→ the "falling forever" bug). Shift the
-            // player up so its collider bottom touches the ground top with no overlap.
+            // Rest the player on the ground exactly like the city NPCs: settle its
+            // authored foot collider (offset 0.5, size 0.3×0.2 — identical to the NPCs)
+            // onto the ground line. Deterministic; no reliance on alpha-readable art.
             RestOnGroundAtSpawn();
 
             // Archer is a ranged class — double the attack range vs Warrior/Mage melee.
@@ -181,49 +167,19 @@ namespace ZulfarakRPG
         static Sprite[] Pick(Sprite[] preferred, Sprite[] fallback)
             => (preferred != null && preferred.Length > 0) ? preferred : fallback;
 
-        // Resize the BoxCollider2D so its bottom edge sits on the visible feet pixels
-        // and its top edge on the visible head pixels. Without this, transparent padding
-        // in the 100×100 frame leaves the character floating above the ground.
-        // Pivot-AGNOSTIC: col.offset is TRANSFORM-relative, but ab.feetFromBottom is
-        // measured from the sprite's bottom edge. Center-pivoted sprites have their
-        // bottom at sprite.bounds.min.y (≈ -0.5), so we must add that offset — otherwise
-        // the collider ends up ~0.5 units too high (× scale in world space) and the
-        // character floats above the ground after RestOnGroundAtSpawn compensates.
-        void FitColliderToVisibleBounds()
-        {
-            var col = GetComponent<BoxCollider2D>();
-            if (col == null || _sr == null || _sr.sprite == null) return;
-            var ab = SpriteAlphaBounds.Get(_sr.sprite);
-            float spriteH = _sr.sprite.bounds.size.y;
-            if (ab.bottomFromBottom <= 0.001f && ab.topFromBottom >= spriteH - 0.001f) return;
-
-            float feet = ab.feetFromBottom;
-            float top  = ab.topFromBottom;
-            // Plant the collider bottom on the city-NPC standing line (never above the
-            // real feet) so the grounded player rests at the same height as the NPCs.
-            float bottom = Mathf.Min(feet, NpcFootRestFromBottom);
-            float h    = Mathf.Max(0.05f, top - bottom);
-            float localBottom = _sr.sprite.bounds.min.y + bottom;   // sprite bottom → transform origin
-            col.size   = new Vector2(Mathf.Max(0.10f, ab.width * 0.6f), h);
-            col.offset = new Vector2(0f, localBottom + h * 0.5f);
-        }
-
-        // Aligns the visible sprite feet AND the collider bottom to the ground line.
-        // Uses GroundAlignUtil.SnapToGround (sprite-bounds based → pivot-agnostic) to
-        // land the character visually, then trims any residual gap between the fitted
-        // collider bottom and the ground so physics rests on the visible standing line.
+        // Rests the player's foot collider on the ground line — the SAME way the city
+        // NPCs settle their identical foot collider (offset 0.5, size 0.3×0.2) onto the
+        // GroundFloor. Purely collider-based (no alpha-feet scan), so a non-readable
+        // texture can never strand the hero high in the air; SyncTransforms makes the
+        // collider bounds reflect the authored position before we measure them.
         void RestOnGroundAtSpawn()
         {
-            if (_sr == null) return;
-            GroundAlignUtil.SnapToGround(transform, _sr);
-
             var col = GetComponent<Collider2D>();
-            if (col != null)
-            {
-                float groundTop = GroundAlignUtil.FindGroundTopY();
-                float shift = (groundTop + 0.002f) - col.bounds.min.y;
-                if (Mathf.Abs(shift) > 0.002f) transform.position += new Vector3(0f, shift, 0f);
-            }
+            if (col == null) return;
+            Physics2D.SyncTransforms();
+            float groundTop = GroundAlignUtil.FindGroundTopY();
+            float shift = (groundTop + 0.002f) - col.bounds.min.y;
+            transform.position += new Vector3(0f, shift, 0f);
             if (_rb != null) _rb.linearVelocity = Vector2.zero;
         }
 
@@ -663,7 +619,7 @@ namespace ZulfarakRPG
                     t.SetPixel(x, y, inHead ? head : inBody ? body : Color.clear);
                 }
             t.Apply();
-            // Pivot at bottom-center so FitColliderToVisibleBounds works correctly.
+            // Pivot at bottom-center so the sprite's feet sit on the transform origin.
             return Sprite.Create(t, new Rect(0, 0, W, H), new Vector2(0.5f, 0f), 32f);
         }
     }

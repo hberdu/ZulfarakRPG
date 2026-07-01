@@ -34,6 +34,8 @@ namespace ZulfarakRPG
                 case ClassType.Archer:
                     _frames = archerIdleFrames;
                     label = "Mestre Arqueiro";
+                    // Sooty/leather tone matching the blacksmith.
+                    tint  = new Color(0.62f, 0.50f, 0.38f, 1f);
                     break;
                 default:
                     _frames = warriorIdleFrames;
@@ -42,10 +44,9 @@ namespace ZulfarakRPG
             }
             if (_frames != null && _frames.Length > 0) _sr.sprite = _frames[0];
             _sr.color = tint;
-            // Gravity + non-trigger foot collider settles the master onto the shared
-            // GroundFloor at the same height as Kael (whose scene-authored Y already
-            // matches the physics rest point). No manual snap needed.
-            EnsurePhysicsFoot();
+            // Static at its authored Y (Kael's ground line) with only its trigger collider,
+            // so it rests correctly AND doesn't physically block the player from walking past
+            // to the portal. (Interactable2D uses OverlapPoint — no Rigidbody needed.)
             GetComponent<Interactable2D>().tooltipText = label;
             GetComponent<Interactable2D>().onClick = () =>
                 NPCMenuUI.Show(label, "Árvore de habilidades em construção.\n\nEm breve você poderá investir pontos de talento aqui para evoluir sua classe.");
@@ -59,25 +60,6 @@ namespace ZulfarakRPG
             if (_frames == null || _frames.Length == 0 || _sr == null) return;
             _i = (int)(Time.time * 6f) % _frames.Length;
             _sr.sprite = _frames[_i];
-        }
-
-        // Attach a Dynamic rigidbody with gravity + a non-trigger foot collider so the
-        // master falls onto GroundFloor and rests at Kael's height. A separate trigger
-        // collider (already on the GO) is kept for Interactable2D hover/click detection.
-        void EnsurePhysicsFoot()
-        {
-            var rb = GetComponent<Rigidbody2D>() ?? gameObject.AddComponent<Rigidbody2D>();
-            rb.bodyType    = RigidbodyType2D.Dynamic;
-            rb.gravityScale = 3f;
-            rb.constraints = RigidbodyConstraints2D.FreezeRotation | RigidbodyConstraints2D.FreezePositionX;
-
-            // Reuse the authored trigger collider dimensions for the physics foot
-            // (same size/offset Kael uses → same rest height).
-            var trig = GetComponent<BoxCollider2D>();
-            var foot = gameObject.AddComponent<BoxCollider2D>();
-            foot.isTrigger = false;
-            foot.size   = trig != null ? trig.size   : new Vector2(0.3f, 0.2f);
-            foot.offset = trig != null ? trig.offset : new Vector2(0f,   0.5f);
         }
     }
 }
