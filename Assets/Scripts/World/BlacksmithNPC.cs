@@ -78,8 +78,7 @@ namespace ZulfarakRPG
                 "Forja em construção.\n\n" +
                 "Em breve você poderá aprimorar suas armas e armaduras aqui.";
 
-            // Tiny floating name tag above the head, matching player + class master.
-            NameTag.Attach(sr, "Ferreiro", yOffsetWorld: 0.62f);
+            // No floating name tag — the name shows on hover (Interactable2D tooltip).
 
             return go.AddComponent<BlacksmithNPC>();
         }

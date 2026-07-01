@@ -41,7 +41,11 @@ namespace ZulfarakRPG
         void Start()
         {
             _open = openOnStart;
-            GetComponent<CircleCollider2D>().isTrigger = true;
+            // Tight trigger — only fires when the player actually reaches the bright portal
+            // art (or clicks it), instead of a wide entry zone around the glow.
+            var pcol = GetComponent<CircleCollider2D>();
+            pcol.isTrigger = true;
+            pcol.radius    = 0.40f;
 
             // Build concentric glow rings using the portal sprite
             Sprite spr = glowSprite != null ? glowSprite.sprite : null;

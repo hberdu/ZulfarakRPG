@@ -17,11 +17,7 @@ namespace ZulfarakRPG
 
         void Awake() { _sr = GetComponent<SpriteRenderer>(); }
 
-        void Start()
-        {
-            if (!string.IsNullOrEmpty(nameLabel) && _sr != null)
-                NameTag.Attach(_sr, nameLabel, yOffsetWorld: 0.62f);
-        }
+        // No floating name tag anymore — NPC names show on hover (Interactable2D tooltip).
 
         void Update()
         {

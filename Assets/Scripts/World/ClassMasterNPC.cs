@@ -50,9 +50,7 @@ namespace ZulfarakRPG
             GetComponent<Interactable2D>().tooltipText = label;
             GetComponent<Interactable2D>().onClick = () =>
                 NPCMenuUI.Show(label, "Árvore de habilidades em construção.\n\nEm breve você poderá investir pontos de talento aqui para evoluir sua classe.");
-
-            // Small name tag above the head, matching the WorldHealthBar style.
-            NameTag.Attach(_sr, label, yOffsetWorld: 0.62f);
+            // No floating name tag — the name shows on hover (Interactable2D tooltip).
         }
 
         void Update()

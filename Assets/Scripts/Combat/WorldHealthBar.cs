@@ -121,9 +121,14 @@ namespace ZulfarakRPG
                 _nameLabel              = go.AddComponent<TextMeshPro>();
                 _nameLabel.fontSize     = 0.32f;
                 _nameLabel.alignment    = TextAlignmentOptions.Center;
-                _nameLabel.color        = new Color(0.96f, 0.96f, 0.86f, 1f);
+                _nameLabel.color        = new Color(0.98f, 0.94f, 0.80f, 1f);
                 _nameLabel.fontStyle    = FontStyles.Bold;
                 _nameLabel.enableWordWrapping = false;
+                // Solid black outline so the name reads over any background.
+                var nmat = _nameLabel.fontMaterial;
+                nmat.SetFloat(ShaderUtilities.ID_OutlineWidth, 0.25f);
+                nmat.SetColor(ShaderUtilities.ID_OutlineColor, Color.black);
+                _nameLabel.UpdateMeshPadding();
                 var mr = go.GetComponent<MeshRenderer>();
                 if (mr != null) mr.sortingOrder = 10;
             }

@@ -4,37 +4,36 @@ using UnityEngine.SceneManagement;
 
 namespace ZulfarakRPG
 {
-    // Runtime city dresser (a few frames after Zulfarak loads, once scene Starts + the
-    // code-spawned Ferreiro have settled):
-    //   1. Swap each cut-off tilesheet-FRAGMENT prop for a COMPLETE decor sprite from
-    //      Resources/CityDecor — ONLY autumn trees (orange/red), tents and statues.
-    //   2. Ground every prop (visible bottom → ground) and every static NPC (foot collider
-    //      → ground), and strip any yellow/tan tint off the NPCs so they look natural.
+    // Runtime city dresser (a few frames after Zulfarak loads):
+    //   • Places a SPREAD-OUT set of complete props from Resources/CityDecor — just TWO
+    //     autumn trees (far edges), three statues and two tents across the map; the rest of
+    //     the old prop objects are hidden.
+    //   • Grounds every prop and every static NPC, disables prop colliders so they can't
+    //     block the player, strips the NPC yellow tint, and widens the player's walk range
+    //     (and drops the boundary walls) so the hero can roam the whole city.
     //
-    // Runs at runtime, so it survives scene re-saves (unlike direct .unity edits, which the
-    // open editor overwrites). Physics characters (player/enemies) self-ground; skipped.
+    // Runtime, so it survives scene re-saves. Physics characters self-ground and are skipped.
     public class SceneGrounder : MonoBehaviour
     {
-        struct Deco { public string obj; public string res; public float height; }
+        struct Deco { public string obj; public string res; public float height; public float x; }
 
-        // Trees use ONLY the autumn sprites — Tree3 (orange-red) & Birch2 (orange). No
-        // green / yellow-olive / icy-blue trees. Torches removed; extra statues added.
+        // 2 trees (edges) + 3 statues + 2 tents, spread across the ~0..5 city width.
         static readonly Deco[] Decor =
         {
-            new Deco{ obj="Pyramid_C",  res="Tree3",       height=1.30f },
-            new Deco{ obj="Pyramid_L",  res="Birch2",      height=1.15f },
-            new Deco{ obj="Pyramid_R",  res="Tree3",       height=1.15f },
-            new Deco{ obj="Dune_FarL",  res="Birch2",      height=0.75f },
-            new Deco{ obj="Dune_FarR",  res="Tree3",       height=0.70f },
-            new Deco{ obj="Dune_NearL", res="Birch2",      height=0.60f },
-            new Deco{ obj="Dune_NearR", res="Tree3",       height=0.85f },
-            new Deco{ obj="Column_L",   res="Birch2",      height=1.00f },
-            new Deco{ obj="Column_R",   res="Tree3",       height=1.05f },
-            new Deco{ obj="Vase_L",     res="SmallTent",   height=0.45f },
-            new Deco{ obj="Vase_R",     res="LargeTent",   height=0.55f },
-            new Deco{ obj="Statue",     res="AngelStatue", height=0.72f },
-            new Deco{ obj="Tablet",     res="AngelStatue", height=0.55f },   // was Torch (removed)
-            new Deco{ obj="Gate_Arch",  res="AngelStatue", height=0.88f },   // extra statue
+            new Deco{ obj="Column_L",  res="Tree3",       height=1.10f, x=0.30f },   // far-left tree
+            new Deco{ obj="Statue",    res="AngelStatue", height=0.75f, x=1.00f },
+            new Deco{ obj="Vase_L",    res="SmallTent",   height=0.50f, x=1.80f },
+            new Deco{ obj="Tablet",    res="AngelStatue", height=0.62f, x=2.60f },
+            new Deco{ obj="Vase_R",    res="LargeTent",   height=0.55f, x=3.40f },
+            new Deco{ obj="Gate_Arch", res="AngelStatue", height=0.85f, x=4.10f },
+            new Deco{ obj="Column_R",  res="Tree3",       height=1.15f, x=4.70f },   // far-right tree
+        };
+
+        // Extra prop objects we no longer use — hidden so the city isn't crowded.
+        static readonly string[] Hidden =
+        {
+            "Pyramid_L", "Pyramid_C", "Pyramid_R",
+            "Dune_FarL", "Dune_FarR", "Dune_NearL", "Dune_NearR",
         };
 
         static readonly string[] Npcs = { "Kael_NPC", "ClassMaster_NPC", "Ferreiro_NPC" };
@@ -69,6 +68,12 @@ namespace ZulfarakRPG
 
             float groundTop = GroundAlignUtil.FindGroundTopY();
 
+            foreach (var h in Hidden)
+            {
+                var go = GameObject.Find(h);
+                if (go != null) go.SetActive(false);
+            }
+
             int treeIdx = 0;
             foreach (var d in Decor)
             {
@@ -83,12 +88,17 @@ namespace ZulfarakRPG
                     sr.sprite   = sprite;
                     sr.color    = Color.white;
                     bool isTree = d.res == "Tree3" || d.res.StartsWith("Birch");
-                    sr.flipX    = isTree && (treeIdx++ % 2 == 1);   // mirror alternate trees for variety
-                    sr.drawMode = SpriteDrawMode.Simple;            // complete sprite — never cropped
-                    float sh = sprite.bounds.size.y;
-                    float s  = sh > 0.0001f ? d.height / sh : 1f;
+                    sr.flipX    = isTree && (treeIdx++ % 2 == 1);
+                    sr.drawMode = SpriteDrawMode.Simple;
+                    float shp   = sprite.bounds.size.y;
+                    float s     = shp > 0.0001f ? d.height / shp : 1f;
                     go.transform.localScale = new Vector3(s, s, 1f);
                 }
+
+                var p = go.transform.position;
+                go.transform.position = new Vector3(d.x, p.y, p.z);      // spread across the map
+                foreach (var c in go.GetComponents<Collider2D>())        // never block the player
+                    if (!c.isTrigger) c.enabled = false;
                 GroundBySprite(go, sr, groundTop);
             }
 
@@ -97,12 +107,25 @@ namespace ZulfarakRPG
                 var go = GameObject.Find(n);
                 if (go == null) continue;
                 var sr = go.GetComponent<SpriteRenderer>();
-                if (sr != null) sr.color = Color.white;   // strip the yellow/tan tint → natural
+                if (sr != null) sr.color = Color.white;
                 GroundByCollider(go, groundTop);
+            }
+
+            // Let the hero roam the whole city width, edge to edge.
+            var player = FindAnyObjectByType<PlayerController2D>();
+            if (player != null)
+            {
+                player.sceneBoundsMinX = 0.15f;
+                player.sceneBoundsMaxX = 4.85f;
+            }
+            foreach (var w in new[] { "WallLeft", "WallRight" })
+            {
+                var go = GameObject.Find(w);
+                if (go == null) continue;
+                foreach (var c in go.GetComponents<Collider2D>()) c.enabled = false;
             }
         }
 
-        // Props: snap the sprite's visible bottom (alpha-aware, frame-bottom fallback) to ground.
         static void GroundBySprite(GameObject go, SpriteRenderer sr, float groundTop)
         {
             if (sr == null || sr.sprite == null) return;
@@ -113,9 +136,6 @@ namespace ZulfarakRPG
             if (Mathf.Abs(shift) > 0.001f) go.transform.position += new Vector3(0f, shift, 0f);
         }
 
-        // NPCs: snap their FOOT COLLIDER bottom to the ground — deterministic, matches how
-        // the player grounds. (The alpha-feet path floated them high when the character
-        // texture wasn't pixel-readable at runtime.)
         static void GroundByCollider(GameObject go, float groundTop)
         {
             var col = go.GetComponent<Collider2D>();
