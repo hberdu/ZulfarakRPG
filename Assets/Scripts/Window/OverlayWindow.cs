@@ -67,6 +67,9 @@ namespace ZulfarakRPG
         public static int WinY { get; private set; } = 40;
 
         static IntPtr _hwnd = IntPtr.Zero;
+#if !UNITY_EDITOR
+        Coroutine _resizeCo;
+#endif
 
         void Awake()
         {
@@ -122,17 +125,38 @@ namespace ZulfarakRPG
                 Camera.main.allowHDR        = false;
                 Camera.main.allowMSAA       = false;
             }
-            // Only call SetResolution when the size actually changed — otherwise Windows
-            // briefly hides/repositions the window on every scene load (visible flicker
-            // when entering the dungeon via the portal).
-            if (sizeChanged) Screen.SetResolution(windowWidth, windowHeight, FullScreenMode.Windowed);
-            // Same idea for the WinAPI side: SetWindowPos with SWP_FRAMECHANGED forces
-            // a visible reframe even at the same size, so only do it on a real resize.
-            // The borderless/topmost style flags are still re-applied silently below.
-            ApplyOverlay(repositionWindow: sizeChanged);
-            MenuPopupWindow.Reposition();
+            // Apply the borderless/topmost style + DWM glass immediately (no reposition
+            // here — it would fight the resize below).
+            ApplyOverlay(repositionWindow: false);
+            if (sizeChanged)
+            {
+                Screen.SetResolution(windowWidth, windowHeight, FullScreenMode.Windowed);
+                // Screen.SetResolution is DEFERRED to end-of-frame and can leave the OS
+                // window at a DPI-scaled rect, desyncing it from the render backbuffer —
+                // that's why the game looked zoomed until the window was dragged. Pin the
+                // exact pixel size AFTER the resolution has actually applied (the same
+                // SetWindowPos the drag makes), so it's correct from the first frame.
+                if (_resizeCo != null) StopCoroutine(_resizeCo);
+                _resizeCo = StartCoroutine(LockWindowSizeAfterResolution());
+            }
+            else
+            {
+                MenuPopupWindow.Reposition();
+            }
 #endif
         }
+
+#if !UNITY_EDITOR
+        IEnumerator LockWindowSizeAfterResolution()
+        {
+            // Let Unity apply the deferred Screen.SetResolution before we pin the size.
+            yield return null;
+            yield return null;
+            ApplyOverlay(repositionWindow: true);
+            MenuPopupWindow.Reposition();
+            _resizeCo = null;
+        }
+#endif
 
         void ApplyOverlay(bool repositionWindow = true)
         {

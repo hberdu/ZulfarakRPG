@@ -165,7 +165,7 @@ namespace ZulfarakRPG
                 lfWeight   = weight,
                 lfCharSet  = DEFAULT_CHARSET,
                 lfQuality  = CLEARTYPE_QUALITY,
-                lfFaceName = "Segoe UI",
+                lfFaceName = NativeFont.Face,
             };
             return CreateFontIndirectW(ref lf);
         }

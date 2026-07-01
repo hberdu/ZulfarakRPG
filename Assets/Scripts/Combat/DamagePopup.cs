@@ -58,11 +58,12 @@ namespace ZulfarakRPG
 
             var pop = go.AddComponent<DamagePopup>();
             pop._shadow   = shadowGO.transform;
-            pop._popScale = crit ? 1.35f : 1f;   // crits start bigger and settle
+            pop._popScale = crit ? 1.7f : 1f;   // crits burst in large, then snap back to size
         }
 
         static TextMeshPro StyleText(TextMeshPro tmp, string text, float size, Color color, bool outline)
         {
+            if (GameFont.Tmp != null) tmp.font = GameFont.Tmp;   // IBM Plex Sans
             tmp.text      = text;
             tmp.fontSize  = size;
             tmp.alignment = TextAlignmentOptions.Center;
@@ -70,9 +71,14 @@ namespace ZulfarakRPG
             tmp.fontStyle = FontStyles.Bold;
             if (outline)
             {
-                // outlineWidth/outlineColor instance the material — a thin black ring.
-                tmp.outlineWidth = 0.25f;
-                tmp.outlineColor = new Color(0f, 0f, 0f, 1f);
+                // Solid black outline around the digits. Set the shader properties on a
+                // per-label MATERIAL INSTANCE (tmp.fontMaterial) and grow the mesh padding
+                // so the ring is never clipped — this renders reliably at runtime, where
+                // the .outlineWidth convenience setter alone often doesn't show.
+                var mat = tmp.fontMaterial;
+                mat.SetFloat(ShaderUtilities.ID_OutlineWidth, 0.25f);
+                mat.SetColor(ShaderUtilities.ID_OutlineColor, Color.black);
+                tmp.UpdateMeshPadding();
             }
             return tmp;
         }
@@ -92,9 +98,11 @@ namespace ZulfarakRPG
 
             transform.position = _startPos + Vector3.up * (riseDistance * p);
 
-            // Crit "pop": overshoot then settle to 1.0 in the first ~25% of the life.
-            float settle = Mathf.Clamp01(p / 0.25f);
-            float scale  = Mathf.Lerp(_popScale, 1f, settle);
+            // Crit "pop": bursts in large, then eases QUICKLY back to the resting size
+            // (ease-out → fast shrink up front, gentle settle). Normal hits keep scale 1.
+            float settle = Mathf.Clamp01(p / 0.30f);            // pop resolves in the first 30% of life
+            float eased  = 1f - (1f - settle) * (1f - settle);  // ease-out
+            float scale  = Mathf.Lerp(_popScale, 1f, eased);
             transform.localScale = Vector3.one * scale;
 
             float alpha = 1f - p;

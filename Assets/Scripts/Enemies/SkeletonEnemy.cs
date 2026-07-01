@@ -41,22 +41,6 @@ namespace ZulfarakRPG
 
         public bool IsAlive => !_dead;
 
-        // Resize the BoxCollider2D so its bottom edge sits on the visible feet pixels.
-        // Pivot-agnostic: col.offset is TRANSFORM-relative, but feetFromBottom is
-        // measured from the sprite bottom, so we add sprite.bounds.min.y to convert.
-        void FitColliderToVisibleBounds()
-        {
-            var col = GetComponent<BoxCollider2D>();
-            if (col == null || _sr == null || _sr.sprite == null) return;
-            var ab = SpriteAlphaBounds.Get(_sr.sprite);
-            float spriteH = _sr.sprite.bounds.size.y;
-            if (ab.bottomFromBottom <= 0.001f && ab.topFromBottom >= spriteH - 0.001f) return;
-            float h = Mathf.Max(0.05f, ab.topFromBottom - ab.feetFromBottom);
-            float localBottom = _sr.sprite.bounds.min.y + ab.feetFromBottom;
-            col.size   = new Vector2(Mathf.Max(0.10f, ab.width * 0.6f), h);
-            col.offset = new Vector2(0f, localBottom + h * 0.5f);
-        }
-
         // ── Init ───────────────────────────────────────────────────────────
         void Awake()
         {
@@ -74,18 +58,18 @@ namespace ZulfarakRPG
         {
             _player = FindAnyObjectByType<PlayerController2D>();
             if (idleFrames != null && idleFrames.Length > 0 && _sr != null) _sr.sprite = idleFrames[0];
-            // Alpha-aware collider fit: shrink the box to the visible body so
-            // gravity + the shared GroundFloor collider settle the skeleton with its
-            // visible feet on the ground line. No manual snap — physics does it.
-            FitColliderToVisibleBounds();
+            // Ground on the same line as the player using the authored foot collider
+            // (offset 0.5, size 0.3x0.2 — identical to the hero); gravity + the shared
+            // GroundFloor then keep it pinned to the floor while it walks, so it can't fly.
             RestOnGroundAtSpawn();
 
             _hpBar?.AttachAbove(_sr);
             _hpBar?.SetHealth(_hp, maxHealth);
             PlayAnim(idleFrames, 8f);
 
-            // Skeletons walk through each other (no inter-enemy collision so they don't
-            // pile up in line behind the front one). They still collide with the player.
+            // Never physically shove anything: ignore collisions with other skeletons AND
+            // the player. Enemies close to attackRange and strike via TakeDamage — contact
+            // must not push the hero across the screen. (They still rest on the GroundFloor.)
             var myCol = GetComponent<Collider2D>();
             if (myCol != null)
             {
@@ -95,6 +79,8 @@ namespace ZulfarakRPG
                     var otherCol = other.GetComponent<Collider2D>();
                     if (otherCol != null) Physics2D.IgnoreCollision(myCol, otherCol, true);
                 }
+                var playerCol = _player ? _player.GetComponent<Collider2D>() : null;
+                if (playerCol != null) Physics2D.IgnoreCollision(myCol, playerCol, true);
             }
         }
 
