@@ -118,9 +118,10 @@ namespace ZulfarakRPG
             // onto the ground line. Deterministic; no reliance on alpha-readable art.
             RestOnGroundAtSpawn();
 
-            // Archer is a ranged class — double the attack range vs Warrior/Mage melee.
+            // Archer is a ranged class — much longer reach than Warrior/Mage melee so it
+            // snipes the wave from afar (enemies now spawn further back).
             if (_classType == ClassType.Archer)
-                attackRange *= 2f;
+                attackRange *= 3f;
 
             // Tight GREEN HP bar: width and Y both auto-detected from the sprite alpha.
             _hpBar?.AttachAbove(_sr,
@@ -245,13 +246,14 @@ namespace ZulfarakRPG
 
             if (InDungeon)
             {
-                // Auto-approach nearest enemy, advancing further right into the wave
-                // (stop closer than before so the player pushes toward the enemies).
+                // Approach the nearest enemy ONLY until it enters attack range, then hold
+                // position and fight in place — the hero must not keep stepping forward
+                // while attacking.
                 var target = FindNearest(attackRange * 5f);
                 if (target != null)
                 {
                     float dist = Vector2.Distance(transform.position, target.transform.position);
-                    if (dist > attackRange * 0.5f)
+                    if (dist > attackRange)
                     {
                         MoveTowardX(target.transform.position.x);
                         return;
@@ -296,14 +298,14 @@ namespace ZulfarakRPG
             bool  crit = Random.value < critChance;
             float dmg  = crit ? attackDamage * critMultiplier : attackDamage;
 
-            // The attack animation spans the FULL attack cadence (1/attackSpeed) so exactly
-            // one complete swing/draw plays per attack — the animation is always locked to
-            // the attack frequency and can never be out-paced by it (previously it used only
-            // 85% of the interval, leaving a gap that made fast attacks look unsynced).
+            // Exactly ONE complete swing/draw per attack, played over ~60% of the attack
+            // interval (1/attackSpeed). Keeping it below the interval leaves a gap that the
+            // player spends in Idle between attacks (see HandleMovement), and since animDur
+            // is always < interval the animation can never be out-paced by the attack rate.
             // Capped so a very slow attackSpeed doesn't stretch the swing into slow-motion.
             // Arrow release is timed off THIS animation duration.
             float interval = AttackInterval;
-            float animDur  = Mathf.Min(interval, 0.9f);
+            float animDur  = Mathf.Min(interval * 0.6f, 0.6f);
             float atkFps   = (_atk != null && _atk.Length > 0) ? _atk.Length / animDur : 12f;
 
             // Archer releases the arrow partway through the swing; melee hits instantly.
