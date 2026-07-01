@@ -183,6 +183,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: ZulfarakRPG::ZulfarakRPG.SkeletonEnemy
   maxHealth: 50
   moveSpeed: 3.8
+  gravityScale: 3
   attackRange: 1.1
   attackDamage: 8
   attackCooldown: 1.8

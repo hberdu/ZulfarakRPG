@@ -24,26 +24,40 @@ namespace ZulfarakRPG
         public void CreateNewCharacter(PlayerData data)
         {
             Data = data;
-            ApplyClassStats();
+            // Stats are best-effort — a missing/late ClassDatabase must NEVER stop the
+            // character from being SAVED, or the game loops back to character creation
+            // forever (HasSavedData stays false because player.json was never written).
+            try { ApplyClassStats(); }
+            catch (System.Exception e) { Debug.LogError($"[PlayerManager] ApplyClassStats failed: {e}"); }
             Save();
         }
 
         public void Load()
         {
             if (!HasSavedData()) return;
-            string json = File.ReadAllText(SavePath);
-            Data = JsonConvert.DeserializeObject<PlayerData>(json);
+            try
+            {
+                string json = File.ReadAllText(SavePath);
+                Data = JsonConvert.DeserializeObject<PlayerData>(json);
+            }
+            catch (System.Exception e) { Debug.LogError($"[PlayerManager] Load failed: {e}"); }
         }
 
         public void Save()
         {
-            string json = JsonConvert.SerializeObject(Data, Formatting.Indented);
-            File.WriteAllText(SavePath, json);
+            try
+            {
+                string json = JsonConvert.SerializeObject(Data, Formatting.Indented);
+                File.WriteAllText(SavePath, json);
+                Debug.Log($"[PlayerManager] Saved character to {SavePath}");
+            }
+            catch (System.Exception e) { Debug.LogError($"[PlayerManager] Save failed ({SavePath}): {e}"); }
         }
 
         private void ApplyClassStats()
         {
             var db = ClassDatabase.Instance;
+            if (db == null) { Debug.LogWarning("[PlayerManager] ClassDatabase.Instance is null — skipping stats."); return; }
             ClassData cls = db.GetClass(Data.classType);
             if (cls == null) return;
 

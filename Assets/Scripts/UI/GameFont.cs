@@ -25,33 +25,43 @@ namespace ZulfarakRPG
         public static Font          Legacy { get { EnsureLoaded(); return _legacy; } }
         public static TMP_FontAsset Tmp    { get { EnsureLoaded(); return _tmp;    } }
 
-        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+        // AfterSceneLoad (not BeforeSceneLoad): TMP's runtime resources are ready by then,
+        // and this MUST NEVER throw out of startup and disrupt other init.
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void Bootstrap()
         {
-            EnsureLoaded();
-            if (_tmp != null) TrySetTmpDefault(_tmp);
-
-            SceneManager.sceneLoaded -= OnSceneLoaded;
-            SceneManager.sceneLoaded += OnSceneLoaded;
-            FontApplier.Ensure();
+            try
+            {
+                SceneManager.sceneLoaded -= OnSceneLoaded;
+                SceneManager.sceneLoaded += OnSceneLoaded;
+                FontApplier.Ensure();
+                EnsureLoaded();
+                if (_tmp != null) TrySetTmpDefault(_tmp);
+            }
+            catch (System.Exception e) { Debug.LogWarning($"[GameFont] Bootstrap skipped: {e.Message}"); }
         }
 
         static void EnsureLoaded()
         {
             if (_loaded) return;
             _loaded = true;
-
-            _legacy = Resources.Load<Font>(ResourcePath);
-            if (_legacy == null)
+            try
             {
-                Debug.LogWarning($"[GameFont] Font '{ResourcePath}' not found in Resources — text stays on the default font.");
-                return;
+                _legacy = Resources.Load<Font>(ResourcePath);
+                if (_legacy == null)
+                {
+                    Debug.LogWarning($"[GameFont] Font '{ResourcePath}' not found in Resources — text stays on the default font.");
+                    return;
+                }
+                // Dynamic TMP font asset: rasterizes IBM Plex glyphs on demand at runtime,
+                // so no pre-baked SDF atlas (Editor-only) is required.
+                _tmp = TMP_FontAsset.CreateFontAsset(_legacy);
+                if (_tmp != null) _tmp.name = "IBMPlexSans SDF (runtime)";
             }
-
-            // Dynamic TMP font asset: rasterizes IBM Plex glyphs on demand at runtime,
-            // so no pre-baked SDF atlas (Editor-only) is required.
-            _tmp = TMP_FontAsset.CreateFontAsset(_legacy);
-            if (_tmp != null) _tmp.name = "IBMPlexSans SDF (runtime)";
+            catch (System.Exception e)
+            {
+                Debug.LogWarning($"[GameFont] Font init failed, using default font: {e.Message}");
+            }
         }
 
         static void OnSceneLoaded(Scene scene, LoadSceneMode mode)

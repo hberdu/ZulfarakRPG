@@ -3,22 +3,22 @@ using UnityEngine.SceneManagement;
 
 namespace ZulfarakRPG
 {
-    // Re-skins the scene's "Ground" object into a natural, continuous forest floor:
-    //   • The "Ground" renderer becomes a SOLID dark-earth fill that spans the whole
-    //     view width and reaches far below the camera — no tiling pattern, no seams,
-    //     no repeated grass line in the dirt body.
-    //   • A SOLID GRASS BAND is laid on top as a single continuous horizontal strip
-    //     (no per-tile alpha gaps), so the surface reads as one continuous grass
-    //     line rather than a row of separated tufts.
+    // Re-skins the scene's "Ground" object into a continuous BRIGHT DESERT SAND floor at
+    // runtime (this overrides whatever sprite/colour the scene authored, so the desert
+    // look survives scene re-saves):
+    //   • The "Ground" renderer becomes a warm sand fill spanning the whole view width and
+    //     reaching far below the camera — a procedural sand texture (fine grain + faint
+    //     dune ripples), not a flat colour, so it doesn't look plain.
+    //   • A brighter sunlit sand band sits on top as a single continuous surface line.
     //
     // The physics standing line (FindGroundTopY == "Ground" sprite top) is preserved
-    // exactly on the earth fill's top edge, so every character that snaps to it stays
-    // consistent. Auto-runs on Zulfarak + Dungeon load — no scene editing required.
+    // exactly, so every character that snaps to it stays consistent. Auto-runs on
+    // Zulfarak + Dungeon load — no scene editing required.
     public class GroundDressing : MonoBehaviour
     {
-        const float GrassBandH = 0.06f;   // world-unit height of the solid grass strip on top
-        static readonly Color Earth = new Color(0.14f, 0.12f, 0.10f, 1f); // matches the tile's dirt
-        static readonly Color Grass = new Color(0.42f, 0.32f, 0.12f, 1f); // warm mossy-brown grass line
+        const float SurfaceBandH = 0.05f;                                     // sunlit surface strip height (world)
+        static readonly Color SandBody    = new Color(0.95f, 0.82f, 0.60f, 1f); // warm sand body tint
+        static readonly Color SandSurface = new Color(1.00f, 0.94f, 0.72f, 1f); // brighter sunlit surface
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         static void RegisterSceneHook()
@@ -45,8 +45,7 @@ namespace ZulfarakRPG
             float halfW      = cam != null ? cam.orthographicSize * cam.aspect : 2.5f;
             float worldW     = Mathf.Max(halfW * 2f + 2f, 8f);
 
-            // ── Solid earth fill (the "Ground" renderer). Reaches well below the view so
-            //    it always reads as deep, continuous ground — no pattern, no bottom edge.
+            // ── Sand body: fills well below the view so it always reads as deep ground.
             float dirtBottom = viewBottom - 3f;
             float dirtH      = standLine - dirtBottom;
             float dirtCenter = (standLine + dirtBottom) * 0.5f;
@@ -54,15 +53,14 @@ namespace ZulfarakRPG
             ground.transform.localScale = Vector3.one;
             ground.transform.position   = new Vector3(camX, dirtCenter, ground.transform.position.z);
 
-            sr.sprite       = SolidSprite();
-            sr.color        = Earth;
+            sr.sprite       = SandSprite();
+            sr.color        = SandBody;
             sr.drawMode     = SpriteDrawMode.Tiled;
             sr.tileMode     = SpriteTileMode.Continuous;
             sr.size         = new Vector2(worldW, dirtH);
             sr.sortingOrder = Mathf.Min(sr.sortingOrder, -6);
 
-            // Collider: top edge exactly on the standing line, so feet-fitted characters
-            // rest on the visible surface (GroundFloorEnsurer also backs this up).
+            // Collider: top edge exactly on the standing line (GroundFloorEnsurer backs it up).
             var col = ground.GetComponent<BoxCollider2D>();
             if (col != null)
             {
@@ -72,40 +70,52 @@ namespace ZulfarakRPG
                 col.offset    = Vector2.zero;   // box top = position.y + dirtH/2 = standLine
             }
 
-            // ── Solid grass band: a continuous horizontal strip on top of the earth
-            //    fill. No per-tile alpha, no gaps — reads as one unbroken grass line.
-            var grassGO = ground.transform.Find("GroundGrass")?.gameObject
+            // ── Bright sunlit sand surface band along the top.
+            var bandGO = ground.transform.Find("GroundGrass")?.gameObject
                           ?? new GameObject("GroundGrass");
-            grassGO.transform.SetParent(ground.transform, false);
-            var gsr = grassGO.GetComponent<SpriteRenderer>() ?? grassGO.AddComponent<SpriteRenderer>();
+            bandGO.transform.SetParent(ground.transform, false);
+            var bsr = bandGO.GetComponent<SpriteRenderer>() ?? bandGO.AddComponent<SpriteRenderer>();
 
-            grassGO.transform.localScale = Vector3.one;
-            grassGO.transform.position   = new Vector3(camX, standLine - GrassBandH * 0.5f,
-                                                       ground.transform.position.z - 0.01f);
+            bandGO.transform.localScale = Vector3.one;
+            bandGO.transform.position   = new Vector3(camX, standLine - SurfaceBandH * 0.5f,
+                                                      ground.transform.position.z - 0.01f);
 
-            gsr.sprite       = SolidSprite();
-            gsr.color        = Grass;
-            gsr.drawMode     = SpriteDrawMode.Tiled;
-            gsr.tileMode     = SpriteTileMode.Continuous;
-            gsr.size         = new Vector2(worldW, GrassBandH);
-            gsr.sortingOrder = sr.sortingOrder + 1;                            // in front of earth, behind characters
+            bsr.sprite       = SandSprite();
+            bsr.color        = SandSurface;
+            bsr.drawMode     = SpriteDrawMode.Tiled;
+            bsr.tileMode     = SpriteTileMode.Continuous;
+            bsr.size         = new Vector2(worldW, SurfaceBandH);
+            bsr.sortingOrder = sr.sortingOrder + 1;                            // above body, behind characters
 
-            // Consumers recompute the (unchanged) ground top against the new earth fill.
+            // Consumers recompute the (unchanged) ground top against the new sand fill.
             GroundAlignUtil.InvalidateCache();
         }
 
-        // Solid 4×4 white sprite at 4 PPU (native 1×1 unit) — tiled + tinted for a
-        // flat colour fill with a low, sane tile count.
-        static Sprite _solid;
-        static Sprite SolidSprite()
+        // Procedural sand: warm near-white base + fine random grain + faint horizontal dune
+        // ripples (seamless vertically). Tinted per use, tiled continuously across the floor.
+        static Sprite _sand;
+        static Sprite SandSprite()
         {
-            if (_solid != null) return _solid;
-            var t = new Texture2D(4, 4, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point };
-            var px = new Color[16];
-            for (int i = 0; i < px.Length; i++) px[i] = Color.white;
-            t.SetPixels(px); t.Apply();
-            _solid = Sprite.Create(t, new Rect(0, 0, 4, 4), new Vector2(0.5f, 0.5f), 4f);
-            return _solid;
+            if (_sand != null) return _sand;
+            const int W = 48, H = 32;
+            var t = new Texture2D(W, H, TextureFormat.RGBA32, false)
+                { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Repeat };
+            var rnd = new System.Random(7);
+            for (int y = 0; y < H; y++)
+            {
+                float ripple = Mathf.Sin(y / (float)H * Mathf.PI * 4f) * 0.05f;   // 4 seamless dune bands
+                for (int x = 0; x < W; x++)
+                {
+                    float grain = (float)(rnd.NextDouble() - 0.5) * 0.10f;
+                    float v     = 1f + ripple + grain;
+                    t.SetPixel(x, y, new Color(Mathf.Clamp01(0.96f * v),
+                                               Mathf.Clamp01(0.87f * v),
+                                               Mathf.Clamp01(0.68f * v), 1f));
+                }
+            }
+            t.Apply();
+            _sand = Sprite.Create(t, new Rect(0, 0, W, H), new Vector2(0.5f, 0.5f), 24f);  // ~2 world-units/tile
+            return _sand;
         }
     }
 }

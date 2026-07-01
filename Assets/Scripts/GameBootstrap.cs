@@ -38,7 +38,10 @@ namespace ZulfarakRPG
             PlayerManager.Instance.Load();
             Inventory.Instance.Load();
 
-            if (!PlayerManager.Instance.HasSavedData())
+            bool hasChar = PlayerManager.Instance.HasSavedData();
+            Debug.Log($"[Bootstrap] steamInit={SteamIntegration.Instance.IsInitialized} " +
+                      $"hasSavedCharacter={hasChar} → {(hasChar ? "Zulfarak" : "CharacterCreation")}");
+            if (!hasChar)
                 SceneManager.LoadScene("CharacterCreation");
             else
                 SceneManager.LoadScene("Zulfarak");
