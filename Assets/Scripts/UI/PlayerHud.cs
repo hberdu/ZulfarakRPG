@@ -4,27 +4,29 @@ using UnityEngine.SceneManagement;
 
 namespace ZulfarakRPG
 {
-    // Bottom-left HUD: the character portrait frame ("face") from the GandalfHardcore
-    // HP-bar art, followed by four square action buttons of the same dimension.
-    // The old round HP orb (red liquid meter) is removed — health is tracked via the
-    // world-space bar over the character's head, not here.
+    // Bottom-left HUD, collapsed to a SINGLE small "menu" button with an up-arrow
+    // glyph — roughly the on-screen size of the floating world-map icon. Tapping it
+    // opens the consolidated menu popup above the game strip.
+    //
+    // The old round HP-bar / statue portrait frame ("face") and the four square
+    // action buttons were removed — health is shown by the world-space bar over the
+    // character's head, and the four systems now live behind this one button.
     public class PlayerHud : MonoBehaviour
     {
         static PlayerHud _instance;
         Canvas _canvas;
 
-        const float SIZE   = 40f;   // square edge of face + each button
+        const float SIZE   = 24f;   // small square — about the on-screen size of the map icon
         const float MARGIN = 8f;    // gap from screen edge
-        const float GAP    = 4f;    // gap between squares
 
-        // Four action-button labels + their tap handlers (placeholder popups for now).
-        static readonly (string label, string title, string body)[] Buttons = new []
-        {
-            ("Inv",  "Inventário",  "Inventário em construção.\n\nEm breve você poderá gerenciar seus itens aqui."),
-            ("Per",  "Personagem",  "Ficha do personagem em construção.\n\nAtributos, equipamentos e progresso ficarão aqui."),
-            ("Hab",  "Habilidades", "Árvore de habilidades em construção.\n\nInvista pontos de talento para evoluir sua classe."),
-            ("Mis",  "Missões",     "Quadro de missões em construção.\n\nAceite tarefas e acompanhe recompensas aqui."),
-        };
+        // Consolidated menu contents (the systems are still placeholders for now).
+        const string MenuTitle = "Menu";
+        const string MenuBody  =
+            "Inventário — gerencie seus itens.\n" +
+            "Personagem — atributos e equipamentos.\n" +
+            "Habilidades — árvore de talentos.\n" +
+            "Missões — tarefas e recompensas.\n\n" +
+            "Tudo em construção — em breve!";
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         static void Hook()
@@ -54,66 +56,19 @@ namespace ZulfarakRPG
             root.AddComponent<GraphicRaycaster>();
             _instance._canvas = canvas;
 
-            // Bar container: one row = face + four square buttons.
-            var bar = new GameObject("HudBar", typeof(RectTransform));
-            bar.transform.SetParent(canvas.transform, false);
-            var brt = (RectTransform)bar.transform;
-            brt.anchorMin = brt.anchorMax = brt.pivot = new Vector2(0f, 0f);
-            brt.anchoredPosition = new Vector2(MARGIN, MARGIN);
-            brt.sizeDelta        = new Vector2(SIZE * 5 + GAP * 4, SIZE);
-
-            // Face square (the character-portrait frame, no HP orb inside).
-            BuildFace(brt, 0f);
-
-            // Four square action buttons to the RIGHT of the face.
-            for (int i = 0; i < Buttons.Length; i++)
-            {
-                float x = (i + 1) * (SIZE + GAP);
-                var (label, title, body) = Buttons[i];
-                BuildButton(brt, x, label, title, body);
-            }
+            BuildMenuButton(canvas.transform);
         }
 
-        static void BuildFace(Transform parent, float xOffset)
+        static void BuildMenuButton(Transform parent)
         {
-            var go = new GameObject("Face", typeof(RectTransform));
+            var go = new GameObject("MenuButton", typeof(RectTransform));
             go.transform.SetParent(parent, false);
             var rt = (RectTransform)go.transform;
             rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0f, 0f);
-            rt.anchoredPosition = new Vector2(xOffset, 0f);
+            rt.anchoredPosition = new Vector2(MARGIN, MARGIN);
             rt.sizeDelta        = new Vector2(SIZE, SIZE);
 
-            // Dark backing so the frame has a solid base regardless of desktop behind.
-            var bg = go.AddComponent<Image>();
-            bg.color         = new Color(0.08f, 0.06f, 0.05f, 0.95f);
-            bg.raycastTarget = false;
-
-            // Portrait frame sprite (left 64×64 of the HpBarFrame — the ring / face plate).
-            var frame = RingSprite();
-            if (frame != null)
-            {
-                var fg = new GameObject("Frame", typeof(RectTransform));
-                fg.transform.SetParent(go.transform, false);
-                var frt = (RectTransform)fg.transform;
-                frt.anchorMin = Vector2.zero; frt.anchorMax = Vector2.one;
-                frt.offsetMin = Vector2.zero; frt.offsetMax = Vector2.zero;
-                var img = fg.AddComponent<Image>();
-                img.sprite        = frame;
-                img.color         = Color.white;
-                img.raycastTarget = false;
-            }
-        }
-
-        static void BuildButton(Transform parent, float xOffset, string label, string title, string body)
-        {
-            var go = new GameObject($"Btn_{label}", typeof(RectTransform));
-            go.transform.SetParent(parent, false);
-            var rt = (RectTransform)go.transform;
-            rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0f, 0f);
-            rt.anchoredPosition = new Vector2(xOffset, 0f);
-            rt.sizeDelta        = new Vector2(SIZE, SIZE);
-
-            // Gold border + dark inner panel — matches the tooltip theme.
+            // Gold border + dark inner panel — matches the tooltip / popup theme.
             var border = go.AddComponent<Image>();
             border.color         = new Color(0.85f, 0.65f, 0.20f, 1f);
             border.raycastTarget = true;
@@ -128,36 +83,59 @@ namespace ZulfarakRPG
             inner.color         = new Color(0.10f, 0.08f, 0.06f, 0.95f);
             inner.raycastTarget = false;
 
-            // Centered label (3-letter cue) so we don't depend on TMP font assets here.
-            var txtGO = new GameObject("Label", typeof(RectTransform));
-            txtGO.transform.SetParent(innerGO.transform, false);
-            var trt = (RectTransform)txtGO.transform;
-            trt.anchorMin = Vector2.zero; trt.anchorMax = Vector2.one;
-            trt.offsetMin = Vector2.zero; trt.offsetMax = Vector2.zero;
-            var txt = txtGO.AddComponent<Text>();
-            txt.text     = label;
-            txt.font     = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            txt.fontSize = 14;
-            txt.alignment = TextAnchor.MiddleCenter;
-            txt.color    = new Color(1f, 0.93f, 0.72f, 1f);
-            txt.raycastTarget = false;
+            // Up-arrow glyph (procedural) centred in the button.
+            var arrowGO = new GameObject("Arrow", typeof(RectTransform));
+            arrowGO.transform.SetParent(innerGO.transform, false);
+            var art = (RectTransform)arrowGO.transform;
+            art.anchorMin = Vector2.zero; art.anchorMax = Vector2.one;
+            art.offsetMin = new Vector2( 3f,  3f);
+            art.offsetMax = new Vector2(-3f, -3f);
+            var arrow = arrowGO.AddComponent<Image>();
+            arrow.sprite        = UpArrowSprite();
+            arrow.color         = new Color(1f, 0.93f, 0.72f, 1f);
+            arrow.raycastTarget = false;
 
-            // Click handler: opens a themed popup as a placeholder for each system.
+            // Click handler: opens the consolidated menu popup above the game strip.
             var btn = go.AddComponent<Button>();
             btn.targetGraphic = border;
-            btn.onClick.AddListener(() => NPCMenuUI.Show(title, body));
+            btn.onClick.AddListener(() => NPCMenuUI.Show(MenuTitle, MenuBody));
         }
 
-        // Frame is 116×64: the portrait ring occupies the left 64px. Cropping to that
-        // square isolates the "face" plate without the meter housing beside it.
-        static Sprite _ring;
-        static Sprite RingSprite()
+        // Procedural white up-arrow (stem + arrowhead) on a transparent field,
+        // tinted at runtime. y = 0 is the texture bottom, so the apex sits on top.
+        static Sprite _upArrow;
+        static Sprite UpArrowSprite()
         {
-            if (_ring != null) return _ring;
-            var tex = Resources.Load<Texture2D>("HpBarFrame");
-            if (tex == null) return null;
-            _ring = Sprite.Create(tex, new Rect(0, 0, 64, 64), new Vector2(0.5f, 0.5f), 100f);
-            return _ring;
+            if (_upArrow != null) return _upArrow;
+            const int N = 32;
+            var t = new Texture2D(N, N, TextureFormat.RGBA32, false);
+            t.filterMode = FilterMode.Point;
+            for (int y = 0; y < N; y++)
+                for (int x = 0; x < N; x++)
+                    t.SetPixel(x, y, Color.clear);
+
+            float cx = (N - 1) * 0.5f;
+
+            // Arrowhead: filled upward triangle — wide base, apex near the top.
+            const int headBaseY = 10;
+            const int headTopY  = N - 3;
+            for (int y = headBaseY; y <= headTopY; y++)
+            {
+                float tprog = (float)(y - headBaseY) / (headTopY - headBaseY); // base 0 → apex 1
+                float halfW = Mathf.Lerp(13f, 0f, tprog);
+                for (int x = 0; x < N; x++)
+                    if (Mathf.Abs(x - cx) <= halfW) t.SetPixel(x, y, Color.white);
+            }
+
+            // Stem: short vertical bar under the head.
+            const int stemHalf = 3;
+            for (int y = 2; y < headBaseY; y++)
+                for (int x = 0; x < N; x++)
+                    if (Mathf.Abs(x - cx) <= stemHalf) t.SetPixel(x, y, Color.white);
+
+            t.Apply();
+            _upArrow = Sprite.Create(t, new Rect(0, 0, N, N), new Vector2(0.5f, 0.5f), 100f);
+            return _upArrow;
         }
     }
 }

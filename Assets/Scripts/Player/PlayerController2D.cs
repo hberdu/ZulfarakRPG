@@ -26,6 +26,13 @@ namespace ZulfarakRPG
 
         float AttackInterval => 1f / Mathf.Max(0.1f, attackSpeed);
 
+        // City NPCs (ClassMaster / Kael) stand on a foot collider whose BOTTOM sits at
+        // this sprite-local Y (their authored offset.y 0.5 − halfHeight 0.1). The player
+        // shares those exact sprites, so we plant its ground collider on the SAME line —
+        // otherwise the alpha-detected feet (~0.43) rest ~0.06 WU lower and the hero sinks
+        // below the NPCs instead of standing at their height.
+        const float NpcFootRestFromBottom = 0.40f;
+
         [Header("Warrior Sprites")]
         public Sprite[] soldierIdleFrames;
         public Sprite[] soldierWalkFrames;
@@ -192,8 +199,11 @@ namespace ZulfarakRPG
 
             float feet = ab.feetFromBottom;
             float top  = ab.topFromBottom;
-            float h    = Mathf.Max(0.05f, top - feet);
-            float localBottom = _sr.sprite.bounds.min.y + feet;   // sprite bottom → transform origin
+            // Plant the collider bottom on the city-NPC standing line (never above the
+            // real feet) so the grounded player rests at the same height as the NPCs.
+            float bottom = Mathf.Min(feet, NpcFootRestFromBottom);
+            float h    = Mathf.Max(0.05f, top - bottom);
+            float localBottom = _sr.sprite.bounds.min.y + bottom;   // sprite bottom → transform origin
             col.size   = new Vector2(Mathf.Max(0.10f, ab.width * 0.6f), h);
             col.offset = new Vector2(0f, localBottom + h * 0.5f);
         }
