@@ -9,6 +9,7 @@ namespace ZulfarakRPG
         [Header("Stats")]
         public float maxHealth     = 50f;
         public float moveSpeed     = 3.8f;
+        public float gravityScale  = 3f;
         // Short melee reach — enemies close right up to the player before swinging.
         public float attackRange   = 0.6f;
         public float attackDamage  = 8f;
@@ -62,8 +63,10 @@ namespace ZulfarakRPG
             _rb = GetComponent<Rigidbody2D>();
             _sr = GetComponent<SpriteRenderer>();
             _hpBar = GetComponentInChildren<WorldHealthBar>(true);
-            _rb.gravityScale = 3f;
+            _rb.bodyType = RigidbodyType2D.Dynamic;
+            _rb.gravityScale = gravityScale;
             _rb.constraints  = RigidbodyConstraints2D.FreezeRotation;
+            _rb.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
             _hp = maxHealth;
         }
 
@@ -75,6 +78,7 @@ namespace ZulfarakRPG
             // gravity + the shared GroundFloor collider settle the skeleton with its
             // visible feet on the ground line. No manual snap — physics does it.
             FitColliderToVisibleBounds();
+            RestOnGroundAtSpawn();
 
             _hpBar?.AttachAbove(_sr);
             _hpBar?.SetHealth(_hp, maxHealth);
@@ -102,9 +106,9 @@ namespace ZulfarakRPG
             _atkTimer   -= Time.deltaTime;
             _attackLock -= Time.deltaTime;
 
-            float dist = Vector2.Distance(transform.position, _player.transform.position);
+            float horizontalDist = Mathf.Abs(_player.transform.position.x - transform.position.x);
 
-            if (dist > attackRange)
+            if (horizontalDist > attackRange)
             {
                 float dir = Mathf.Sign(_player.transform.position.x - transform.position.x);
                 _rb.linearVelocity = new Vector2(dir * moveSpeed, _rb.linearVelocity.y);
@@ -114,6 +118,8 @@ namespace ZulfarakRPG
             else
             {
                 _rb.linearVelocity = new Vector2(0, _rb.linearVelocity.y);
+                float dir = Mathf.Sign(_player.transform.position.x - transform.position.x);
+                if (Mathf.Abs(dir) > 0.001f) _sr.flipX = dir < 0;
                 if (_atkTimer <= 0)
                 {
                     _player.TakeDamage(attackDamage);
@@ -149,6 +155,17 @@ namespace ZulfarakRPG
                 if (other.GetEntityId() < myId) rank++;
             }
             _hpBar.SetStaggerOffset(rank * 0.045f);
+        }
+
+        void RestOnGroundAtSpawn()
+        {
+            var col = GetComponent<Collider2D>();
+            if (col == null) return;
+            Physics2D.SyncTransforms();
+            float groundTop = GroundAlignUtil.FindGroundTopY();
+            float shift = (groundTop + 0.002f) - col.bounds.min.y;
+            transform.position += new Vector3(0f, shift, 0f);
+            _rb.linearVelocity = Vector2.zero;
         }
 
         // Allow the spawner to walk the skeleton in from off-screen without snapping back.
