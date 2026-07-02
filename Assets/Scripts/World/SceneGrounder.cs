@@ -33,10 +33,12 @@ namespace ZulfarakRPG
         {
             "Pyramid_L", "Pyramid_C", "Pyramid_R",
             "Dune_FarL", "Dune_FarR", "Dune_NearL", "Dune_NearR",
-            "Tablet",   // removed middle statue
+            "Tablet",     // removed middle statue
+            "Kael_NPC",   // Kael removed — only the class master and blacksmith remain
         };
 
-        static readonly string[] Npcs = { "Kael_NPC", "ClassMaster_NPC", "Ferreiro_NPC" };
+        // Only the class master and the blacksmith remain in the city.
+        static readonly string[] Npcs = { "ClassMaster_NPC", "Ferreiro_NPC" };
 
         static SceneGrounder _instance;
 

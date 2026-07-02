@@ -3,11 +3,10 @@ using UnityEngine.SceneManagement;
 
 namespace ZulfarakRPG
 {
-    // City NPC: the blacksmith ("Ferreiro"). Auto-spawned in Zulfarak with the
-    // Knight (Soldier) idle frames borrowed from PlayerController2D so we don't
-    // need to wire sprite assets through the scene file. Note: the source
-    // sprite still includes a sword/shield — a true unarmed knight needs new
-    // art; this is the closest fit with the existing character set.
+    // City NPC: the blacksmith ("Ferreiro"). Auto-spawned in Zulfarak using the
+    // Swordsman idle sheet (Resources/Swordsman-Idle), sliced into frames at
+    // runtime so no scene/prefab wiring is needed. Falls back to borrowed Soldier
+    // frames only if that sheet is missing.
     public class BlacksmithNPC : MonoBehaviour
     {
         // ── Auto-spawn ────────────────────────────────────────────────────
@@ -23,16 +22,20 @@ namespace ZulfarakRPG
             if (scene.name != "Zulfarak") return;
             if (Object.FindAnyObjectByType<BlacksmithNPC>() != null) return;
 
-            // Borrow Soldier idle frames from the in-scene player or the class master.
-            Sprite[] frames = null;
-            var player = Object.FindAnyObjectByType<PlayerController2D>();
-            if (player != null && player.soldierIdleFrames != null &&
-                player.soldierIdleFrames.Length > 0)
-                frames = player.soldierIdleFrames;
+            // Swordsman idle sheet, sliced at runtime. Fall back to borrowed
+            // Soldier frames only if the sheet can't be loaded.
+            Sprite[] frames = LoadSwordsmanIdleFrames();
             if (frames == null || frames.Length == 0)
             {
-                var master = Object.FindAnyObjectByType<ClassMasterNPC>();
-                if (master != null) frames = master.warriorIdleFrames;
+                var player = Object.FindAnyObjectByType<PlayerController2D>();
+                if (player != null && player.soldierIdleFrames != null &&
+                    player.soldierIdleFrames.Length > 0)
+                    frames = player.soldierIdleFrames;
+                if (frames == null || frames.Length == 0)
+                {
+                    var master = Object.FindAnyObjectByType<ClassMasterNPC>();
+                    if (master != null) frames = master.warriorIdleFrames;
+                }
             }
             if (frames == null || frames.Length == 0) return;
 
@@ -49,9 +52,8 @@ namespace ZulfarakRPG
 
             var sr = go.AddComponent<SpriteRenderer>();
             sr.sprite       = idleFrames[0];
-            // Sooty/leather tone so the blacksmith reads as a tradesman, not a
-            // soldier (and slightly mutes the sword the source sprite carries).
-            sr.color        = new Color(0.62f, 0.50f, 0.38f, 1f);
+            // Show the Swordsman art in its true colors.
+            sr.color        = Color.white;
             sr.sortingOrder = 4;
             // Back to the portal (which sits to the right) — source art faces right,
             // so flipX rotates the sprite to face left.
@@ -81,6 +83,33 @@ namespace ZulfarakRPG
             // No floating name tag — the name shows on hover (Interactable2D tooltip).
 
             return go.AddComponent<BlacksmithNPC>();
+        }
+
+        // ── Swordsman idle frames ─────────────────────────────────────────
+        static Sprite[] _swordsmanFrames;
+
+        // Loads the Swordsman idle sheet (600×100 = 6 frames of 100×100) from
+        // Resources and slices it into per-frame sprites at runtime. Cached.
+        static Sprite[] LoadSwordsmanIdleFrames()
+        {
+            if (_swordsmanFrames != null) return _swordsmanFrames;
+            var src = Resources.Load<Sprite>("Swordsman-Idle");
+            var tex = src != null ? src.texture : Resources.Load<Texture2D>("Swordsman-Idle");
+            if (tex == null)
+            {
+                Debug.LogWarning("[Ferreiro] Swordsman-Idle não encontrado em Resources — usando fallback.");
+                return null;
+            }
+
+            const int fw = 100, fh = 100;
+            int count = Mathf.Max(1, tex.width / fw);
+            var frames = new Sprite[count];
+            for (int i = 0; i < count; i++)
+                frames[i] = Sprite.Create(tex, new Rect(i * fw, 0, fw, fh),
+                                          new Vector2(0.5f, 0.5f), 100f);
+            _swordsmanFrames = frames;
+            Debug.Log($"[Ferreiro] Swordsman-Idle carregado: {count} frames ({tex.width}x{tex.height}).");
+            return frames;
         }
     }
 }
