@@ -124,9 +124,12 @@ namespace ZulfarakRPG
                 _nameLabel.color        = new Color(0.98f, 0.94f, 0.80f, 1f);
                 _nameLabel.fontStyle    = FontStyles.Bold;
                 _nameLabel.enableWordWrapping = false;
+                // Set the final font FIRST so GameFont's re-skin pass skips this label and
+                // doesn't reset the material (which would wipe the outline below).
+                if (GameFont.Tmp != null) _nameLabel.font = GameFont.Tmp;
                 // Solid black outline so the name reads over any background.
                 var nmat = _nameLabel.fontMaterial;
-                nmat.SetFloat(ShaderUtilities.ID_OutlineWidth, 0.25f);
+                nmat.SetFloat(ShaderUtilities.ID_OutlineWidth, 0.3f);
                 nmat.SetColor(ShaderUtilities.ID_OutlineColor, Color.black);
                 _nameLabel.UpdateMeshPadding();
                 var mr = go.GetComponent<MeshRenderer>();

@@ -16,7 +16,11 @@ namespace ZulfarakRPG
     {
         static readonly string[] LayerRes = { "layer5", "castle", "layer4", "layer3", "layer2", "layer1" };
         const int   BaseSort = -22;
-        const float Margin   = 1.20f;   // overscan so no black edges show
+        const float Margin   = 1.30f;   // overscan so no black edges show while it drifts
+
+        // Extra sideways scroll driven by WaveManager during the dungeon's inter-wave run,
+        // so the backdrop drifts there too (the player stays put in the dungeon).
+        public static float DungeonScroll;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         static void Hook()
@@ -33,12 +37,13 @@ namespace ZulfarakRPG
             var cam = Camera.main;
             if (cam == null) return;
 
-            BuildBackdrop(cam);
+            BuildBackdrop(cam, parallax: city);
             if (dungeon) DressParallax();
         }
 
-        // Fixed-to-camera scenic backdrop (rebuilt each load).
-        static void BuildBackdrop(Camera cam)
+        // Fixed-to-camera scenic backdrop (rebuilt each load). When parallax is on (city),
+        // each layer drifts at its own speed as the player walks, so it reads as depth.
+        static void BuildBackdrop(Camera cam, bool parallax)
         {
             var prev = cam.transform.Find("__Background");
             if (prev != null) Destroy(prev.gameObject);
@@ -64,6 +69,9 @@ namespace ZulfarakRPG
                 sr.sortingOrder = BaseSort + i;                        // -22 (back) → -17 (front)
                 float scale     = Mathf.Max(viewW / sw, viewH / sh) * Margin;
                 go.transform.localScale = new Vector3(scale, scale, 1f);
+
+                if (parallax)
+                    go.AddComponent<ParallaxBg>().factor = 0.04f + i * 0.055f;  // back slow → front fast
             }
         }
 
@@ -93,6 +101,28 @@ namespace ZulfarakRPG
                 pl.minScale   = 0.40f;
                 pl.maxScale   = 0.80f;
             }
+        }
+    }
+
+    // Drifts a camera-parented backdrop layer sideways as the player walks, so each layer
+    // reads at its own depth. factor 0 = fixed, larger = moves more (nearer layer).
+    class ParallaxBg : MonoBehaviour
+    {
+        public float factor;
+        const float CenterX = 2.5f;   // city view centre
+        Transform _player;
+
+        void LateUpdate()
+        {
+            if (_player == null)
+            {
+                var p = Object.FindAnyObjectByType<PlayerController2D>();
+                if (p == null) return;
+                _player = p.transform;
+            }
+            var lp = transform.localPosition;
+            lp.x = -(_player.position.x - CenterX) * factor;
+            transform.localPosition = lp;
         }
     }
 }

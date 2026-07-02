@@ -167,7 +167,7 @@ BoxCollider2D:
     drawMode: 0
     adaptiveTiling: 0
   m_AutoTiling: 0
-  m_Size: {x: 0.3, y: 0.2}
+  m_Size: {x: 0.15, y: 0.2}
   m_EdgeRadius: 0
 --- !u!114 &622832363352951181
 MonoBehaviour:
@@ -184,7 +184,7 @@ MonoBehaviour:
   maxHealth: 50
   moveSpeed: 3.8
   gravityScale: 3
-  attackRange: 1.1
+  attackRange: 0.7
   attackDamage: 8
   attackCooldown: 1.8
   sceneBoundsMinX: 0.45

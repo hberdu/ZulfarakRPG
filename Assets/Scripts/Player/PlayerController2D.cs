@@ -83,6 +83,9 @@ namespace ZulfarakRPG
             _rb.gravityScale           = 3f;
             _rb.constraints            = RigidbodyConstraints2D.FreezeRotation;
             _rb.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
+            // Slim collider that only covers the visible body (not wider than the art).
+            var col = GetComponent<BoxCollider2D>();
+            if (col != null) { col.size = new Vector2(0.15f, 0.2f); col.offset = new Vector2(0f, 0.5f); }
             _hp = maxHealth;
         }
 

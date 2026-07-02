@@ -86,6 +86,7 @@ namespace ZulfarakRPG
             {
                 _hovering = inside;
                 if (_tooltipRoot != null) _tooltipRoot.SetActive(_hovering);
+                if (inside) PortalSmoke.WhiteBurst(transform.position + Vector3.up * 0.1f, 4);
             }
             if (_hovering && Input.GetMouseButtonDown(0))
             {

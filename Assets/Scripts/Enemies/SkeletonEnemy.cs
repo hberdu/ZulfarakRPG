@@ -10,9 +10,8 @@ namespace ZulfarakRPG
         public float maxHealth     = 50f;
         public float moveSpeed     = 3.8f;
         public float gravityScale  = 3f;
-        // Melee reach — matches the Warrior/Soldier's melee range so enemy and hero
-        // strike each other at the same close distance.
-        public float attackRange   = 1.1f;
+        // Short melee reach — the skeleton must be right on top of the hero to hit.
+        public float attackRange   = 0.7f;
         public float attackDamage  = 8f;
         public float attackCooldown = 1.8f;
 

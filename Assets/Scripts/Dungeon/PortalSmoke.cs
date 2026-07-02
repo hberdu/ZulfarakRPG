@@ -68,6 +68,26 @@ namespace ZulfarakRPG
                                                      Random.Range(-0.2f, 0.7f), 0f));
         }
 
+        // Small pale-white puff burst — for UI hovers (map icon / friends invite).
+        public static void WhiteBurst(Vector3 center, int count)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                var pos = center + new Vector3(Random.Range(-0.14f, 0.14f), Random.Range(-0.04f, 0.18f), -0.5f);
+                var go = new GameObject("HoverSmoke");
+                go.transform.position   = pos;
+                go.transform.localScale = Vector3.one * Random.Range(0.22f, 0.42f);
+                var sr = go.AddComponent<SpriteRenderer>();
+                sr.sprite       = PuffSprite();
+                sr.color        = new Color(1f, 1f, 1f, Random.Range(0.55f, 0.85f));
+                sr.sortingOrder = 40;
+                go.AddComponent<SmokePuff>().Init(
+                    drift: new Vector3(Random.Range(-0.15f, 0.15f), Random.Range(0.25f, 0.55f), 0f),
+                    life:  Random.Range(0.8f, 1.4f),
+                    grow:  Random.Range(1.6f, 2.4f));
+            }
+        }
+
         static void SpawnPuffStatic(Vector3 pos)
         {
             var go = new GameObject("SmokePuff");

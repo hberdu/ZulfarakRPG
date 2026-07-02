@@ -23,7 +23,6 @@ namespace ZulfarakRPG
             new Deco{ obj="Column_L",  res="Tree3",       height=1.10f, x=0.30f },   // far-left tree
             new Deco{ obj="Statue",    res="AngelStatue", height=0.75f, x=1.00f },
             new Deco{ obj="Vase_L",    res="SmallTent",   height=0.50f, x=1.80f },
-            new Deco{ obj="Tablet",    res="AngelStatue", height=0.62f, x=2.60f },
             new Deco{ obj="Vase_R",    res="LargeTent",   height=0.55f, x=3.40f },
             new Deco{ obj="Gate_Arch", res="AngelStatue", height=0.85f, x=4.10f },
             new Deco{ obj="Column_R",  res="Tree3",       height=1.15f, x=4.70f },   // far-right tree
@@ -34,6 +33,7 @@ namespace ZulfarakRPG
         {
             "Pyramid_L", "Pyramid_C", "Pyramid_R",
             "Dune_FarL", "Dune_FarR", "Dune_NearL", "Dune_NearR",
+            "Tablet",   // removed middle statue
         };
 
         static readonly string[] Npcs = { "Kael_NPC", "ClassMaster_NPC", "Ferreiro_NPC" };
