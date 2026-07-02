@@ -16,7 +16,7 @@ namespace ZulfarakRPG
     {
         static readonly string[] LayerRes = { "layer5", "castle", "layer4", "layer3", "layer2", "layer1" };
         const int   BaseSort = -22;
-        const float Margin   = 1.50f;   // overscan so no black edges show while it drifts
+        const float Margin   = 1.60f;   // overscan so no black edges show while it drifts
 
         // Extra sideways scroll driven by WaveManager during the dungeon's inter-wave run,
         // so the backdrop drifts there too (the player stays put in the dungeon).
