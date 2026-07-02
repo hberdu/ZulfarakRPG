@@ -38,7 +38,7 @@ namespace ZulfarakRPG
             if (cam == null) return;
 
             DungeonScroll = 0f;
-            BuildBackdrop(cam, parallax: true);   // moving backdrop in both scenes
+            BuildBackdrop(cam, parallax: dungeon);   // ONLY the dungeon backdrop drifts; the city is static
             if (dungeon) DressParallax();
         }
 
@@ -72,7 +72,7 @@ namespace ZulfarakRPG
                 go.transform.localScale = new Vector3(scale, scale, 1f);
 
                 if (parallax)
-                    go.AddComponent<ParallaxBg>().factor = 0.04f + i * 0.055f;  // back slow → front fast
+                    go.AddComponent<ParallaxBg>().factor = 0.03f + i * 0.03f;   // back slow → front fast
             }
         }
 
@@ -105,29 +105,18 @@ namespace ZulfarakRPG
         }
     }
 
-    // Drifts a camera-parented backdrop layer sideways as the player walks, so each layer
-    // reads at its own depth. factor 0 = fixed, larger = moves more (nearer layer).
+    // Drifts a camera-parented backdrop layer sideways, each at its own depth. Driven ONLY
+    // by the shared DungeonScroll (advanced by WaveManager during the inter-wave run), so it
+    // moves while travelling and stays perfectly still during combat/idle. Only attached in
+    // the dungeon (the city backdrop is fixed).
     class ParallaxBg : MonoBehaviour
     {
         public float factor;
-        const float CenterX = 2.5f;   // city view centre
-        Transform _player;
 
         void LateUpdate()
         {
-            if (_player == null)
-            {
-                var p = Object.FindAnyObjectByType<PlayerController2D>();
-                if (p == null) return;
-                _player = p.transform;
-            }
-            var cam = Camera.main;
-            float cx = cam != null ? cam.transform.position.x : CenterX;
-            // City: driven by the player walking. Dungeon: player stays put, so the shared
-            // DungeonScroll (from WaveManager) drives it during wave-runs.
-            float driver = (_player.position.x - cx) + BackgroundLayers.DungeonScroll;
             var lp = transform.localPosition;
-            lp.x = -driver * factor;
+            lp.x = -BackgroundLayers.DungeonScroll * factor;
             transform.localPosition = lp;
         }
     }

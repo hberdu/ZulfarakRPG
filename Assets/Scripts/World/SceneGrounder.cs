@@ -60,15 +60,6 @@ namespace ZulfarakRPG
             _instance.StartCoroutine(_instance.Run());
         }
 
-        void Update()
-        {
-            // Ease the dungeon backdrop drift back toward centre between wave-runs so it
-            // never accumulates off-screen (no-op in the city, where DungeonScroll stays 0).
-            float s = BackgroundLayers.DungeonScroll;
-            if (s != 0f)
-                BackgroundLayers.DungeonScroll = Mathf.MoveTowards(s, 0f, Time.deltaTime * 0.5f);
-        }
-
         IEnumerator Run()
         {
             yield return null;
