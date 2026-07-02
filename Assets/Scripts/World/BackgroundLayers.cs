@@ -16,7 +16,7 @@ namespace ZulfarakRPG
     {
         static readonly string[] LayerRes = { "layer5", "castle", "layer4", "layer3", "layer2", "layer1" };
         const int   BaseSort = -22;
-        const float Margin   = 1.30f;   // overscan so no black edges show while it drifts
+        const float Margin   = 1.50f;   // overscan so no black edges show while it drifts
 
         // Extra sideways scroll driven by WaveManager during the dungeon's inter-wave run,
         // so the backdrop drifts there too (the player stays put in the dungeon).
@@ -37,7 +37,8 @@ namespace ZulfarakRPG
             var cam = Camera.main;
             if (cam == null) return;
 
-            BuildBackdrop(cam, parallax: city);
+            DungeonScroll = 0f;
+            BuildBackdrop(cam, parallax: true);   // moving backdrop in both scenes
             if (dungeon) DressParallax();
         }
 
@@ -120,8 +121,13 @@ namespace ZulfarakRPG
                 if (p == null) return;
                 _player = p.transform;
             }
+            var cam = Camera.main;
+            float cx = cam != null ? cam.transform.position.x : CenterX;
+            // City: driven by the player walking. Dungeon: player stays put, so the shared
+            // DungeonScroll (from WaveManager) drives it during wave-runs.
+            float driver = (_player.position.x - cx) + BackgroundLayers.DungeonScroll;
             var lp = transform.localPosition;
-            lp.x = -(_player.position.x - CenterX) * factor;
+            lp.x = -driver * factor;
             transform.localPosition = lp;
         }
     }
