@@ -32,6 +32,10 @@ namespace ZulfarakRPG
 
 #if STEAMWORKS_NET
         CSteamID _lobbyId;
+        // Friends the user clicked "Convidar" for before the lobby finished being
+        // created (CreateLobby is async). Flushed the moment OnLobbyCreated fires,
+        // so an invite is never silently dropped by the create-lobby race.
+        readonly List<CSteamID> _pendingInvites = new List<CSteamID>();
         Callback<LobbyCreated_t>           _cbLobbyCreated;
         Callback<LobbyEnter_t>             _cbLobbyEnter;
         Callback<LobbyChatUpdate_t>        _cbLobbyChatUpdate;
@@ -101,6 +105,29 @@ namespace ZulfarakRPG
 #endif
         }
 
+        // Invite a specific friend to this lobby. Returns false only when Steam
+        // itself is unavailable; otherwise the invite is either sent right away or
+        // queued until the (async) lobby creation completes — so the UI can always
+        // show "Enviado!" instead of the click doing nothing.
+        public bool InviteFriend(ulong friendSteamId)
+        {
+#if STEAMWORKS_NET
+            if (SteamIntegration.Instance == null || !SteamIntegration.Instance.IsInitialized) return false;
+            var friend = new CSteamID(friendSteamId);
+            if (InLobby)
+            {
+                SteamMatchmaking.InviteUserToLobby(_lobbyId, friend);
+                return true;
+            }
+            if (!_pendingInvites.Contains(friend)) _pendingInvites.Add(friend);
+            EnsureLobby();   // fires the queued invites from OnLobbyCreated
+            return true;
+#else
+            Debug.Log($"[SteamLobby] Stub build — would invite {friendSteamId}.");
+            return true;
+#endif
+        }
+
         // Opens the Steam friends invite overlay scoped to the current lobby.
         // Creates the lobby first if the user hasn't been put in one yet.
         public void OpenInviteOverlay()
@@ -146,6 +173,12 @@ namespace ZulfarakRPG
             // logs / debug overlays can map IDs to humans.
             SteamMatchmaking.SetLobbyData(_lobbyId, "leader_name",
                 SteamIntegration.Instance.SteamName ?? "Unknown");
+
+            // Flush any invites the user clicked before the lobby existed.
+            foreach (var friend in _pendingInvites)
+                SteamMatchmaking.InviteUserToLobby(_lobbyId, friend);
+            _pendingInvites.Clear();
+
             BroadcastLobbyMembers();
         }
 
