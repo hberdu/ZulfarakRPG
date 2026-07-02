@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 #if STEAMWORKS_NET
 using Steamworks;
 #endif
@@ -42,16 +43,36 @@ namespace ZulfarakRPG
         Callback<GameLobbyJoinRequested_t> _cbJoinRequested;
 #endif
 
+        // True between CreateLobby() and its OnLobbyCreated callback — prevents
+        // repeated EnsureLobby() calls (popup open + scene load + invite click)
+        // from spawning several lobbies and sending invites to the wrong one.
+        bool _creatingLobby;
+
         void Awake()
         {
             if (Instance != null) { Destroy(gameObject); return; }
             Instance = this;
             DontDestroyOnLoad(gameObject);
+            SceneManager.sceneLoaded += OnSceneLoaded;
 
 #if STEAMWORKS_NET
             if (SteamIntegration.Instance != null && SteamIntegration.Instance.IsInitialized)
                 RegisterCallbacks();
 #endif
+        }
+
+        void OnDestroy()
+        {
+            SceneManager.sceneLoaded -= OnSceneLoaded;
+        }
+
+        // Pre-create the lobby the moment the player reaches a gameplay scene, so
+        // it's ready long before they open the invite popup — the invite then
+        // sends instantly instead of racing the async CreateLobby.
+        void OnSceneLoaded(Scene scene, LoadSceneMode mode)
+        {
+            if (scene.name == "Zulfarak" || scene.name == "Dungeon")
+                EnsureLobby();
         }
 
         void Start()
@@ -92,7 +113,14 @@ namespace ZulfarakRPG
         {
             if (InLobby) return;
 #if STEAMWORKS_NET
-            if (SteamIntegration.Instance == null || !SteamIntegration.Instance.IsInitialized) return;
+            if (_creatingLobby) return;   // a CreateLobby is already in flight
+            if (SteamIntegration.Instance == null || !SteamIntegration.Instance.IsInitialized)
+            {
+                Debug.LogWarning("[SteamLobby] EnsureLobby abortado: Steam não inicializado.");
+                return;
+            }
+            _creatingLobby = true;
+            Debug.Log("[SteamLobby] CreateLobby chamado (FriendsOnly). Aguardando OnLobbyCreated…");
             SteamMatchmaking.CreateLobby(ELobbyType.k_ELobbyTypeFriendsOnly, MaxPlayers);
 #else
             // Stub: pretend we created a lobby so single-player flows that gate
@@ -112,14 +140,22 @@ namespace ZulfarakRPG
         public bool InviteFriend(ulong friendSteamId)
         {
 #if STEAMWORKS_NET
-            if (SteamIntegration.Instance == null || !SteamIntegration.Instance.IsInitialized) return false;
+            if (SteamIntegration.Instance == null || !SteamIntegration.Instance.IsInitialized)
+            {
+                Debug.LogWarning("[SteamLobby] Convite ignorado: Steam não inicializado " +
+                                 "(steam_appid.txt ausente ao lado do .exe? Steam fechado?).");
+                return false;
+            }
             var friend = new CSteamID(friendSteamId);
             if (InLobby)
             {
-                SteamMatchmaking.InviteUserToLobby(_lobbyId, friend);
-                return true;
+                bool ok = SteamMatchmaking.InviteUserToLobby(_lobbyId, friend);
+                Debug.Log($"[SteamLobby] InviteUserToLobby(lobby={_lobbyId}, friend={friend}) → {ok}. " +
+                          $"Se ok=False: você não está no lobby, ou {friend} não é seu amigo na Steam.");
+                return ok;
             }
             if (!_pendingInvites.Contains(friend)) _pendingInvites.Add(friend);
+            Debug.Log($"[SteamLobby] Lobby ainda criando — convite p/ {friend} enfileirado (dispara em OnLobbyCreated).");
             EnsureLobby();   // fires the queued invites from OnLobbyCreated
             return true;
 #else
@@ -178,9 +214,12 @@ namespace ZulfarakRPG
         // ── Steam callbacks ──────────────────────────────────────────────
         void OnLobbyCreated(LobbyCreated_t r)
         {
+            _creatingLobby = false;
             if (r.m_eResult != EResult.k_EResultOK)
             {
-                Debug.LogWarning($"[SteamLobby] CreateLobby failed: {r.m_eResult}");
+                Debug.LogWarning($"[SteamLobby] CreateLobby FALHOU: {r.m_eResult} " +
+                                 "(Steam offline/sem conexão? tente novamente).");
+                _pendingInvites.Clear();
                 return;
             }
             _lobbyId      = new CSteamID(r.m_ulSteamIDLobby);
@@ -190,9 +229,13 @@ namespace ZulfarakRPG
             SteamMatchmaking.SetLobbyData(_lobbyId, "leader_name",
                 SteamIntegration.Instance.SteamName ?? "Unknown");
 
+            Debug.Log($"[SteamLobby] Lobby criado: {LobbyIdString}. Enviando {_pendingInvites.Count} convite(s) enfileirado(s).");
             // Flush any invites the user clicked before the lobby existed.
             foreach (var friend in _pendingInvites)
-                SteamMatchmaking.InviteUserToLobby(_lobbyId, friend);
+            {
+                bool ok = SteamMatchmaking.InviteUserToLobby(_lobbyId, friend);
+                Debug.Log($"[SteamLobby] InviteUserToLobby(friend={friend}) → {ok}");
+            }
             _pendingInvites.Clear();
 
             PublishConnectPresence();
