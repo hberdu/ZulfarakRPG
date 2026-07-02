@@ -37,7 +37,11 @@ namespace ZulfarakRPG
         // created (CreateLobby is async). Flushed the moment OnLobbyCreated fires,
         // so an invite is never silently dropped by the create-lobby race.
         readonly List<CSteamID> _pendingInvites = new List<CSteamID>();
-        Callback<LobbyCreated_t>           _cbLobbyCreated;
+        // CreateLobby's result is a CallResult (tied to the specific call), NOT a
+        // broadcast Callback — a Callback<LobbyCreated_t> does not fire reliably for
+        // it, which is why the lobby was never being created. CallResult also reports
+        // bIOFailure when Steam can't reach its servers.
+        CallResult<LobbyCreated_t>         _crLobbyCreated;
         Callback<LobbyEnter_t>             _cbLobbyEnter;
         Callback<LobbyChatUpdate_t>        _cbLobbyChatUpdate;
         Callback<GameLobbyJoinRequested_t> _cbJoinRequested;
@@ -91,7 +95,7 @@ namespace ZulfarakRPG
 #if STEAMWORKS_NET
         void RegisterCallbacks()
         {
-            _cbLobbyCreated     = Callback<LobbyCreated_t>.Create(OnLobbyCreated);
+            _crLobbyCreated     = CallResult<LobbyCreated_t>.Create(OnLobbyCreated);
             _cbLobbyEnter       = Callback<LobbyEnter_t>.Create(OnLobbyEnter);
             _cbLobbyChatUpdate  = Callback<LobbyChatUpdate_t>.Create(OnLobbyChatUpdate);
             _cbJoinRequested    = Callback<GameLobbyJoinRequested_t>.Create(OnJoinRequested);
@@ -119,9 +123,16 @@ namespace ZulfarakRPG
                 Debug.LogWarning("[SteamLobby] EnsureLobby abortado: Steam não inicializado.");
                 return;
             }
+            var call = SteamMatchmaking.CreateLobby(ELobbyType.k_ELobbyTypeFriendsOnly, MaxPlayers);
+            if (call == SteamAPICall_t.Invalid)
+            {
+                _creatingLobby = false;
+                Debug.LogWarning("[SteamLobby] CreateLobby não pôde ser chamado (SteamAPICall inválido).");
+                return;
+            }
+            _crLobbyCreated.Set(call);   // receive the result via CallResult (reliable)
             _creatingLobby = true;
             Debug.Log("[SteamLobby] CreateLobby chamado (FriendsOnly). Aguardando OnLobbyCreated…");
-            SteamMatchmaking.CreateLobby(ELobbyType.k_ELobbyTypeFriendsOnly, MaxPlayers);
 #else
             // Stub: pretend we created a lobby so single-player flows that gate
             // on InLobby continue to work without Steamworks.
@@ -212,9 +223,16 @@ namespace ZulfarakRPG
 
 #if STEAMWORKS_NET
         // ── Steam callbacks ──────────────────────────────────────────────
-        void OnLobbyCreated(LobbyCreated_t r)
+        void OnLobbyCreated(LobbyCreated_t r, bool bIOFailure)
         {
             _creatingLobby = false;
+            if (bIOFailure)
+            {
+                Debug.LogWarning("[SteamLobby] CreateLobby FALHOU: IO failure — a Steam não " +
+                                 "conseguiu falar com os servidores (Steam offline/sem rede?).");
+                _pendingInvites.Clear();
+                return;
+            }
             if (r.m_eResult != EResult.k_EResultOK)
             {
                 Debug.LogWarning($"[SteamLobby] CreateLobby FALHOU: {r.m_eResult} " +
