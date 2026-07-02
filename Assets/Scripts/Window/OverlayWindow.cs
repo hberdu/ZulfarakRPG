@@ -69,6 +69,12 @@ namespace ZulfarakRPG
         static IntPtr _hwnd = IntPtr.Zero;
 #if !UNITY_EDITOR
         Coroutine _resizeCo;
+        bool _overlayActive;
+        bool _draggingAnywhere;
+        int _dragStartWinX;
+        int _dragStartWinY;
+        int _dragStartCursorX;
+        int _dragStartCursorY;
 #endif
 
         void Awake()
@@ -83,8 +89,6 @@ namespace ZulfarakRPG
 #if !UNITY_EDITOR
             // Force windowed mode — fullscreen breaks DWM transparency.
             Screen.fullScreen = false;
-            Screen.SetResolution(windowWidth, windowHeight, FullScreenMode.Windowed);
-            ApplyOverlay();
 #endif
         }
 
@@ -101,7 +105,7 @@ namespace ZulfarakRPG
         {
             yield return null;
             yield return null;
-            ApplyOverlay();
+            ApplyWindowModeForScene(UnityEngine.SceneManagement.SceneManager.GetActiveScene().name);
         }
 
         void OnEnable()  => UnityEngine.SceneManagement.SceneManager.sceneLoaded += OnSceneLoaded;
@@ -109,11 +113,16 @@ namespace ZulfarakRPG
 
         void OnSceneLoaded(UnityEngine.SceneManagement.Scene scene, UnityEngine.SceneManagement.LoadSceneMode _)
         {
-            bool gameplay = scene.name == "Zulfarak" || scene.name == "Dungeon";
+            ApplyWindowModeForScene(scene.name);
+        }
+
+        void ApplyWindowModeForScene(string sceneName)
+        {
+            bool gameplay = sceneName == "Zulfarak" || sceneName == "Dungeon";
             int newW = gameplay ? 400 : 380;
             int newH = gameplay ? 120 : 640;
             bool sizeChanged = newW != windowWidth || newH != windowHeight;
-            windowWidth  = newW;
+            windowWidth = newW;
             windowHeight = newH;
 #if !UNITY_EDITOR
             if (gameplay && Camera.main != null)
@@ -125,6 +134,7 @@ namespace ZulfarakRPG
                 Camera.main.allowHDR        = false;
                 Camera.main.allowMSAA       = false;
             }
+            _overlayActive = true;
             // Apply the borderless/topmost style + DWM glass immediately (no reposition
             // here — it would fight the resize below).
             ApplyOverlay(repositionWindow: false);
@@ -220,6 +230,33 @@ namespace ZulfarakRPG
 #if !UNITY_EDITOR
             if (_hwnd == IntPtr.Zero) _hwnd = Process.GetCurrentProcess().MainWindowHandle;
             if (_hwnd == IntPtr.Zero) return;
+            if (!_overlayActive) return;
+
+            // In character creation, dragging with the left mouse button anywhere in the
+            // window should move the borderless game window.
+            bool canDragAnywhere = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name == "CharacterCreation";
+            if (canDragAnywhere)
+            {
+                if (Input.GetMouseButtonDown(0) && GetCursorPos(out var start))
+                {
+                    _draggingAnywhere = true;
+                    _dragStartCursorX = start.X;
+                    _dragStartCursorY = start.Y;
+                    _dragStartWinX = WinX;
+                    _dragStartWinY = WinY;
+                }
+                else if (_draggingAnywhere && Input.GetMouseButton(0) && GetCursorPos(out var now))
+                {
+                    int dx = now.X - _dragStartCursorX;
+                    int dy = now.Y - _dragStartCursorY;
+                    MoveWindowTo(_dragStartWinX + dx, _dragStartWinY + dy);
+                }
+                else if (Input.GetMouseButtonUp(0))
+                {
+                    _draggingAnywhere = false;
+                }
+            }
+
             int ex = GetWindowLong(_hwnd, GWL_EXSTYLE);
             if ((ex & WS_EX_TOOLWINDOW) == 0)
             {

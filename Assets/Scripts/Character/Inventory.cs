@@ -166,12 +166,57 @@ namespace ZulfarakRPG
 
         public void Save()
         {
+            if (ServerApiClient.Instance != null && ServerApiClient.Instance.IsReady)
+            {
+                try
+                {
+                    var state = InventoryStateDto.FromInventory(this);
+                    ServerApiClient.Instance.SaveInventoryAsync(state).GetAwaiter().GetResult();
+                }
+                catch (Exception e)
+                {
+                    Debug.LogWarning($"[Inventory] Remote save failed: {e.Message}");
+                }
+            }
+
             var data = new { items = Items, equipment = Equipment };
             File.WriteAllText(SavePath, JsonConvert.SerializeObject(data, Formatting.Indented));
         }
 
         public void Load()
         {
+            if (ServerApiClient.Instance != null && ServerApiClient.Instance.IsReady)
+            {
+                try
+                {
+                    var remote = ServerApiClient.Instance.LoadInventoryAsync().GetAwaiter().GetResult();
+                    if (remote != null)
+                    {
+                        Items = new List<InventoryItem>();
+                        if (remote.items != null)
+                        {
+                            foreach (var it in remote.items)
+                            {
+                                if (string.IsNullOrWhiteSpace(it.itemId) || it.quantity <= 0) continue;
+                                Items.Add(new InventoryItem { itemId = it.itemId, quantity = it.quantity });
+                            }
+                        }
+                        Equipment = remote.equipment != null ? remote.equipment.ToEquipment() : new Equipment();
+                        return;
+                    }
+                    Items = new List<InventoryItem>();
+                    Equipment = new Equipment();
+                    return;
+                }
+                catch (Exception e)
+                {
+                    Debug.LogWarning($"[Inventory] Remote load failed: {e.Message}");
+                    Items = new List<InventoryItem>();
+                    Equipment = new Equipment();
+                    return;
+                }
+            }
+
             if (!File.Exists(SavePath)) return;
             var data = JsonConvert.DeserializeAnonymousType(
                 File.ReadAllText(SavePath),

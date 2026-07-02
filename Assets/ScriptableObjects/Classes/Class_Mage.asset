@@ -13,12 +13,16 @@ MonoBehaviour:
   m_Name: Class_Mage
   m_EditorClassIdentifier: ZulfarakRPG:ZulfarakRPG:ClassData
   classType: 0
-  displayName: 
-  description: 
+  displayName: Mago
+  description: Mestres da magia arcana. Podem curar, destruir ou paralisar inimigos.
   icon: {fileID: 0}
-  baseHp: 100
-  baseAttack: 10
-  baseDefense: 5
-  baseSpeed: 1
-  baseHealPower: 0
-  availableSubclasses: []
+  baseHp: 80
+  baseAttack: 14
+  baseDefense: 4
+  baseSpeed: 0.9
+  baseHealPower: 5
+  availableSubclasses:
+  - {fileID: 11400000, guid: f2ae5f3af00071747b918a9666710a9d, type: 2}
+  - {fileID: 11400000, guid: d40ea33247f6b254a8d3b760063a1184, type: 2}
+  - {fileID: 11400000, guid: 0c6e4863642ea9a48b4bf1bd9ae7dfe6, type: 2}
+  - {fileID: 11400000, guid: 6363b4b8fdc198941831bb14be97adc9, type: 2}

@@ -1,6 +1,7 @@
 using UnityEngine;
 using System.IO;
 using Newtonsoft.Json;
+using System;
 
 namespace ZulfarakRPG
 {
@@ -19,7 +20,12 @@ namespace ZulfarakRPG
             DontDestroyOnLoad(gameObject);
         }
 
-        public bool HasSavedData() => File.Exists(SavePath);
+        public bool HasSavedData()
+        {
+            if (ServerApiClient.Instance != null && ServerApiClient.Instance.IsReady)
+                return Data != null;
+            return Data != null || File.Exists(SavePath);
+        }
 
         public void CreateNewCharacter(PlayerData data)
         {
@@ -34,7 +40,29 @@ namespace ZulfarakRPG
 
         public void Load()
         {
-            if (!HasSavedData()) return;
+            if (ServerApiClient.Instance != null && ServerApiClient.Instance.IsReady)
+            {
+                try
+                {
+                    var remote = ServerApiClient.Instance.LoadCharacterAsync().GetAwaiter().GetResult();
+                    if (remote != null)
+                    {
+                        remote.steamId = SteamIntegration.Instance != null ? SteamIntegration.Instance.SteamId : remote.steamId;
+                        Data = remote;
+                        return;
+                    }
+                    Data = null;
+                    return;
+                }
+                catch (Exception e)
+                {
+                    Debug.LogWarning($"[PlayerManager] Remote load failed: {e.Message}");
+                    Data = null;
+                    return;
+                }
+            }
+
+            if (!File.Exists(SavePath)) return;
             try
             {
                 string json = File.ReadAllText(SavePath);
@@ -45,6 +73,23 @@ namespace ZulfarakRPG
 
         public void Save()
         {
+            if (Data == null) return;
+
+            if (string.IsNullOrWhiteSpace(Data.steamId) && SteamIntegration.Instance != null)
+                Data.steamId = SteamIntegration.Instance.SteamId;
+
+            if (ServerApiClient.Instance != null && ServerApiClient.Instance.IsReady)
+            {
+                try
+                {
+                    ServerApiClient.Instance.SaveCharacterAsync(Data).GetAwaiter().GetResult();
+                }
+                catch (Exception e)
+                {
+                    Debug.LogWarning($"[PlayerManager] Remote save failed: {e.Message}");
+                }
+            }
+
             try
             {
                 string json = JsonConvert.SerializeObject(Data, Formatting.Indented);

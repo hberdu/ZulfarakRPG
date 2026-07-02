@@ -12,13 +12,16 @@ MonoBehaviour:
   m_Script: {fileID: 0}
   m_Name: Class_Warrior
   m_EditorClassIdentifier: ZulfarakRPG:ZulfarakRPG:ClassData
-  classType: 0
-  displayName: 
-  description: 
+  classType: 1
+  displayName: Guerreiro
+  description: Combatentes de frente que dominam o campo de batalha corpo a corpo.
   icon: {fileID: 0}
-  baseHp: 100
-  baseAttack: 10
-  baseDefense: 5
+  baseHp: 130
+  baseAttack: 12
+  baseDefense: 8
   baseSpeed: 1
   baseHealPower: 0
-  availableSubclasses: []
+  availableSubclasses:
+  - {fileID: 11400000, guid: 803a666478d8dbd42b57eb55b65ce002, type: 2}
+  - {fileID: 11400000, guid: f0d7f40f1dedbf343987e7cfd53319f5, type: 2}
+  - {fileID: 11400000, guid: de5e06d40db8a5b4e8029a2b5f4304dc, type: 2}
