@@ -16,7 +16,11 @@ namespace ZulfarakRPG
     {
         static readonly string[] LayerRes = { "layer5", "castle", "layer4", "layer3", "layer2", "layer1" };
         const int   BaseSort = -22;
-        const float Margin   = 1.20f;   // overscan so no black edges show
+        const float Margin   = 1.60f;   // overscan so no black edges show while it drifts
+
+        // Extra sideways scroll driven by WaveManager during the dungeon's inter-wave run,
+        // so the backdrop drifts there too (the player stays put in the dungeon).
+        public static float DungeonScroll;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         static void Hook()
@@ -33,12 +37,14 @@ namespace ZulfarakRPG
             var cam = Camera.main;
             if (cam == null) return;
 
-            BuildBackdrop(cam);
+            DungeonScroll = 0f;
+            BuildBackdrop(cam, parallax: dungeon);   // ONLY the dungeon backdrop drifts; the city is static
             if (dungeon) DressParallax();
         }
 
-        // Fixed-to-camera scenic backdrop (rebuilt each load).
-        static void BuildBackdrop(Camera cam)
+        // Fixed-to-camera scenic backdrop (rebuilt each load). When parallax is on (city),
+        // each layer drifts at its own speed as the player walks, so it reads as depth.
+        static void BuildBackdrop(Camera cam, bool parallax)
         {
             var prev = cam.transform.Find("__Background");
             if (prev != null) Destroy(prev.gameObject);
@@ -64,6 +70,9 @@ namespace ZulfarakRPG
                 sr.sortingOrder = BaseSort + i;                        // -22 (back) → -17 (front)
                 float scale     = Mathf.Max(viewW / sw, viewH / sh) * Margin;
                 go.transform.localScale = new Vector3(scale, scale, 1f);
+
+                if (parallax)
+                    go.AddComponent<ParallaxBg>().factor = 0.03f + i * 0.03f;   // back slow → front fast
             }
         }
 
@@ -93,6 +102,22 @@ namespace ZulfarakRPG
                 pl.minScale   = 0.40f;
                 pl.maxScale   = 0.80f;
             }
+        }
+    }
+
+    // Drifts a camera-parented backdrop layer sideways, each at its own depth. Driven ONLY
+    // by the shared DungeonScroll (advanced by WaveManager during the inter-wave run), so it
+    // moves while travelling and stays perfectly still during combat/idle. Only attached in
+    // the dungeon (the city backdrop is fixed).
+    class ParallaxBg : MonoBehaviour
+    {
+        public float factor;
+
+        void LateUpdate()
+        {
+            var lp = transform.localPosition;
+            lp.x = -BackgroundLayers.DungeonScroll * factor;
+            transform.localPosition = lp;
         }
     }
 }

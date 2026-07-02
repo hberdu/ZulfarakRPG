@@ -91,6 +91,8 @@ namespace ZulfarakRPG
                 if (parallaxLayers != null)
                     for (int i = 0; i < parallaxLayers.Length; i++)
                         if (parallaxLayers[i] != null) parallaxLayers[i].Scroll(dx);
+                // Drift the far scenic backdrop too, at ~the city's parallax rate.
+                BackgroundLayers.DungeonScroll += dx * 0.40f;
                 yield return null;
             }
             _player?.SetRunning(false);

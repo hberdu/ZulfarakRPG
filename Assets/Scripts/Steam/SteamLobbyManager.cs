@@ -32,6 +32,10 @@ namespace ZulfarakRPG
 
 #if STEAMWORKS_NET
         CSteamID _lobbyId;
+        // Friends the user clicked "Convidar" for before the lobby finished being
+        // created (CreateLobby is async). Flushed the moment OnLobbyCreated fires,
+        // so an invite is never silently dropped by the create-lobby race.
+        readonly List<CSteamID> _pendingInvites = new List<CSteamID>();
         Callback<LobbyCreated_t>           _cbLobbyCreated;
         Callback<LobbyEnter_t>             _cbLobbyEnter;
         Callback<LobbyChatUpdate_t>        _cbLobbyChatUpdate;
@@ -101,6 +105,29 @@ namespace ZulfarakRPG
 #endif
         }
 
+        // Invite a specific friend to this lobby. Returns false only when Steam
+        // itself is unavailable; otherwise the invite is either sent right away or
+        // queued until the (async) lobby creation completes — so the UI can always
+        // show "Enviado!" instead of the click doing nothing.
+        public bool InviteFriend(ulong friendSteamId)
+        {
+#if STEAMWORKS_NET
+            if (SteamIntegration.Instance == null || !SteamIntegration.Instance.IsInitialized) return false;
+            var friend = new CSteamID(friendSteamId);
+            if (InLobby)
+            {
+                SteamMatchmaking.InviteUserToLobby(_lobbyId, friend);
+                return true;
+            }
+            if (!_pendingInvites.Contains(friend)) _pendingInvites.Add(friend);
+            EnsureLobby();   // fires the queued invites from OnLobbyCreated
+            return true;
+#else
+            Debug.Log($"[SteamLobby] Stub build — would invite {friendSteamId}.");
+            return true;
+#endif
+        }
+
         // Opens the Steam friends invite overlay scoped to the current lobby.
         // Creates the lobby first if the user hasn't been put in one yet.
         public void OpenInviteOverlay()
@@ -124,12 +151,28 @@ namespace ZulfarakRPG
         {
 #if STEAMWORKS_NET
             if (InLobby) SteamMatchmaking.LeaveLobby(_lobbyId);
+            SteamFriends.ClearRichPresence();   // hide the "Entrar no jogo" button
 #endif
             LobbyIdString = null;
             LeaderSteamId = null;
             MemberSteamIds.Clear();
             OnLobbyChanged?.Invoke();
         }
+
+#if STEAMWORKS_NET
+        // Publishes the "connect" rich-presence string for the current lobby. This
+        // is what makes the "Entrar no jogo / Join Game" button appear on the Steam
+        // friends list and what the invite/join carries as its launch argument.
+        // (With AppID 480 this works for friends who already have the game open; a
+        // published AppID is still required to auto-launch/download it.)
+        void PublishConnectPresence()
+        {
+            if (!InLobby) return;
+            SteamFriends.SetRichPresence("connect", $"+connect_lobby {LobbyIdString}");
+            SteamFriends.SetRichPresence("steam_player_group",      LobbyIdString);
+            SteamFriends.SetRichPresence("steam_player_group_size", MaxPlayers.ToString());
+        }
+#endif
 
 #if STEAMWORKS_NET
         // ── Steam callbacks ──────────────────────────────────────────────
@@ -146,6 +189,13 @@ namespace ZulfarakRPG
             // logs / debug overlays can map IDs to humans.
             SteamMatchmaking.SetLobbyData(_lobbyId, "leader_name",
                 SteamIntegration.Instance.SteamName ?? "Unknown");
+
+            // Flush any invites the user clicked before the lobby existed.
+            foreach (var friend in _pendingInvites)
+                SteamMatchmaking.InviteUserToLobby(_lobbyId, friend);
+            _pendingInvites.Clear();
+
+            PublishConnectPresence();
             BroadcastLobbyMembers();
         }
 
@@ -153,6 +203,7 @@ namespace ZulfarakRPG
         {
             _lobbyId      = new CSteamID(r.m_ulSteamIDLobby);
             LobbyIdString = _lobbyId.ToString();
+            PublishConnectPresence();
             BroadcastLobbyMembers();
         }
 

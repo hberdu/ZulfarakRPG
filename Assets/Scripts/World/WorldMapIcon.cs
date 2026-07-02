@@ -88,23 +88,9 @@ namespace ZulfarakRPG
                 Mathf.Sin(t * bobSpeed) * bobAmplitude, 0f);
             transform.rotation = Quaternion.Euler(0f, 0f, Mathf.Sin(t * 0.9f) * 3.5f);
 
-            // Pulsing white halo — only visible while hovered, off otherwise.
-            if (_glowSr != null)
-            {
-                var c = _glowSr.color;
-                if (_hovering)
-                {
-                    float pulse = (Mathf.Sin(t * 2.2f) + 1f) * 0.5f;     // 0..1
-                    c.a = 0.55f + pulse * 0.30f;
-                    _glowSr.transform.localScale = Vector3.one * (0.80f + pulse * 0.08f);
-                }
-                else
-                {
-                    c.a = 0f;
-                    _glowSr.transform.localScale = Vector3.one * 0.80f;
-                }
-                _glowSr.color = c;
-            }
+            // Old glow halo removed — a small white smoke puffs on hover instead.
+            if (_glowSr != null && _glowSr.color.a != 0f)
+                _glowSr.color = new Color(1f, 1f, 1f, 0f);
 
             // While the map panel is open it consumes the click — skip hover/click here.
             if (WorldMapPopup.IsOpen)
@@ -126,6 +112,7 @@ namespace ZulfarakRPG
             {
                 _hovering = inside;
                 if (_tooltipRoot != null) _tooltipRoot.SetActive(_hovering);
+                if (inside) PortalSmoke.WhiteBurst(transform.position + Vector3.up * 0.1f, 4);
             }
             if (_hovering && Input.GetMouseButtonDown(0))
                 WorldMapPopup.Show();

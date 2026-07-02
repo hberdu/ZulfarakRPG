@@ -214,8 +214,28 @@ namespace ZulfarakRPG
             SetWindowPos(_hwnd, HWND_TOPMOST,
                 WinX, WinY, Instance.windowWidth, Instance.windowHeight,
                 SWP_SHOWWINDOW);
+            // Keep every top popup glued to the game strip while it's dragged.
             MenuPopupWindow.Reposition();
+            WorldMapPopup.Reposition();
+            FriendsListPopup.Reposition();
 #endif
+        }
+
+        [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr h, int nCmdShow);
+        const int SW_MINIMIZE = 6;
+
+        // Minimize the overlay to the taskbar (used by the HUD's minimize button).
+        public static void Minimize()
+        {
+#if !UNITY_EDITOR
+            if (_hwnd != IntPtr.Zero) ShowWindow(_hwnd, SW_MINIMIZE);
+#endif
+        }
+
+        // Close the game (HUD close button).
+        public static void QuitGame()
+        {
+            Application.Quit();
         }
 
         public static bool GetOsCursorPos(out POINT p)

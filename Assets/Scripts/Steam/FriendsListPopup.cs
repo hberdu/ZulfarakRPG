@@ -159,18 +159,17 @@ namespace ZulfarakRPG
             }
 
             if (f.id == 0) return;   // placeholder row
-#if STEAMWORKS_NET
+
+            // Queue-backed invite: never a silent no-op even if the lobby is still
+            // being created — SteamLobbyManager fires it once the lobby exists.
             var lobby = SteamLobbyManager.Instance;
             if (lobby == null) return;
-            if (!lobby.InLobby) lobby.EnsureLobby();
-            if (lobby.LobbyIdString != null && ulong.TryParse(lobby.LobbyIdString, out var raw))
+            if (lobby.InviteFriend(f.id))
             {
-                SteamMatchmaking.InviteUserToLobby(new CSteamID(raw), new CSteamID(f.id));
                 f.sent = true;
                 _friends[index] = f;
                 if (_hwnd != IntPtr.Zero) InvalidateRect(_hwnd, IntPtr.Zero, true);
             }
-#endif
         }
 
         // ── Layout constants (popup-local pixels) ─────────────────────────

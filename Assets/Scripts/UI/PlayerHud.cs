@@ -57,6 +57,7 @@ namespace ZulfarakRPG
             _instance._canvas = canvas;
 
             BuildMenuButton(canvas.transform);
+            BuildWindowButtons(canvas.transform);
         }
 
         static void BuildMenuButton(Transform parent)
@@ -65,7 +66,7 @@ namespace ZulfarakRPG
             go.transform.SetParent(parent, false);
             var rt = (RectTransform)go.transform;
             rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0f, 0f);
-            rt.anchoredPosition = new Vector2(MARGIN, MARGIN);
+            rt.anchoredPosition = new Vector2(4f, 2f);   // low in the bottom-left corner
             rt.sizeDelta        = new Vector2(SIZE, SIZE);
 
             // Gold border + dark inner panel — matches the tooltip / popup theme.
@@ -99,6 +100,89 @@ namespace ZulfarakRPG
             var btn = go.AddComponent<Button>();
             btn.targetGraphic = border;
             btn.onClick.AddListener(() => NPCMenuUI.Show(MenuTitle, MenuBody));
+        }
+
+        // Two tiny buttons in the TOP-RIGHT corner: close (×) and minimize (_).
+        const float WinBtn = 14f;
+        static void BuildWindowButtons(Transform parent)
+        {
+            BuildWinBtn(parent, 0, "Close", CrossSprite(), new Color(0.80f, 0.28f, 0.24f, 1f), () => OverlayWindow.QuitGame());
+            BuildWinBtn(parent, 1, "Min",   MinusSprite(), new Color(0.72f, 0.58f, 0.24f, 1f), () => OverlayWindow.Minimize());
+        }
+
+        static void BuildWinBtn(Transform parent, int idx, string name, Sprite glyph,
+                                Color border, UnityEngine.Events.UnityAction onClick)
+        {
+            var go = new GameObject("WinBtn_" + name, typeof(RectTransform));
+            go.transform.SetParent(parent, false);
+            var rt = (RectTransform)go.transform;
+            rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(1f, 1f);   // top-right
+            rt.anchoredPosition = new Vector2(-(3f + idx * (WinBtn + 3f)), -3f);
+            rt.sizeDelta        = new Vector2(WinBtn, WinBtn);
+
+            var bg = go.AddComponent<Image>();
+            bg.color = border;
+
+            var innerGO = new GameObject("Inner", typeof(RectTransform));
+            innerGO.transform.SetParent(go.transform, false);
+            var irt = (RectTransform)innerGO.transform;
+            irt.anchorMin = Vector2.zero; irt.anchorMax = Vector2.one;
+            irt.offsetMin = new Vector2( 1.5f,  1.5f);
+            irt.offsetMax = new Vector2(-1.5f, -1.5f);
+            var inner = innerGO.AddComponent<Image>();
+            inner.color = new Color(0.10f, 0.08f, 0.06f, 0.95f);
+            inner.raycastTarget = false;
+
+            var gGO = new GameObject("Glyph", typeof(RectTransform));
+            gGO.transform.SetParent(innerGO.transform, false);
+            var grt = (RectTransform)gGO.transform;
+            grt.anchorMin = Vector2.zero; grt.anchorMax = Vector2.one;
+            grt.offsetMin = new Vector2( 2f,  2f);
+            grt.offsetMax = new Vector2(-2f, -2f);
+            var gImg = gGO.AddComponent<Image>();
+            gImg.sprite = glyph;
+            gImg.color = new Color(1f, 0.95f, 0.85f, 1f);
+            gImg.raycastTarget = false;
+
+            var btn = go.AddComponent<Button>();
+            btn.targetGraphic = bg;
+            btn.onClick.AddListener(onClick);
+        }
+
+        static void Plot(Texture2D t, int x, int y)
+        {
+            for (int dx = -1; dx <= 1; dx++)
+                for (int dy = -1; dy <= 1; dy++)
+                {
+                    int px = x + dx, py = y + dy;
+                    if (px >= 0 && px < t.width && py >= 0 && py < t.height) t.SetPixel(px, py, Color.white);
+                }
+        }
+
+        static Sprite _cross;
+        static Sprite CrossSprite()
+        {
+            if (_cross != null) return _cross;
+            const int N = 16;
+            var t = new Texture2D(N, N, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point };
+            for (int y = 0; y < N; y++) for (int x = 0; x < N; x++) t.SetPixel(x, y, Color.clear);
+            for (int i = 3; i < N - 3; i++) { Plot(t, i, i); Plot(t, i, N - 1 - i); }
+            t.Apply();
+            _cross = Sprite.Create(t, new Rect(0, 0, N, N), new Vector2(0.5f, 0.5f), 100f);
+            return _cross;
+        }
+
+        static Sprite _minus;
+        static Sprite MinusSprite()
+        {
+            if (_minus != null) return _minus;
+            const int N = 16;
+            var t = new Texture2D(N, N, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point };
+            for (int y = 0; y < N; y++) for (int x = 0; x < N; x++) t.SetPixel(x, y, Color.clear);
+            for (int x = 3; x < N - 3; x++) { t.SetPixel(x, 4, Color.white); t.SetPixel(x, 5, Color.white); }
+            t.Apply();
+            _minus = Sprite.Create(t, new Rect(0, 0, N, N), new Vector2(0.5f, 0.5f), 100f);
+            return _minus;
         }
 
         // Procedural white up-arrow (stem + arrowhead) on a transparent field,
