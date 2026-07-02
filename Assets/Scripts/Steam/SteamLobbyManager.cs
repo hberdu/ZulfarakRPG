@@ -60,8 +60,7 @@ namespace ZulfarakRPG
             SceneManager.sceneLoaded += OnSceneLoaded;
 
 #if STEAMWORKS_NET
-            if (SteamIntegration.Instance != null && SteamIntegration.Instance.IsInitialized)
-                RegisterCallbacks();
+            RegisterCallbacks();   // idempotent; retried lazily if Steam isn't ready yet
 #endif
         }
 
@@ -82,6 +81,7 @@ namespace ZulfarakRPG
         void Start()
         {
 #if STEAMWORKS_NET
+            RegisterCallbacks();   // Steam is initialized by now if it wasn't at Awake
             // Steam can launch the game with "+connect_lobby <id>" when a friend
             // accepts an invite from outside the game. Parse the command line
             // once at boot so the joiner ends up in the host's lobby instead of
@@ -93,12 +93,21 @@ namespace ZulfarakRPG
         }
 
 #if STEAMWORKS_NET
+        bool _callbacksRegistered;
+
+        // Registers the Steam callbacks. Idempotent and safe to call before Steam
+        // finishes initializing — it simply no-ops until Steam is ready and is
+        // retried lazily from EnsureLobby(), so Awake ordering between managers
+        // (SteamIntegration vs SteamLobbyManager) can never leave it unregistered.
         void RegisterCallbacks()
         {
+            if (_callbacksRegistered) return;
+            if (SteamIntegration.Instance == null || !SteamIntegration.Instance.IsInitialized) return;
             _crLobbyCreated     = CallResult<LobbyCreated_t>.Create(OnLobbyCreated);
             _cbLobbyEnter       = Callback<LobbyEnter_t>.Create(OnLobbyEnter);
             _cbLobbyChatUpdate  = Callback<LobbyChatUpdate_t>.Create(OnLobbyChatUpdate);
             _cbJoinRequested    = Callback<GameLobbyJoinRequested_t>.Create(OnJoinRequested);
+            _callbacksRegistered = true;
         }
 
         static string FindCommandLineLobby()
@@ -121,6 +130,12 @@ namespace ZulfarakRPG
             if (SteamIntegration.Instance == null || !SteamIntegration.Instance.IsInitialized)
             {
                 Debug.LogWarning("[SteamLobby] EnsureLobby abortado: Steam não inicializado.");
+                return;
+            }
+            RegisterCallbacks();   // lazy: guarantees _crLobbyCreated exists even if Awake ran before Steam init
+            if (_crLobbyCreated == null)
+            {
+                Debug.LogWarning("[SteamLobby] EnsureLobby abortado: callbacks não registrados.");
                 return;
             }
             var call = SteamMatchmaking.CreateLobby(ELobbyType.k_ELobbyTypeFriendsOnly, MaxPlayers);
