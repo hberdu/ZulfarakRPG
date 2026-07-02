@@ -151,12 +151,28 @@ namespace ZulfarakRPG
         {
 #if STEAMWORKS_NET
             if (InLobby) SteamMatchmaking.LeaveLobby(_lobbyId);
+            SteamFriends.ClearRichPresence();   // hide the "Entrar no jogo" button
 #endif
             LobbyIdString = null;
             LeaderSteamId = null;
             MemberSteamIds.Clear();
             OnLobbyChanged?.Invoke();
         }
+
+#if STEAMWORKS_NET
+        // Publishes the "connect" rich-presence string for the current lobby. This
+        // is what makes the "Entrar no jogo / Join Game" button appear on the Steam
+        // friends list and what the invite/join carries as its launch argument.
+        // (With AppID 480 this works for friends who already have the game open; a
+        // published AppID is still required to auto-launch/download it.)
+        void PublishConnectPresence()
+        {
+            if (!InLobby) return;
+            SteamFriends.SetRichPresence("connect", $"+connect_lobby {LobbyIdString}");
+            SteamFriends.SetRichPresence("steam_player_group",      LobbyIdString);
+            SteamFriends.SetRichPresence("steam_player_group_size", MaxPlayers.ToString());
+        }
+#endif
 
 #if STEAMWORKS_NET
         // ── Steam callbacks ──────────────────────────────────────────────
@@ -179,6 +195,7 @@ namespace ZulfarakRPG
                 SteamMatchmaking.InviteUserToLobby(_lobbyId, friend);
             _pendingInvites.Clear();
 
+            PublishConnectPresence();
             BroadcastLobbyMembers();
         }
 
@@ -186,6 +203,7 @@ namespace ZulfarakRPG
         {
             _lobbyId      = new CSteamID(r.m_ulSteamIDLobby);
             LobbyIdString = _lobbyId.ToString();
+            PublishConnectPresence();
             BroadcastLobbyMembers();
         }
 
