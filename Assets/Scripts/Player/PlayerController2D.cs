@@ -91,6 +91,7 @@ namespace ZulfarakRPG
 
         void Start()
         {
+            SyncRuntimeStatsFromPlayerData();
             SelectClassSprites();
 
             // If the Inspector sprite arrays weren't assigned (e.g. after a scene reset),
@@ -137,6 +138,28 @@ namespace ZulfarakRPG
             if (string.IsNullOrWhiteSpace(displayName))
                 displayName = SteamIntegration.Instance?.SteamName ?? "Player";
             _hpBar?.SetName(displayName);
+        }
+
+        void SyncRuntimeStatsFromPlayerData()
+        {
+            var data = PlayerManager.Instance != null ? PlayerManager.Instance.Data : null;
+            if (data == null) return;
+
+            if (data.maxHp > 0) maxHealth = data.maxHp;
+            if (data.attack > 0) attackDamage = data.attack;
+
+            _hp = Mathf.Clamp(data.hp > 0 ? data.hp : maxHealth, 0f, maxHealth);
+        }
+
+        void SyncPlayerDataHealthFromRuntime()
+        {
+            var data = PlayerManager.Instance != null ? PlayerManager.Instance.Data : null;
+            if (data == null) return;
+
+            var maxHpInt = Mathf.Max(1, Mathf.RoundToInt(maxHealth));
+            var hpInt = Mathf.Clamp(Mathf.RoundToInt(_hp), 0, maxHpInt);
+            data.maxHp = maxHpInt;
+            data.hp = hpInt;
         }
 
         void SelectClassSprites()
@@ -199,7 +222,27 @@ namespace ZulfarakRPG
 
             HandleMovement();
             HandleAutoAttack();
+            HandleLifeRegeneration();
             ClampToSceneBounds();
+        }
+
+        void HandleLifeRegeneration()
+        {
+            var data = PlayerManager.Instance != null ? PlayerManager.Instance.Data : null;
+            if (data == null) return;
+
+            if (data.maxHp > 0 && Mathf.Abs(maxHealth - data.maxHp) > 0.001f)
+            {
+                maxHealth = data.maxHp;
+                _hp = Mathf.Clamp(_hp, 0f, maxHealth);
+            }
+
+            var healPerSecond = Mathf.Max(0f, data.healPower);
+            if (healPerSecond <= 0f || _hp >= maxHealth) return;
+
+            _hp = Mathf.Min(maxHealth, _hp + healPerSecond * Time.deltaTime);
+            SyncPlayerDataHealthFromRuntime();
+            _hpBar?.SetHealth(_hp, maxHealth);
         }
 
         // ── City click input ───────────────────────────────────────────────
@@ -380,7 +423,10 @@ namespace ZulfarakRPG
         {
             if (_phase == Phase.Dead) return;
             // Red popup — damage received by the player.
-            DamagePopup.Spawn(transform, dmg, new Color(1f, 0.25f, 0.25f, 1f));            HurtFlash.Flash(_sr);            _hp = Mathf.Max(0f, _hp - dmg);
+            DamagePopup.Spawn(transform, dmg, new Color(1f, 0.25f, 0.25f, 1f));
+            HurtFlash.Flash(_sr);
+            _hp = Mathf.Max(0f, _hp - dmg);
+            SyncPlayerDataHealthFromRuntime();
             _hpBar?.SetHealth(_hp, maxHealth);
             if (_hp <= 0f) StartCoroutine(DieRoutine());
         }

@@ -34,6 +34,7 @@ namespace ZulfarakRPG
     [System.Serializable]
     public class ItemReward
     {
+        public string itemId;
         public string itemName;
         public float dropChance = 0.1f;
         public int quantity = 1;

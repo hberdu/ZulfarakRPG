@@ -24,6 +24,7 @@ namespace ZulfarakRPG
         // Progression
         public int level = 1;
         public long currentExp;
+        public long expToNextLevelServer;
         public long gold;
 
         // Stats
@@ -41,17 +42,24 @@ namespace ZulfarakRPG
         // Location
         public string currentCity = "Zulfarak";
 
-        public long expToNextLevel => (long)(100 * Math.Pow(level, 1.5f));
+        public long expToNextLevel => expToNextLevelServer > 0 ? expToNextLevelServer : CalculateExpToNextLevel(level);
 
         public void AddExp(long amount)
         {
             currentExp += amount;
-            while (currentExp >= expToNextLevel)
+            while (currentExp >= CalculateExpToNextLevel(level))
             {
-                currentExp -= expToNextLevel;
+                currentExp -= CalculateExpToNextLevel(level);
                 level++;
+                expToNextLevelServer = CalculateExpToNextLevel(level);
                 OnLevelUp();
             }
+        }
+
+        public static long CalculateExpToNextLevel(int currentLevel)
+        {
+            var safeLevel = Math.Max(1, currentLevel);
+            return (long)(100 * Math.Pow(safeLevel, 1.5f));
         }
 
         private void OnLevelUp()

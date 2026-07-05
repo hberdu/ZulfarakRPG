@@ -47,8 +47,10 @@ namespace ZulfarakRPG
                     var remote = ServerApiClient.Instance.LoadCharacterAsync().GetAwaiter().GetResult();
                     if (remote != null)
                     {
-                        remote.steamId = SteamIntegration.Instance != null ? SteamIntegration.Instance.SteamId : remote.steamId;
+                        if (string.IsNullOrWhiteSpace(remote.steamId) && SteamIntegration.Instance != null)
+                            remote.steamId = SteamIntegration.Instance.SteamId;
                         Data = remote;
+                        NormalizeData();
                         return;
                     }
                     Data = null;
@@ -67,8 +69,25 @@ namespace ZulfarakRPG
             {
                 string json = File.ReadAllText(SavePath);
                 Data = JsonConvert.DeserializeObject<PlayerData>(json);
+                NormalizeData();
             }
             catch (System.Exception e) { Debug.LogError($"[PlayerManager] Load failed: {e}"); }
+        }
+
+        public void ApplyServerCharacter(CharacterDto dto, bool saveLocal = false)
+        {
+            if (dto == null) return;
+
+            var remote = dto.ToPlayerData();
+            if (string.IsNullOrWhiteSpace(remote.steamId) && SteamIntegration.Instance != null)
+                remote.steamId = SteamIntegration.Instance.SteamId;
+
+            Data = remote;
+            NormalizeData();
+            if (saveLocal)
+            {
+                SaveLocalOnly();
+            }
         }
 
         public void Save()
@@ -92,11 +111,76 @@ namespace ZulfarakRPG
 
             try
             {
-                string json = JsonConvert.SerializeObject(Data, Formatting.Indented);
-                File.WriteAllText(SavePath, json);
-                Debug.Log($"[PlayerManager] Saved character to {SavePath}");
+                SaveLocalOnly();
             }
             catch (System.Exception e) { Debug.LogError($"[PlayerManager] Save failed ({SavePath}): {e}"); }
+        }
+
+        public void NormalizeCurrentData()
+        {
+            NormalizeData();
+        }
+
+        private void SaveLocalOnly()
+        {
+            if (Data == null) return;
+            NormalizeData();
+            string json = JsonConvert.SerializeObject(Data, Formatting.Indented);
+            File.WriteAllText(SavePath, json);
+            Debug.Log($"[PlayerManager] Saved character to {SavePath}");
+        }
+
+        private void NormalizeData()
+        {
+            if (Data == null) return;
+
+            Data.level = Mathf.Max(1, Data.level);
+            Data.currentExp = Math.Max(0L, Data.currentExp);
+            Data.expToNextLevelServer = Data.expToNextLevelServer > 0
+                ? Data.expToNextLevelServer
+                : PlayerData.CalculateExpToNextLevel(Data.level);
+            EnsureCombatStatsFallback();
+            Data.maxHp = Mathf.Max(1, Mathf.Max(Data.maxHp, Data.hp));
+            Data.hp = Mathf.Clamp(Data.hp, 0, Data.maxHp);
+            Data.attack = Mathf.Max(0, Data.attack);
+            Data.defense = Mathf.Max(0, Data.defense);
+            Data.speed = Mathf.Max(0.01f, Data.speed);
+            Data.healPower = Mathf.Max(0f, Data.healPower);
+            Data.gold = Math.Max(0L, Data.gold);
+        }
+
+        private void EnsureCombatStatsFallback()
+        {
+            if (Data.attack > 0 && Data.defense > 0 && Data.maxHp > 1)
+            {
+                return;
+            }
+
+            var db = ClassDatabase.Instance;
+            if (db == null)
+            {
+                return;
+            }
+
+            var cls = db.GetClass(Data.classType);
+            if (cls == null)
+            {
+                return;
+            }
+
+            var sub = db.GetSubclass(Data.subclassType);
+            var lvlScale = 1f + (Mathf.Max(1, Data.level) - 1) * 0.08f;
+            var baseMaxHp = Mathf.RoundToInt(cls.baseHp * (sub != null ? sub.hpMultiplier : 1f) * lvlScale);
+            var baseAttack = Mathf.RoundToInt(cls.baseAttack * (sub != null ? sub.attackMultiplier : 1f) * lvlScale);
+            var baseDefense = Mathf.RoundToInt(cls.baseDefense * (sub != null ? sub.defenseMultiplier : 1f) * lvlScale);
+            var baseSpeed = cls.baseSpeed * (sub != null ? sub.speedMultiplier : 1f);
+            var baseHeal = cls.baseHealPower * (sub != null ? sub.healPowerMultiplier : 1f);
+
+            if (Data.maxHp <= 1) Data.maxHp = Mathf.Max(1, baseMaxHp);
+            if (Data.attack <= 0) Data.attack = Mathf.Max(1, baseAttack);
+            if (Data.defense <= 0) Data.defense = Mathf.Max(1, baseDefense);
+            if (Data.speed <= 0.01f) Data.speed = Mathf.Max(0.01f, baseSpeed);
+            if (Data.healPower <= 0f) Data.healPower = Mathf.Max(0f, baseHeal);
         }
 
         private void ApplyClassStats()

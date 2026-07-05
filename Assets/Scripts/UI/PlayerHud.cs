@@ -19,15 +19,6 @@ namespace ZulfarakRPG
         const float SIZE   = 24f;   // small square — about the on-screen size of the map icon
         const float MARGIN = 8f;    // gap from screen edge
 
-        // Consolidated menu contents (the systems are still placeholders for now).
-        const string MenuTitle = "Menu";
-        const string MenuBody  =
-            "Inventário — gerencie seus itens.\n" +
-            "Personagem — atributos e equipamentos.\n" +
-            "Habilidades — árvore de talentos.\n" +
-            "Missões — tarefas e recompensas.\n\n" +
-            "Tudo em construção — em breve!";
-
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         static void Hook()
         {
@@ -96,10 +87,16 @@ namespace ZulfarakRPG
             arrow.color         = new Color(1f, 0.93f, 0.72f, 1f);
             arrow.raycastTarget = false;
 
-            // Click handler: opens the consolidated menu popup above the game strip.
+            // Click handler: opens inventory/equipment native popup.
             var btn = go.AddComponent<Button>();
             btn.targetGraphic = border;
-            btn.onClick.AddListener(() => NPCMenuUI.Show(MenuTitle, MenuBody));
+            btn.onClick.AddListener(() => InventoryPopupWindow.Toggle());
+        }
+
+        void Update()
+        {
+            if (Input.GetKeyDown(KeyCode.I))
+                InventoryPopupWindow.Toggle();
         }
 
         // Two tiny buttons in the TOP-RIGHT corner: close (×) and minimize (_).

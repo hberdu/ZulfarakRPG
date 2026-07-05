@@ -99,6 +99,23 @@ namespace ZulfarakRPG
         // Equip an item from the bag; unequips what was in that slot
         public bool Equip(string itemId)
         {
+            if (ServerApiClient.Instance != null && ServerApiClient.Instance.IsReady)
+            {
+                try
+                {
+                    var state = ServerApiClient.Instance.EquipItemAsync(itemId).GetAwaiter().GetResult();
+                    ApplyServerState(state);
+                    SaveLocal();
+                    OnInventoryChanged?.Invoke();
+                    return true;
+                }
+                catch (Exception e)
+                {
+                    Debug.LogWarning($"[Inventory] Equip remoto falhou: {e.Message}");
+                    return false;
+                }
+            }
+
             if (!HasItem(itemId)) return false;
             var data = ItemDatabase.Instance.Get(itemId);
             if (data == null || data.itemType == ItemType.Consumable) return false;
@@ -121,6 +138,23 @@ namespace ZulfarakRPG
 
         public bool Unequip(ItemType slot)
         {
+            if (ServerApiClient.Instance != null && ServerApiClient.Instance.IsReady)
+            {
+                try
+                {
+                    var state = ServerApiClient.Instance.UnequipItemAsync(slot).GetAwaiter().GetResult();
+                    ApplyServerState(state);
+                    SaveLocal();
+                    OnInventoryChanged?.Invoke();
+                    return true;
+                }
+                catch (Exception e)
+                {
+                    Debug.LogWarning($"[Inventory] Unequip remoto falhou: {e.Message}");
+                    return false;
+                }
+            }
+
             string id = Equipment.GetSlot(slot);
             if (string.IsNullOrEmpty(id)) return false;
             Equipment.SetSlot(slot, null);
@@ -128,6 +162,34 @@ namespace ZulfarakRPG
             RecalculateStats();
             Save();
             OnInventoryChanged?.Invoke();
+            return true;
+        }
+
+        public bool UseConsumable(string itemId)
+        {
+            if (ServerApiClient.Instance != null && ServerApiClient.Instance.IsReady)
+            {
+                try
+                {
+                    var state = ServerApiClient.Instance.UseConsumableAsync(itemId).GetAwaiter().GetResult();
+                    ApplyServerState(state);
+                    SaveLocal();
+                    OnInventoryChanged?.Invoke();
+                    return true;
+                }
+                catch (Exception e)
+                {
+                    Debug.LogWarning($"[Inventory] Uso remoto de consumível falhou: {e.Message}");
+                    return false;
+                }
+            }
+
+            var data = ItemDatabase.Instance.Get(itemId);
+            if (data == null || data.itemType != ItemType.Consumable) return false;
+            var player = PlayerManager.Instance.Data;
+            player.hp = Mathf.Min(player.hp + data.bonusHp, player.maxHp);
+            if (!RemoveItem(itemId)) return false;
+            PlayerManager.Instance.Save();
             return true;
         }
 
@@ -166,21 +228,7 @@ namespace ZulfarakRPG
 
         public void Save()
         {
-            if (ServerApiClient.Instance != null && ServerApiClient.Instance.IsReady)
-            {
-                try
-                {
-                    var state = InventoryStateDto.FromInventory(this);
-                    ServerApiClient.Instance.SaveInventoryAsync(state).GetAwaiter().GetResult();
-                }
-                catch (Exception e)
-                {
-                    Debug.LogWarning($"[Inventory] Remote save failed: {e.Message}");
-                }
-            }
-
-            var data = new { items = Items, equipment = Equipment };
-            File.WriteAllText(SavePath, JsonConvert.SerializeObject(data, Formatting.Indented));
+            SaveLocal();
         }
 
         public void Load()
@@ -189,19 +237,12 @@ namespace ZulfarakRPG
             {
                 try
                 {
+                    SyncItemCatalog();
                     var remote = ServerApiClient.Instance.LoadInventoryAsync().GetAwaiter().GetResult();
                     if (remote != null)
                     {
-                        Items = new List<InventoryItem>();
-                        if (remote.items != null)
-                        {
-                            foreach (var it in remote.items)
-                            {
-                                if (string.IsNullOrWhiteSpace(it.itemId) || it.quantity <= 0) continue;
-                                Items.Add(new InventoryItem { itemId = it.itemId, quantity = it.quantity });
-                            }
-                        }
-                        Equipment = remote.equipment != null ? remote.equipment.ToEquipment() : new Equipment();
+                        ApplyServerState(remote);
+                        SaveLocal();
                         return;
                     }
                     Items = new List<InventoryItem>();
@@ -224,5 +265,70 @@ namespace ZulfarakRPG
             Items     = data.items ?? new List<InventoryItem>();
             Equipment = data.equipment ?? new Equipment();
         }
+
+        private void SyncItemCatalog()
+        {
+            var db = ItemDatabase.Instance;
+            if (db == null || db.items == null || db.items.Length == 0) return;
+
+            var payload = db.items
+                .Where(x => x != null && !string.IsNullOrWhiteSpace(x.itemId))
+                .Select(ItemDefinitionDto.FromItemData)
+                .ToArray();
+
+            if (payload.Length == 0) return;
+            ServerApiClient.Instance.SyncItemDefinitionsAsync(payload).GetAwaiter().GetResult();
+        }
+
+        private void ApplyServerState(InventoryStateDto remote)
+        {
+            if (remote == null)
+            {
+                Items = new List<InventoryItem>();
+                Equipment = new Equipment();
+                return;
+            }
+
+            Items = new List<InventoryItem>();
+            if (remote.items != null)
+            {
+                foreach (var it in remote.items)
+                {
+                    if (string.IsNullOrWhiteSpace(it.itemId) || it.quantity <= 0) continue;
+                    Items.Add(new InventoryItem { itemId = it.itemId, quantity = it.quantity });
+                }
+            }
+
+            Equipment = remote.equipment != null ? remote.equipment.ToEquipment() : new Equipment();
+
+            if (remote.characterStats != null && PlayerManager.Instance != null && PlayerManager.Instance.Data != null)
+            {
+                var stats = remote.characterStats;
+                var p = PlayerManager.Instance.Data;
+                p.maxHp = Mathf.Max(1, Mathf.Max(stats.maxHp, stats.hp));
+                p.hp = Mathf.Clamp(stats.hp, 0, p.maxHp);
+                p.attack = Mathf.Max(0, stats.attack);
+                p.defense = Mathf.Max(0, stats.defense);
+                p.speed = Mathf.Max(0.01f, stats.speed);
+                p.healPower = Mathf.Max(0f, stats.healPower);
+                PlayerManager.Instance.NormalizeCurrentData();
+            }
+        }
+
+        public void ApplyServerKillResult(InventoryStateDto remote, bool notify = true)
+        {
+            ApplyServerState(remote);
+            if (notify)
+            {
+                OnInventoryChanged?.Invoke();
+            }
+        }
+
+        private void SaveLocal()
+        {
+            var data = new { items = Items, equipment = Equipment };
+            File.WriteAllText(SavePath, JsonConvert.SerializeObject(data, Formatting.Indented));
+        }
+
     }
 }

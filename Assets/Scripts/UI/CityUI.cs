@@ -73,7 +73,8 @@ namespace ZulfarakRPG
             levelText.text = $"Nível {data.level}";
             classText.text = $"{data.classType} › {data.subclassType}";
             goldText.text = $"{data.gold:N0} ouro";
-            expBar.value = (float)data.currentExp / data.expToNextLevel;
+            var requiredExp = Mathf.Max(1f, data.expToNextLevel);
+            expBar.value = Mathf.Clamp01((float)data.currentExp / requiredExp);
         }
 
         private void SetConnectionStatus(bool connected)

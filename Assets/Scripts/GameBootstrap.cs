@@ -62,14 +62,22 @@ namespace ZulfarakRPG
             var steam = SteamIntegration.Instance;
             var api = ServerApiClient.Instance;
             if (steam == null || api == null) return false;
-            var authTask = api.AuthenticateWithSteamAsync(steam.SteamId, steam.SteamName);
-            var completed = await Task.WhenAny(authTask, Task.Delay(TimeSpan.FromSeconds(10)));
-            if (completed != authTask)
+
+            for (int attempt = 1; attempt <= 3; attempt++)
             {
-                Debug.LogError("[Bootstrap] Timeout na autenticação com backend.");
-                return false;
+                var authTask = api.AuthenticateWithSteamAsync(steam.SteamId, steam.SteamName);
+                var completed = await Task.WhenAny(authTask, Task.Delay(TimeSpan.FromSeconds(25)));
+                if (completed == authTask && await authTask)
+                {
+                    return true;
+                }
+
+                Debug.LogWarning($"[Bootstrap] Tentativa de autenticação {attempt}/3 falhou.");
+                await Task.Delay(TimeSpan.FromSeconds(1));
             }
-            return await authTask;
+
+            Debug.LogError("[Bootstrap] Timeout/falha ao autenticar no backend após 3 tentativas.");
+            return false;
         }
 
         private void EnsureManager<T>(string goName) where T : MonoBehaviour

@@ -8,9 +8,10 @@ namespace ZulfarakRPG
     //   Npc    → MenuPopupWindow   (Kael, Ferreiro, class masters)
     //   Map    → WorldMapPopup     (world map)
     //   Invite → FriendsListPopup  (Steam invite / lobby)
+    //   Inventory → InventoryPopupWindow
     public static class TopPopups
     {
-        public enum Kind { None, Npc, Map, Invite }
+        public enum Kind { None, Npc, Map, Invite, Inventory }
 
         // Closes every top popup except the one identified by `keep`. Call this at
         // the very start of each popup's Show() so it replaces whatever was open.
@@ -19,6 +20,7 @@ namespace ZulfarakRPG
             if (keep != Kind.Npc)    MenuPopupWindow.Hide();
             if (keep != Kind.Map)    WorldMapPopup.Hide();
             if (keep != Kind.Invite) FriendsListPopup.Hide();
+            if (keep != Kind.Inventory) InventoryPopupWindow.Hide();
         }
     }
 }

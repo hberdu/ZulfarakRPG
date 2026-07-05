@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 namespace ZulfarakRPG
@@ -18,12 +19,18 @@ namespace ZulfarakRPG
 
         private MissionData _activeSoloMission;
         private bool _soloMissionRunning;
+        private bool _enemyCatalogSynced;
 
         private void Awake()
         {
             if (Instance != null) { Destroy(gameObject); return; }
             Instance = this;
             DontDestroyOnLoad(gameObject);
+        }
+
+        private void Start()
+        {
+            StartCoroutine(SyncEnemyCatalog());
         }
 
         public MissionData[] GetIndividualMissions() =>
@@ -40,6 +47,15 @@ namespace ZulfarakRPG
             var player = PlayerManager.Instance.Data;
             if (player.level < mission.requiredLevel) return false;
 
+            if (ServerApiClient.Instance != null && ServerApiClient.Instance.IsReady && !_enemyCatalogSynced)
+            {
+                if (!TrySyncEnemyCatalogNow())
+                {
+                    Debug.LogWarning("[MissionManager] Não foi possível sincronizar catálogo de inimigos com o servidor.");
+                    return false;
+                }
+            }
+
             _activeSoloMission = mission;
             _soloMissionRunning = true;
             OnMissionStarted?.Invoke(mission);
@@ -50,10 +66,20 @@ namespace ZulfarakRPG
         private void OnSoloCombatFinished(CombatResult result)
         {
             _soloMissionRunning = false;
-            var player = PlayerManager.Instance.Data;
-            player.AddExp(result.expGained);
-            player.gold += result.goldGained;
-            PlayerManager.Instance.Save();
+
+            if (!result.resolvedByServer)
+            {
+                var player = PlayerManager.Instance.Data;
+                player.AddExp(result.expGained);
+                player.gold += result.goldGained;
+                PlayerManager.Instance.Save();
+            }
+            else
+            {
+                PlayerManager.Instance.Load();
+                Inventory.Instance.Load();
+            }
+
             OnIndividualMissionCompleted?.Invoke(_activeSoloMission, result);
             _activeSoloMission = null;
         }
@@ -105,6 +131,80 @@ namespace ZulfarakRPG
             chance += (avgLevel - mission.requiredLevel) * 0.02f;
 
             return Mathf.Clamp01(chance);
+        }
+
+        private IEnumerator SyncEnemyCatalog()
+        {
+            float timeout = Time.unscaledTime + 30f;
+            while ((ServerApiClient.Instance == null || !ServerApiClient.Instance.IsReady) && Time.unscaledTime < timeout)
+            {
+                yield return null;
+            }
+
+            if (ServerApiClient.Instance == null || !ServerApiClient.Instance.IsReady)
+            {
+                yield break;
+            }
+
+            var payload = allMissions
+                .Where(x => x != null && x.enemies != null)
+                .SelectMany(x => x.enemies)
+                .Where(x => x != null)
+                .GroupBy(x => x.GetServerEnemyId())
+                .Select(x => EnemyDefinitionDto.FromEnemyData(x.First()))
+                .Where(x => !string.IsNullOrWhiteSpace(x.enemyId))
+                .ToArray();
+
+            if (payload.Length == 0)
+            {
+                yield break;
+            }
+
+            var task = ServerApiClient.Instance.SyncEnemyDefinitionsAsync(payload);
+            while (!task.IsCompleted)
+            {
+                yield return null;
+            }
+
+            if (task.IsFaulted)
+            {
+                var error = task.Exception?.GetBaseException();
+                Debug.LogWarning($"[MissionManager] Sync de inimigos falhou: {error?.Message}");
+                yield break;
+            }
+
+            _enemyCatalogSynced = true;
+            Debug.Log($"[MissionManager] Catálogo de inimigos sincronizado ({payload.Length} registros).");
+        }
+
+        private bool TrySyncEnemyCatalogNow()
+        {
+            var payload = allMissions
+                .Where(x => x != null && x.enemies != null)
+                .SelectMany(x => x.enemies)
+                .Where(x => x != null)
+                .GroupBy(x => x.GetServerEnemyId())
+                .Select(x => EnemyDefinitionDto.FromEnemyData(x.First()))
+                .Where(x => !string.IsNullOrWhiteSpace(x.enemyId))
+                .ToArray();
+
+            if (payload.Length == 0)
+            {
+                return false;
+            }
+
+            try
+            {
+                ServerApiClient.Instance.SyncEnemyDefinitionsAsync(payload).GetAwaiter().GetResult();
+                _enemyCatalogSynced = true;
+                Debug.Log($"[MissionManager] Catálogo de inimigos sincronizado ({payload.Length} registros).");
+                return true;
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[MissionManager] Sync imediato de inimigos falhou: {e.Message}");
+                return false;
+            }
         }
     }
 }

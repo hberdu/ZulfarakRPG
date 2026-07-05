@@ -172,10 +172,7 @@ namespace ZulfarakRPG
 
         private void UseConsumable(ItemData data)
         {
-            var player = PlayerManager.Instance.Data;
-            player.hp = Mathf.Min(player.hp + data.bonusHp, player.maxHp);
-            Inventory.Instance.RemoveItem(data.itemId);
-            PlayerManager.Instance.Save();
+            Inventory.Instance.UseConsumable(data.itemId);
             FindAnyObjectByType<CityUI>()?.RefreshPlayerInfo();
         }
 
@@ -193,7 +190,7 @@ namespace ZulfarakRPG
             if (data.bonusAttack  != 0) statLines.Add($"ATQ +{data.bonusAttack}");
             if (data.bonusDefense != 0) statLines.Add($"DEF +{data.bonusDefense}");
             if (data.bonusSpeed   != 0) statLines.Add($"VEL +{data.bonusSpeed:0.0}");
-            if (data.bonusHealPower != 0) statLines.Add($"CURA +{data.bonusHealPower:0.0}");
+            if (data.bonusHealPower != 0) statLines.Add($"REGEN/s +{data.bonusHealPower:0.0}");
             tooltipStats.text  = string.Join("\n", statLines);
         }
 
@@ -212,4 +209,3 @@ namespace ZulfarakRPG
         }
     }
 }
-

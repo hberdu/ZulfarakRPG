@@ -1,4 +1,6 @@
+using System;
 using System.Collections;
+using System.Text;
 using UnityEngine;
 
 namespace ZulfarakRPG
@@ -25,6 +27,9 @@ namespace ZulfarakRPG
         public Sprite[] attackFrames;
         public Sprite[] deathFrames;
 
+        [Header("Server")]
+        public string enemyId;
+
         // ── State ──────────────────────────────────────────────────────────
         private Rigidbody2D    _rb;
         private SpriteRenderer _sr;
@@ -38,6 +43,8 @@ namespace ZulfarakRPG
 
         private Coroutine _animCoroutine;
         private string    _currentAnim;
+        private static EnemyDefinitionDto[] _enemyCatalogCache;
+        private static bool _enemyCatalogLoaded;
 
         public bool IsAlive => !_dead;
 
@@ -66,6 +73,7 @@ namespace ZulfarakRPG
             _hpBar?.AttachAbove(_sr);
             _hpBar?.SetHealth(_hp, maxHealth);
             PlayAnim(idleFrames, 8f);
+            StartCoroutine(ResolveEnemyFromServer());
 
             // Never physically shove anything: ignore collisions with other skeletons AND
             // the player. Enemies close to attackRange and strike via TakeDamage — contact
@@ -206,8 +214,191 @@ namespace ZulfarakRPG
                 }
             }
 
+            yield return RegisterKillOnServer();
+
             WaveManager.Instance?.OnEnemyDied(this);
             Destroy(gameObject, 0.3f);
+        }
+
+        IEnumerator RegisterKillOnServer()
+        {
+            if (ServerApiClient.Instance == null || !ServerApiClient.Instance.IsReady)
+            {
+                yield break;
+            }
+
+            var resolvedEnemyId = GetServerEnemyId();
+            if (string.IsNullOrWhiteSpace(resolvedEnemyId))
+            {
+                Debug.LogWarning("[SkeletonEnemy] EnemyId vazio; kill não enviado ao servidor.");
+                yield break;
+            }
+
+            var task = ServerApiClient.Instance.RegisterMonsterKillAsync(resolvedEnemyId, gameObject.name);
+            while (!task.IsCompleted)
+            {
+                yield return null;
+            }
+
+            if (task.IsFaulted || task.IsCanceled || task.Result == null)
+            {
+                var error = task.Exception?.GetBaseException();
+                Debug.LogWarning($"[SkeletonEnemy] Kill remoto falhou para '{resolvedEnemyId}': {error?.Message}");
+                yield break;
+            }
+
+            var result = task.Result;
+            Debug.Log($"[SkeletonEnemy] Kill remoto OK enemy={result.enemyId} exp={result.expGained} gold={result.goldGained} drops={result.drops.Length}");
+            if (result.character != null)
+            {
+                PlayerManager.Instance?.ApplyServerCharacter(result.character, saveLocal: false);
+            }
+
+            if (result.inventory != null)
+            {
+                Inventory.Instance?.ApplyServerKillResult(result.inventory, notify: true);
+            }
+        }
+
+        string GetServerEnemyId()
+        {
+            if (!string.IsNullOrWhiteSpace(enemyId))
+            {
+                return enemyId.Trim();
+            }
+
+            var source = gameObject.name.Replace("(Clone)", "").Trim();
+            if (string.IsNullOrWhiteSpace(source))
+            {
+                return string.Empty;
+            }
+
+            var raw = source.ToLowerInvariant();
+            var sb = new StringBuilder(raw.Length);
+            foreach (var ch in raw)
+            {
+                if ((ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9'))
+                {
+                    sb.Append(ch);
+                }
+                else if (ch == ' ' || ch == '-' || ch == '_')
+                {
+                    if (sb.Length == 0 || sb[sb.Length - 1] == '_') continue;
+                    sb.Append('_');
+                }
+            }
+
+            return sb.ToString().Trim('_');
+        }
+
+        IEnumerator ResolveEnemyFromServer()
+        {
+            if (ServerApiClient.Instance == null || !ServerApiClient.Instance.IsReady)
+            {
+                yield break;
+            }
+
+            if (!_enemyCatalogLoaded)
+            {
+                var task = ServerApiClient.Instance.LoadEnemyDefinitionsAsync();
+                while (!task.IsCompleted)
+                {
+                    yield return null;
+                }
+
+                if (task.IsFaulted || task.IsCanceled)
+                {
+                    var error = task.Exception?.GetBaseException();
+                    Debug.LogWarning($"[SkeletonEnemy] Falha ao carregar catálogo de inimigos: {error?.Message}");
+                    yield break;
+                }
+
+                _enemyCatalogCache = task.Result ?? Array.Empty<EnemyDefinitionDto>();
+                _enemyCatalogLoaded = true;
+            }
+
+            if (_enemyCatalogCache == null || _enemyCatalogCache.Length == 0)
+            {
+                yield break;
+            }
+
+            var currentId = GetServerEnemyId();
+            var currentName = gameObject.name.Replace("(Clone)", "").Trim();
+            var matched = ResolveCatalogEnemy(_enemyCatalogCache, currentId, currentName);
+            if (matched == null)
+            {
+                Debug.LogWarning($"[SkeletonEnemy] Sem mapeamento de catálogo para '{currentName}' (id atual '{currentId}').");
+                yield break;
+            }
+
+            enemyId = matched.enemyId;
+            maxHealth = Mathf.Max(1f, matched.hp);
+            attackDamage = Mathf.Max(0f, matched.attack);
+            _hp = maxHealth;
+            _hpBar?.SetHealth(_hp, maxHealth);
+        }
+
+        private static EnemyDefinitionDto ResolveCatalogEnemy(EnemyDefinitionDto[] catalog, string enemyIdRaw, string enemyNameRaw)
+        {
+            var idKey = NormalizeKey(enemyIdRaw);
+            var nameKey = NormalizeKey(enemyNameRaw);
+
+            EnemyDefinitionDto best = null;
+            var bestScore = -1;
+
+            foreach (var enemy in catalog)
+            {
+                if (enemy == null || string.IsNullOrWhiteSpace(enemy.enemyId))
+                {
+                    continue;
+                }
+
+                var enemyIdKey = NormalizeKey(enemy.enemyId);
+                var enemyNameKey = NormalizeKey(enemy.name);
+                var score = 0;
+
+                if (!string.IsNullOrWhiteSpace(idKey))
+                {
+                    if (enemyIdKey == idKey || enemyNameKey == idKey) score = score < 100 ? 100 : score;
+                    else if (enemyIdKey.Contains(idKey) || enemyNameKey.Contains(idKey)) score = score < 80 ? 80 : score;
+                    else if (idKey.Contains(enemyIdKey) || idKey.Contains(enemyNameKey)) score = score < 60 ? 60 : score;
+                }
+
+                if (!string.IsNullOrWhiteSpace(nameKey))
+                {
+                    if (enemyIdKey == nameKey || enemyNameKey == nameKey) score = score < 100 ? 100 : score;
+                    else if (enemyIdKey.Contains(nameKey) || enemyNameKey.Contains(nameKey)) score = score < 80 ? 80 : score;
+                    else if (nameKey.Contains(enemyIdKey) || nameKey.Contains(enemyNameKey)) score = score < 60 ? 60 : score;
+                }
+
+                if (score > bestScore)
+                {
+                    best = enemy;
+                    bestScore = score;
+                }
+            }
+
+            return bestScore >= 60 ? best : null;
+        }
+
+        private static string NormalizeKey(string raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                return string.Empty;
+            }
+
+            var trimmed = raw.Replace("(Clone)", "").Trim().ToLowerInvariant();
+            var sb = new StringBuilder(trimmed.Length);
+            foreach (var ch in trimmed)
+            {
+                if ((ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9'))
+                {
+                    sb.Append(ch);
+                }
+            }
+
+            return sb.ToString();
         }
 
         // ── Animation ──────────────────────────────────────────────────────

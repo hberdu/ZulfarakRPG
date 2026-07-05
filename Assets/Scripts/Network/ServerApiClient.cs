@@ -16,11 +16,12 @@ namespace ZulfarakRPG
         public string apiBaseUrl = "https://zulfarakrpg-production.up.railway.app";
 
         private const string TokenPrefKey = "zulfarak.jwt.token";
-        private static readonly HttpClient Http = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
+        private static readonly HttpClient Http = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
         private string _accessToken;
+        private bool _sessionAuthenticated;
 
         public bool IsAuthenticated => !string.IsNullOrWhiteSpace(_accessToken);
-        public bool IsReady => IsAuthenticated;
+        public bool IsReady => _sessionAuthenticated && IsAuthenticated;
 
         private void Awake()
         {
@@ -28,6 +29,7 @@ namespace ZulfarakRPG
             Instance = this;
             DontDestroyOnLoad(gameObject);
             _accessToken = PlayerPrefs.GetString(TokenPrefKey, string.Empty);
+            _sessionAuthenticated = false;
         }
 
         public async Task<bool> AuthenticateWithSteamAsync(string steamId, string playerName)
@@ -56,6 +58,7 @@ namespace ZulfarakRPG
                 }
 
                 _accessToken = auth.accessToken;
+                _sessionAuthenticated = true;
                 PlayerPrefs.SetString(TokenPrefKey, _accessToken);
                 PlayerPrefs.Save();
                 Debug.Log("[ServerApi] Auth OK.");
@@ -64,11 +67,13 @@ namespace ZulfarakRPG
             catch (TaskCanceledException)
             {
                 Debug.LogWarning("[ServerApi] Timeout na requisição de autenticação.");
+                _sessionAuthenticated = false;
                 return false;
             }
             catch (Exception e)
             {
                 Debug.LogWarning($"[ServerApi] Falha ao autenticar: {e.Message}");
+                _sessionAuthenticated = false;
                 return false;
             }
         }
@@ -101,12 +106,118 @@ namespace ZulfarakRPG
             await PutAsync("/api/inventory/me", state).ConfigureAwait(false);
         }
 
+        public async Task<InventoryStateDto> EquipItemAsync(string itemId)
+        {
+            var raw = await PostAsync("/api/inventory/me/equip", new EquipItemRequest { itemId = itemId }, includeAuth: true).ConfigureAwait(false);
+            return JsonConvert.DeserializeObject<InventoryStateDto>(raw);
+        }
+
+        public async Task<InventoryStateDto> UnequipItemAsync(ItemType slotType)
+        {
+            var raw = await PostAsync("/api/inventory/me/unequip", new UnequipItemRequest { slotType = (int)slotType }, includeAuth: true).ConfigureAwait(false);
+            return JsonConvert.DeserializeObject<InventoryStateDto>(raw);
+        }
+
+        public async Task<InventoryStateDto> UseConsumableAsync(string itemId)
+        {
+            var raw = await PostAsync("/api/inventory/me/use", new UseConsumableRequest { itemId = itemId }, includeAuth: true).ConfigureAwait(false);
+            return JsonConvert.DeserializeObject<InventoryStateDto>(raw);
+        }
+
+        public async Task<ItemDefinitionDto[]> LoadItemDefinitionsAsync()
+        {
+            var raw = await GetAsync("/api/items/definitions").ConfigureAwait(false);
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                return Array.Empty<ItemDefinitionDto>();
+            }
+
+            var definitions = JsonConvert.DeserializeObject<ItemDefinitionDto[]>(raw);
+            return definitions ?? Array.Empty<ItemDefinitionDto>();
+        }
+
+        public async Task SyncItemDefinitionsAsync(ItemDefinitionDto[] items)
+        {
+            if (items == null || items.Length == 0)
+            {
+                return;
+            }
+
+            var payload = new SyncItemDefinitionsRequest { items = items };
+            await PutAsync("/api/items/definitions/sync", payload).ConfigureAwait(false);
+        }
+
+        public async Task SyncEnemyDefinitionsAsync(EnemyDefinitionDto[] enemies)
+        {
+            if (enemies == null || enemies.Length == 0)
+            {
+                return;
+            }
+
+            var payload = new SyncEnemyDefinitionsRequest { enemies = enemies };
+            await PutAsync("/api/enemies/definitions/sync", payload).ConfigureAwait(false);
+        }
+
+        public async Task<EnemyDefinitionDto[]> LoadEnemyDefinitionsAsync()
+        {
+            var raw = await GetAsync("/api/enemies/definitions").ConfigureAwait(false);
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                return Array.Empty<EnemyDefinitionDto>();
+            }
+
+            var definitions = JsonConvert.DeserializeObject<EnemyDefinitionDto[]>(raw);
+            return definitions ?? Array.Empty<EnemyDefinitionDto>();
+        }
+
+        public async Task<CombatResultDto> ResolveCombatAsync(string[] enemyIds)
+        {
+            if (enemyIds == null || enemyIds.Length == 0)
+            {
+                return null;
+            }
+
+            var payload = new ResolveCombatRequest { enemyIds = enemyIds };
+            var raw = await PostAsync("/api/combat/resolve", payload, includeAuth: true).ConfigureAwait(false);
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                return null;
+            }
+
+            return JsonConvert.DeserializeObject<CombatResultDto>(raw);
+        }
+
+        public async Task<MonsterKillResultDto> RegisterMonsterKillAsync(string enemyId, string enemyName = null)
+        {
+            if (string.IsNullOrWhiteSpace(enemyId))
+            {
+                return null;
+            }
+
+            var payload = new RegisterMonsterKillRequest
+            {
+                enemyId = enemyId.Trim(),
+                enemyName = string.IsNullOrWhiteSpace(enemyName) ? string.Empty : enemyName.Trim()
+            };
+            var raw = await PostAsync("/api/combat/monster-kill", payload, includeAuth: true).ConfigureAwait(false);
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                return null;
+            }
+
+            return JsonConvert.DeserializeObject<MonsterKillResultDto>(raw);
+        }
+
         private async Task<string> GetAsync(string path)
         {
             using var req = BuildRequest(HttpMethod.Get, path, includeAuth: true);
             using var res = await Http.SendAsync(req).ConfigureAwait(false);
             if (res.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
-            res.EnsureSuccessStatusCode();
+            if (!res.IsSuccessStatusCode)
+            {
+                var errorBody = await res.Content.ReadAsStringAsync().ConfigureAwait(false);
+                throw new HttpRequestException($"HTTP {(int)res.StatusCode} {res.ReasonPhrase}: {errorBody}");
+            }
             return await res.Content.ReadAsStringAsync().ConfigureAwait(false);
         }
 
@@ -114,7 +225,11 @@ namespace ZulfarakRPG
         {
             using var req = BuildRequest(HttpMethod.Post, path, includeAuth, payload);
             using var res = await Http.SendAsync(req).ConfigureAwait(false);
-            res.EnsureSuccessStatusCode();
+            if (!res.IsSuccessStatusCode)
+            {
+                var errorBody = await res.Content.ReadAsStringAsync().ConfigureAwait(false);
+                throw new HttpRequestException($"HTTP {(int)res.StatusCode} {res.ReasonPhrase}: {errorBody}");
+            }
             return await res.Content.ReadAsStringAsync().ConfigureAwait(false);
         }
 
@@ -122,7 +237,11 @@ namespace ZulfarakRPG
         {
             using var req = BuildRequest(HttpMethod.Put, path, includeAuth: true, payload);
             using var res = await Http.SendAsync(req).ConfigureAwait(false);
-            res.EnsureSuccessStatusCode();
+            if (!res.IsSuccessStatusCode)
+            {
+                var errorBody = await res.Content.ReadAsStringAsync().ConfigureAwait(false);
+                throw new HttpRequestException($"HTTP {(int)res.StatusCode} {res.ReasonPhrase}: {errorBody}");
+            }
             return await res.Content.ReadAsStringAsync().ConfigureAwait(false);
         }
 
@@ -172,6 +291,7 @@ namespace ZulfarakRPG
         public bool subclassUnlocked;
         public int level;
         public long currentExp;
+        public long expToNextLevel;
         public long gold;
         public int hp;
         public int maxHp;
@@ -196,6 +316,7 @@ namespace ZulfarakRPG
             subclassUnlocked = data.subclassUnlocked,
             level = data.level,
             currentExp = data.currentExp,
+            expToNextLevel = data.expToNextLevel,
             gold = data.gold,
             hp = data.hp,
             maxHp = data.maxHp,
@@ -221,6 +342,7 @@ namespace ZulfarakRPG
             subclassUnlocked = subclassUnlocked,
             level = level,
             currentExp = currentExp,
+            expToNextLevelServer = expToNextLevel > 0 ? expToNextLevel : PlayerData.CalculateExpToNextLevel(level),
             gold = gold,
             hp = hp,
             maxHp = maxHp,
@@ -239,6 +361,7 @@ namespace ZulfarakRPG
     {
         public InventoryItemDto[] items = Array.Empty<InventoryItemDto>();
         public EquipmentDto equipment = new EquipmentDto();
+        public CharacterStatsDto characterStats;
 
         public static InventoryStateDto FromInventory(Inventory inventory) => new InventoryStateDto
         {
@@ -293,5 +416,187 @@ namespace ZulfarakRPG
             ringId = ringId,
             amuletId = amuletId
         };
+    }
+
+    [Serializable]
+    public class CharacterStatsDto
+    {
+        public int hp;
+        public int maxHp;
+        public int attack;
+        public int defense;
+        public float speed;
+        public float healPower;
+    }
+
+    [Serializable]
+    public class ItemDefinitionDto
+    {
+        public string itemId;
+        public string name;
+        public string description;
+        public int itemType;
+        public int rarity;
+        public int requiredLevel;
+        public int goldValue;
+        public int maxStack = 1;
+        public int bonusHp;
+        public int bonusAttack;
+        public int bonusDefense;
+        public float bonusSpeed;
+        public float bonusHealPower;
+        public int[] allowedClassTypes = Array.Empty<int>();
+
+        public static ItemDefinitionDto FromItemData(ItemData item) => new ItemDefinitionDto
+        {
+            itemId = item.itemId,
+            name = item.itemName,
+            description = item.description ?? string.Empty,
+            itemType = (int)item.itemType,
+            rarity = (int)item.rarity,
+            requiredLevel = item.requiredLevel,
+            goldValue = item.goldValue,
+            maxStack = item.itemType == ItemType.Consumable ? 999 : 1,
+            bonusHp = item.bonusHp,
+            bonusAttack = item.bonusAttack,
+            bonusDefense = item.bonusDefense,
+            bonusSpeed = item.bonusSpeed,
+            bonusHealPower = item.bonusHealPower,
+            allowedClassTypes = item.allowedClasses == null
+                ? Array.Empty<int>()
+                : Array.ConvertAll(item.allowedClasses, x => (int)x)
+        };
+    }
+
+    [Serializable]
+    public class SyncItemDefinitionsRequest
+    {
+        public ItemDefinitionDto[] items = Array.Empty<ItemDefinitionDto>();
+    }
+
+    [Serializable]
+    public class EquipItemRequest
+    {
+        public string itemId;
+    }
+
+    [Serializable]
+    public class UnequipItemRequest
+    {
+        public int slotType;
+    }
+
+    [Serializable]
+    public class UseConsumableRequest
+    {
+        public string itemId;
+    }
+
+    [Serializable]
+    public class EnemyDefinitionDto
+    {
+        public string enemyId;
+        public string name;
+        public int hp;
+        public int attack;
+        public int defense;
+        public float attackSpeed;
+        public int expReward;
+        public int goldReward;
+        public bool isBoss;
+        public EnemyDropDto[] drops = Array.Empty<EnemyDropDto>();
+
+        public static EnemyDefinitionDto FromEnemyData(EnemyData enemy) => new EnemyDefinitionDto
+        {
+            enemyId = enemy.GetServerEnemyId(),
+            name = enemy.enemyName,
+            hp = enemy.hp,
+            attack = enemy.attack,
+            defense = enemy.defense,
+            attackSpeed = enemy.attackSpeed,
+            expReward = enemy.expReward,
+            goldReward = enemy.goldReward,
+            isBoss = enemy.isBoss,
+            drops = enemy.possibleDrops == null
+                ? Array.Empty<EnemyDropDto>()
+                : Array.ConvertAll(enemy.possibleDrops, x => EnemyDropDto.FromItemReward(x))
+        };
+    }
+
+    [Serializable]
+    public class EnemyDropDto
+    {
+        public string itemId;
+        public double dropChance;
+        public int minQuantity = 1;
+        public int maxQuantity = 1;
+
+        public static EnemyDropDto FromItemReward(ItemReward reward)
+        {
+            var itemId = reward != null ? reward.itemId : null;
+            if (string.IsNullOrWhiteSpace(itemId) && reward != null)
+            {
+                itemId = reward.itemName;
+            }
+
+            var qty = reward == null ? 1 : Math.Max(1, reward.quantity);
+            return new EnemyDropDto
+            {
+                itemId = itemId ?? string.Empty,
+                dropChance = reward == null ? 0 : Math.Max(0d, Math.Min(1d, reward.dropChance)),
+                minQuantity = qty,
+                maxQuantity = qty
+            };
+        }
+    }
+
+    [Serializable]
+    public class SyncEnemyDefinitionsRequest
+    {
+        public EnemyDefinitionDto[] enemies = Array.Empty<EnemyDefinitionDto>();
+    }
+
+    [Serializable]
+    public class ResolveCombatRequest
+    {
+        public string[] enemyIds = Array.Empty<string>();
+    }
+
+    [Serializable]
+    public class CombatResultDto
+    {
+        public bool victory;
+        public int killCount;
+        public int playerRemainingHp;
+        public long expGained;
+        public long goldGained;
+        public CombatDropResultDto[] drops = Array.Empty<CombatDropResultDto>();
+        public InventoryStateDto inventory;
+        public CharacterDto character;
+    }
+
+    [Serializable]
+    public class CombatDropResultDto
+    {
+        public string itemId;
+        public int quantity;
+    }
+
+    [Serializable]
+    public class RegisterMonsterKillRequest
+    {
+        public string enemyId;
+        public string enemyName;
+    }
+
+    [Serializable]
+    public class MonsterKillResultDto
+    {
+        public string enemyId;
+        public long expGained;
+        public long goldGained;
+        public CombatDropResultDto[] drops = Array.Empty<CombatDropResultDto>();
+        public InventoryStateDto inventory;
+        public CharacterDto character;
     }
 }
