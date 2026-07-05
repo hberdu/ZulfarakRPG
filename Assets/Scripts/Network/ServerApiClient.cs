@@ -13,8 +13,8 @@ namespace ZulfarakRPG
         public static ServerApiClient Instance { get; private set; }
 
         [Header("HTTP API")]
-        public string apiBaseUrl = "http://localhost:32772";
-        // public string apiBaseUrl = "https://zulfarakrpg-production.up.railway.app";
+        //public string apiBaseUrl = "http://localhost:32772";
+        public string apiBaseUrl = "https://zulfarakrpg-production.up.railway.app";
 
         private const string TokenPrefKey = "zulfarak.jwt.token";
         private static readonly HttpClient Http = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
