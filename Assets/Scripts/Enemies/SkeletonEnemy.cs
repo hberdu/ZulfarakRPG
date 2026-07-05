@@ -251,13 +251,15 @@ namespace ZulfarakRPG
             Debug.Log($"[SkeletonEnemy] Kill remoto OK enemy={result.enemyId} exp={result.expGained} gold={result.goldGained} drops={result.drops.Length}");
             if (result.character != null)
             {
-                PlayerManager.Instance?.ApplyServerCharacter(result.character, saveLocal: false);
+                PlayerManager.Instance?.ApplyServerCharacter(result.character, saveLocal: false, preserveCurrentHp: true);
             }
 
             if (result.inventory != null)
             {
                 Inventory.Instance?.ApplyServerKillResult(result.inventory, notify: true);
             }
+
+            FindAnyObjectByType<CityUI>()?.RefreshPlayerInfo();
         }
 
         string GetServerEnemyId()

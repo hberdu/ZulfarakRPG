@@ -148,7 +148,7 @@ namespace ZulfarakRPG
             if (data.maxHp > 0) maxHealth = data.maxHp;
             if (data.attack > 0) attackDamage = data.attack;
 
-            _hp = Mathf.Clamp(data.hp > 0 ? data.hp : maxHealth, 0f, maxHealth);
+            _hp = Mathf.Clamp(data.hp, 0f, maxHealth);
         }
 
         void SyncPlayerDataHealthFromRuntime()
@@ -231,10 +231,21 @@ namespace ZulfarakRPG
             var data = PlayerManager.Instance != null ? PlayerManager.Instance.Data : null;
             if (data == null) return;
 
+            if (data.attack > 0 && Mathf.Abs(attackDamage - data.attack) > 0.001f)
+            {
+                attackDamage = data.attack;
+            }
+
             if (data.maxHp > 0 && Mathf.Abs(maxHealth - data.maxHp) > 0.001f)
             {
                 maxHealth = data.maxHp;
                 _hp = Mathf.Clamp(_hp, 0f, maxHealth);
+            }
+
+            if (Mathf.Abs(_hp - data.hp) > 0.5f)
+            {
+                _hp = Mathf.Clamp(data.hp, 0f, maxHealth);
+                _hpBar?.SetHealth(_hp, maxHealth);
             }
 
             var healPerSecond = Mathf.Max(0f, data.healPower);
@@ -576,6 +587,7 @@ namespace ZulfarakRPG
             }
 
             yield return new WaitForSeconds(1.6f);
+            PlayerManager.Instance?.RestoreFullHealthAndSave();
             // Death penalty: always respawn in the main city, not back into the dungeon.
             SceneManager.LoadScene("Zulfarak");
         }

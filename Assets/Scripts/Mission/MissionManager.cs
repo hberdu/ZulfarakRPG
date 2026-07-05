@@ -80,6 +80,11 @@ namespace ZulfarakRPG
                 Inventory.Instance.Load();
             }
 
+            if (!result.victory)
+            {
+                PlayerManager.Instance?.RestoreFullHealthAndSave();
+            }
+
             OnIndividualMissionCompleted?.Invoke(_activeSoloMission, result);
             _activeSoloMission = null;
         }

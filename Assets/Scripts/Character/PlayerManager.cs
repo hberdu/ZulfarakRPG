@@ -74,16 +74,23 @@ namespace ZulfarakRPG
             catch (System.Exception e) { Debug.LogError($"[PlayerManager] Load failed: {e}"); }
         }
 
-        public void ApplyServerCharacter(CharacterDto dto, bool saveLocal = false)
+        public void ApplyServerCharacter(CharacterDto dto, bool saveLocal = false, bool preserveCurrentHp = false)
         {
             if (dto == null) return;
 
+            var previousHp = Data != null ? Data.hp : 0;
             var remote = dto.ToPlayerData();
             if (string.IsNullOrWhiteSpace(remote.steamId) && SteamIntegration.Instance != null)
                 remote.steamId = SteamIntegration.Instance.SteamId;
 
             Data = remote;
             NormalizeData();
+
+            if (preserveCurrentHp)
+            {
+                Data.hp = Mathf.Clamp(previousHp, 0, Data.maxHp);
+            }
+
             if (saveLocal)
             {
                 SaveLocalOnly();
@@ -119,6 +126,14 @@ namespace ZulfarakRPG
         public void NormalizeCurrentData()
         {
             NormalizeData();
+        }
+
+        public void RestoreFullHealthAndSave()
+        {
+            if (Data == null) return;
+            Data.hp = Data.maxHp;
+            NormalizeData();
+            Save();
         }
 
         private void SaveLocalOnly()

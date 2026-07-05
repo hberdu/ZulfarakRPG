@@ -280,7 +280,7 @@ namespace ZulfarakRPG
             ServerApiClient.Instance.SyncItemDefinitionsAsync(payload).GetAwaiter().GetResult();
         }
 
-        private void ApplyServerState(InventoryStateDto remote)
+        private void ApplyServerState(InventoryStateDto remote, bool preserveCurrentHp = false)
         {
             if (remote == null)
             {
@@ -305,8 +305,11 @@ namespace ZulfarakRPG
             {
                 var stats = remote.characterStats;
                 var p = PlayerManager.Instance.Data;
+                var previousHp = p.hp;
                 p.maxHp = Mathf.Max(1, Mathf.Max(stats.maxHp, stats.hp));
-                p.hp = Mathf.Clamp(stats.hp, 0, p.maxHp);
+                p.hp = preserveCurrentHp
+                    ? Mathf.Clamp(previousHp, 0, p.maxHp)
+                    : Mathf.Clamp(stats.hp, 0, p.maxHp);
                 p.attack = Mathf.Max(0, stats.attack);
                 p.defense = Mathf.Max(0, stats.defense);
                 p.speed = Mathf.Max(0.01f, stats.speed);
@@ -317,7 +320,7 @@ namespace ZulfarakRPG
 
         public void ApplyServerKillResult(InventoryStateDto remote, bool notify = true)
         {
-            ApplyServerState(remote);
+            ApplyServerState(remote, preserveCurrentHp: true);
             if (notify)
             {
                 OnInventoryChanged?.Invoke();
