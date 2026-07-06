@@ -207,19 +207,13 @@ namespace ZulfarakRPG
         static Sprite[] Pick(Sprite[] preferred, Sprite[] fallback)
             => (preferred != null && preferred.Length > 0) ? preferred : fallback;
 
-        // Rests the player's foot collider on the ground line — the SAME way the city
-        // NPCs settle their identical foot collider (offset 0.5, size 0.3×0.2) onto the
-        // GroundFloor. Purely collider-based (no alpha-feet scan), so a non-readable
-        // texture can never strand the hero high in the air; SyncTransforms makes the
-        // collider bounds reflect the authored position before we measure them.
+        // Seats the hero's VISIBLE feet on the ground line (alpha-aware) and realigns
+        // the foot collider bottom to match, so physics keeps holding the sprite at
+        // the visible line. Falls back to collider-only when the alpha scan is
+        // unreliable, so a non-readable texture can never strand the hero mid-air.
         void RestOnGroundAtSpawn()
         {
-            var col = GetComponent<Collider2D>();
-            if (col == null) return;
-            Physics2D.SyncTransforms();
-            float groundTop = GroundAlignUtil.FindGroundTopY();
-            float shift = (groundTop + 0.002f) - col.bounds.min.y;
-            transform.position += new Vector3(0f, shift, 0f);
+            GroundAlignUtil.SeatCharacterOnGround(transform, _sr);
             if (_rb != null) _rb.linearVelocity = Vector2.zero;
         }
 
@@ -460,6 +454,12 @@ namespace ZulfarakRPG
             yield return new WaitForSeconds(animDur * 0.5f);
             if (target == null || !target.IsAlive) yield break;
             FireFireball(target, dmg, crit);
+
+            // The wizard strip's trailing frames swing the arm back behind the body
+            // AFTER the release — cut them and hold the cast-apex pose until the
+            // attack lock expires and idle takes over.
+            if (_animCoroutine != null) StopCoroutine(_animCoroutine);
+            _currentAnim = null;
         }
 
         void FireFireball(SkeletonEnemy target, float dmg, bool crit)
@@ -629,12 +629,9 @@ namespace ZulfarakRPG
 
         IEnumerator CelebrationRoutine()
         {
-            for (int i = 0; i < 3; i++)
-            {
-                _rb.linearVelocity = new Vector2(0f, 7f);
-                yield return new WaitForSeconds(0.65f);
-            }
-            yield return new WaitForSeconds(0.4f);
+            // No victory jumps — the hero just holds idle for a beat before
+            // walking to the exit portal.
+            yield return new WaitForSeconds(1.2f);
             WaveManager.Instance?.OnCelebrationDone();
         }
 

@@ -176,9 +176,14 @@ namespace ZulfarakRPG
                 yield return StartCoroutine(ScrollBanner(bossText));
             }
 
-            var prefab = necromancerPrefab != null ? necromancerPrefab
-                       : armoredSkeletonPrefab != null ? armoredSkeletonPrefab
-                       : skeletonPrefab;
+            var prefab = necromancerPrefab;
+            if (prefab == null)
+            {
+                Debug.LogError("[WaveManager] necromancerPrefab NÃO está atribuído — o boss vai usar um esqueleto comum. " +
+                               "Rode Tools > ZulfarakRPG > Import Character Sprites e depois o Scene Setup Wizard " +
+                               "para gerar Assets/Prefabs/NecromancerBoss.prefab e religar a cena Dungeon.");
+                prefab = armoredSkeletonPrefab != null ? armoredSkeletonPrefab : skeletonPrefab;
+            }
             if (prefab == null) yield break;
 
             var sp = spawnPoints != null && spawnPoints.Length > 0
@@ -331,7 +336,7 @@ namespace ZulfarakRPG
             if (defeatText) StartCoroutine(ScrollBanner(defeatText));
         }
 
-        // ── Called by PlayerController2D after celebration jumps ───────────
+        // ── Called by PlayerController2D after the victory pause ───────────
         public void OnCelebrationDone()
         {
             if (clearText) clearText.gameObject.SetActive(false);

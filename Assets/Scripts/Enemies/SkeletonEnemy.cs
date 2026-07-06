@@ -164,12 +164,7 @@ namespace ZulfarakRPG
 
         void RestOnGroundAtSpawn()
         {
-            var col = GetComponent<Collider2D>();
-            if (col == null) return;
-            Physics2D.SyncTransforms();
-            float groundTop = GroundAlignUtil.FindGroundTopY();
-            float shift = (groundTop + 0.002f) - col.bounds.min.y;
-            transform.position += new Vector3(0f, shift, 0f);
+            GroundAlignUtil.SeatCharacterOnGround(transform, _sr);
             _rb.linearVelocity = Vector2.zero;
         }
 

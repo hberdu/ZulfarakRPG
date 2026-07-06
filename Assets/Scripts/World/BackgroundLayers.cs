@@ -72,16 +72,29 @@ namespace ZulfarakRPG
                 go.transform.localScale = new Vector3(scale, scale, 1f);
 
                 if (parallax)
-                    go.AddComponent<ParallaxBg>().factor = 0.03f + i * 0.03f;   // back slow → front fast
+                {
+                    // Second copy one sprite-width to the right so the layer can wrap
+                    // seamlessly no matter how far the inter-wave runs scroll it.
+                    var dup = new GameObject("Bg_" + LayerRes[i] + "_wrap");
+                    dup.transform.SetParent(go.transform, false);
+                    dup.transform.localPosition = new Vector3(sw, 0f, 0f);
+                    var dsr = dup.AddComponent<SpriteRenderer>();
+                    dsr.sprite       = sprite;
+                    dsr.sortingOrder = sr.sortingOrder;
+
+                    var pb = go.AddComponent<ParallaxBg>();
+                    pb.factor    = 0.03f + i * 0.03f;   // back slow → front fast
+                    pb.wrapWidth = sw * scale;
+                }
             }
         }
 
-        // Point the dungeon's scrolling parallax layers at complete Gandalf props, spawned
+        // Point the dungeon's scrolling parallax layers at complete Gandalf trees, spawned
         // sparsely (large spacing) so only the occasional tree/statue drifts past.
         static void DressParallax()
         {
             var props = new List<Sprite>();
-            foreach (var n in new[] { "Tree3", "Birch2", "AngelStatue" })
+            foreach (var n in new[] { "Tree3", "Birch2" })
             {
                 var s = Resources.Load<Sprite>("CityDecor/" + n);
                 if (s != null) props.Add(s);
@@ -112,11 +125,15 @@ namespace ZulfarakRPG
     class ParallaxBg : MonoBehaviour
     {
         public float factor;
+        public float wrapWidth;   // world width of one sprite copy; drift wraps over it
 
         void LateUpdate()
         {
             var lp = transform.localPosition;
-            lp.x = -BackgroundLayers.DungeonScroll * factor;
+            float drift = BackgroundLayers.DungeonScroll * factor;
+            // Wrap over one sprite width — the duplicate copy at +wrapWidth slides in
+            // to cover the gap, so the backdrop is continuous for any scroll distance.
+            lp.x = wrapWidth > 0.0001f ? -Mathf.Repeat(drift, wrapWidth) : -drift;
             transform.localPosition = lp;
         }
     }

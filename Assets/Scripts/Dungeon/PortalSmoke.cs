@@ -103,32 +103,26 @@ namespace ZulfarakRPG
                 grow:  Random.Range(2.4f, 3.6f));
         }
 
-        // Chunky pixel-art puff: 8×8 with truly BIG pixels — 4 flat alpha steps in
-        // concentric integer-distance rings, at 16 PPU so each texel occupies a fat
-        // block on screen (~2× the previous 16×16 @ 32 PPU pixel size). Matches the
-        // blocky look of the fireball orb + character sprites.
+        // Soft smoke puff: 32×32 bilinear with a smooth radial alpha falloff, at
+        // 64 PPU (same ~0.5 world-unit footprint as the old 8×8 @ 16 PPU sprite).
         static Sprite _puff;
         static Sprite PuffSprite()
         {
             if (_puff != null) return _puff;
-            const int N = 8;
-            var t = new Texture2D(N, N, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point };
-            int cx = N / 2, cy = N / 2;
+            const int N = 32;
+            var t = new Texture2D(N, N, TextureFormat.RGBA32, false) { filterMode = FilterMode.Bilinear };
+            float c = (N - 1) * 0.5f;
             for (int y = 0; y < N; y++)
                 for (int x = 0; x < N; x++)
                 {
-                    int dx = x - cx, dy = y - cy;
-                    int d2 = dx * dx + dy * dy;
-                    // Concentric FLAT alpha bands — 4 chunky rings, no gradient blur.
-                    float a =
-                        d2 <= 1  ? 1.00f :
-                        d2 <= 4  ? 0.75f :
-                        d2 <= 8  ? 0.50f :
-                        d2 <= 13 ? 0.25f : 0f;
+                    float dx = (x - c) / c, dy = (y - c) / c;
+                    float d  = Mathf.Sqrt(dx * dx + dy * dy);
+                    float a  = Mathf.Clamp01(1f - d);
+                    a = a * a * (3f - 2f * a);   // smoothstep — dense core, feathered edge
                     t.SetPixel(x, y, new Color(1f, 1f, 1f, a));
                 }
             t.Apply();
-            _puff = Sprite.Create(t, new Rect(0, 0, N, N), new Vector2(0.5f, 0.5f), 16f);
+            _puff = Sprite.Create(t, new Rect(0, 0, N, N), new Vector2(0.5f, 0.5f), 64f);
             return _puff;
         }
     }

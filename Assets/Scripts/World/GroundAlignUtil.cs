@@ -58,5 +58,59 @@ namespace ZulfarakRPG
             p.y += shift;
             t.position = p;
         }
+
+        // Seats a CHARACTER (player / NPC / enemy) on the ground line. Two-step, fail-safe:
+        //   1) Collider rest (known-safe): collider bottom → ground top. May leave a small
+        //      visible float (authored foot colliders sit below the art's feet) but can
+        //      never strand a character off-screen.
+        //   2) Bounded correction: alpha-scanned visible feet, computed from the sprite
+        //      PIVOT — NOT renderer bounds, which differ between Tight and FullRect
+        //      meshes (and atlas trimming in builds) by the frame's transparent padding
+        //      and flung characters a screen-height away. Clamped to ±0.25 WU so bad
+        //      alpha data can only ever cause a small seat error, never a fly-away.
+        // Non-trigger colliders are re-aimed so their bottom returns to the line
+        // (otherwise gravity + the ground collider re-float the sprite).
+        public static void SeatCharacterOnGround(Transform tr, SpriteRenderer sr)
+        {
+            if (tr == null) return;
+            var col = tr.GetComponent<BoxCollider2D>();
+            Physics2D.SyncTransforms();
+
+            float groundTop = FindGroundTopY();
+            float target    = groundTop + 0.002f;
+
+            float baseline;
+            if      (col != null)                     baseline = col.bounds.min.y;
+            else if (sr != null && sr.sprite != null) baseline = sr.bounds.min.y;
+            else return;
+            tr.position += new Vector3(0f, target - baseline, 0f);
+            Physics2D.SyncTransforms();
+
+            if (sr != null && sr.sprite != null)
+            {
+                var sp = sr.sprite;
+                var ab = SpriteAlphaBounds.Get(sp);
+                float spriteH  = sp.bounds.size.y;
+                bool  reliable = !(ab.bottomFromBottom <= 0.001f && ab.topFromBottom >= spriteH - 0.001f);
+                if (reliable)
+                {
+                    float scale = Mathf.Max(0.0001f, Mathf.Abs(tr.lossyScale.y));
+                    float ppu   = Mathf.Max(1f, sp.pixelsPerUnit);
+                    // Feet relative to the pivot (== transform position), in world units.
+                    float feetWorld  = tr.position.y + (ab.feetFromBottom - sp.pivot.y / ppu) * scale;
+                    float correction = Mathf.Clamp(target - feetWorld, -0.25f, 0.25f);
+                    if (Mathf.Abs(correction) > 0.0005f)
+                    {
+                        tr.position += new Vector3(0f, correction, 0f);
+                        if (col != null && !col.isTrigger)
+                        {
+                            float feetLocal = (target - tr.position.y) / scale;
+                            col.offset = new Vector2(col.offset.x, feetLocal + col.size.y * 0.5f);
+                        }
+                    }
+                }
+            }
+            Physics2D.SyncTransforms();
+        }
     }
 }

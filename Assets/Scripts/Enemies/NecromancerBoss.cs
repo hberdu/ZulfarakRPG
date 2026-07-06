@@ -12,7 +12,7 @@ namespace ZulfarakRPG
         [Header("Boss / Summon")]
         public Sprite[]  summonFrames;
         public GameObject minionPrefab;
-        public int   minionsPerSummon = 6;
+        public int   minionsPerSummon = 5;
         public float summonCooldown   = 14f;
         public float summonFps        = 10f;
 
@@ -20,9 +20,23 @@ namespace ZulfarakRPG
         private bool  _summoning;
         private float _summonTimer = 1.5f;   // first summon shortly after engaging
         private int   _summonBatch;
+        private bool  _entranceStarted;
+        private bool  _entranceDone;
 
         protected override void TickAI()
         {
+            // Entrance: step out of a green portal, open with a summon, and only
+            // afterwards start chasing the player (combat begins on contact).
+            if (!_entranceDone)
+            {
+                if (!_entranceStarted)
+                {
+                    _entranceStarted = true;
+                    StartCoroutine(EntranceRoutine());
+                }
+                return;
+            }
+
             if (_summoning) return;
 
             _summonTimer -= Time.deltaTime;
@@ -35,6 +49,43 @@ namespace ZulfarakRPG
             }
 
             base.TickAI();
+        }
+
+        IEnumerator EntranceRoutine()
+        {
+            // Materialize on-screen out of a green portal instead of walking in
+            // from the off-screen spawn point.
+            var pos = new Vector3(
+                Mathf.Clamp(sceneBoundsMaxX - 0.9f, sceneBoundsMinX, sceneBoundsMaxX),
+                transform.position.y, transform.position.z);
+            transform.position = pos;
+            _rb.linearVelocity = Vector2.zero;
+            ReleaseFromSpawn();
+            SetVisible(false);
+
+            var portal = GreenPortalFX.Create(pos + Vector3.up * 0.55f);
+            yield return new WaitForSeconds(0.9f);
+            if (_dead) { if (portal) portal.Dismiss(); yield break; }
+
+            PortalSmoke.BurstAt(pos + Vector3.up * 0.3f, 14);
+            SetVisible(true);
+            yield return new WaitForSeconds(0.5f);
+            if (portal) portal.Dismiss();
+            if (_dead) yield break;
+
+            // Opening act: summon the skeletons, then base.TickAI takes over —
+            // the boss walks onto the player and only then the fight begins.
+            yield return StartCoroutine(SummonRoutine());
+            _entranceDone = true;
+        }
+
+        void SetVisible(bool visible)
+        {
+            if (_sr) _sr.enabled = visible;
+            if (_hpBar) _hpBar.gameObject.SetActive(visible);
+            var col = GetComponent<Collider2D>();
+            if (col) col.enabled = visible;
+            _rb.simulated = visible;
         }
 
         IEnumerator SummonRoutine()

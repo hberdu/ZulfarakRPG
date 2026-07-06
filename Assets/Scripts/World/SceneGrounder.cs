@@ -35,6 +35,7 @@ namespace ZulfarakRPG
             "Dune_FarL", "Dune_FarR", "Dune_NearL", "Dune_NearR",
             "Tablet",     // removed middle statue
             "Kael_NPC",   // Kael removed — only the class master and blacksmith remain
+            "Chest",      // chest removed from the city
         };
 
         // Only the class master and the blacksmith remain in the city.
@@ -110,7 +111,7 @@ namespace ZulfarakRPG
                 if (go == null) continue;
                 var sr = go.GetComponent<SpriteRenderer>();
                 if (sr != null) sr.color = Color.white;
-                GroundByCollider(go, groundTop);
+                GroundAlignUtil.SeatCharacterOnGround(go.transform, sr);
             }
 
             // Let the hero roam the whole city width, edge to edge.
@@ -136,16 +137,6 @@ namespace ZulfarakRPG
             float visibleBottom = sr.bounds.min.y + ab.feetFromBottom * scale;
             float shift = groundTop - visibleBottom;
             if (Mathf.Abs(shift) > 0.001f) go.transform.position += new Vector3(0f, shift, 0f);
-        }
-
-        static void GroundByCollider(GameObject go, float groundTop)
-        {
-            var col = go.GetComponent<Collider2D>();
-            if (col == null) return;
-            Physics2D.SyncTransforms();
-            float shift = groundTop - col.bounds.min.y;
-            if (Mathf.Abs(shift) > 0.001f)
-                go.transform.position += new Vector3(0f, shift, 0f);
         }
     }
 }

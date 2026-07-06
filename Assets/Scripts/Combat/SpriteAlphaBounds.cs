@@ -91,12 +91,19 @@ namespace ZulfarakRPG
                 }
 
                 float ppu = sp.pixelsPerUnit;
+                // textureRectOffset compensates atlas/packing trim in BUILDS, where
+                // textureRect is the trimmed rect — without it every "FromBottom"
+                // value would be measured from the trimmed edge instead of the
+                // sprite rect (frame) bottom, displacing characters by the frame's
+                // transparent padding. Zero when the sprite isn't packed.
+                float offX = sp.textureRectOffset.x;
+                float offY = sp.textureRectOffset.y;
                 var result = new Result {
-                    bottomFromBottom = minY              / ppu,
-                    topFromBottom    = (maxY + 1)        / ppu,
-                    width            = (maxX - minX + 1) / ppu,
-                    centerXFromLeft  = ((minX + maxX + 1) * 0.5f) / ppu,
-                    feetFromBottom   = feetY             / ppu,
+                    bottomFromBottom = (offY + minY)              / ppu,
+                    topFromBottom    = (offY + maxY + 1)          / ppu,
+                    width            = (maxX - minX + 1)          / ppu,
+                    centerXFromLeft  = (offX + (minX + maxX + 1) * 0.5f) / ppu,
+                    feetFromBottom   = (offY + feetY)             / ppu,
                 };
                 _cache[sp] = result;
                 return result;

@@ -1022,7 +1022,7 @@ public static class SceneSetupWizard
         boss.hurtFrames   = CharacterSpriteImporter.GetFrames("Necromancer", "Hurt");
         boss.summonFrames = CharacterSpriteImporter.GetFrames("Necromancer", "Summon");
         boss.minionPrefab = minionPrefab;
-        boss.minionsPerSummon = 6;
+        boss.minionsPerSummon = 5;
         boss.maxHealth      = 400f;
         boss.attackDamage   = 12f;
         boss.attackRange    = 1.3f;
