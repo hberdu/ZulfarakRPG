@@ -54,6 +54,33 @@ namespace ZulfarakRPG
         public Sprite[] archerDeathFrames;
         public Sprite[] archerHurtFrames;
 
+        // ── Alternate attacks ────────────────────────────────────────────────
+        // Each class has several distinct attack animations in the Tiny RPG pack
+        // (Soldier: Attack01/02/03; Wizard & Archer: Attack01/02). When these are
+        // assigned the hero CYCLES through them one per swing/cast/shot instead of
+        // replaying a single merged strip — so combat reads as a real combo. If a
+        // class's variant fields are left empty it falls back to the merged
+        // *AttackFrames array above (previous behaviour), so nothing breaks.
+        [Header("Warrior Attack Variants (cycled per swing)")]
+        public Sprite[] soldierAttack1Frames;
+        public Sprite[] soldierAttack2Frames;
+        public Sprite[] soldierAttack3Frames;
+
+        [Header("Mage Attack Variants (cycled per cast)")]
+        public Sprite[] wizardAttack1Frames;
+        public Sprite[] wizardAttack2Frames;
+        // Magic projectile sheets from the pack's Magic(Projectile) folder — one per
+        // cast variant (Attack01 → magic1, Attack02 → magic2). Empty → procedural orb.
+        public Sprite[] wizardMagic1Frames;
+        public Sprite[] wizardMagic2Frames;
+
+        [Header("Archer Attack Variants (cycled per shot)")]
+        public Sprite[] archerAttack1Frames;
+        public Sprite[] archerAttack2Frames;
+        // Arrow sprites from the pack's Arrow(Projectile) folder — cycled per shot so
+        // successive arrows differ. Empty → the procedural/Resources arrow.
+        public Sprite[] arrowVariantSprites;
+
         // ── Runtime state ──────────────────────────────────────────────────
         private enum Phase { Playing, Celebrating, WalkingToPortal, Running, Dead }
         private Phase _phase = Phase.Playing;
@@ -74,6 +101,12 @@ namespace ZulfarakRPG
         private float    _attackLock;
         private Sprite[] _idle, _walk, _atk, _death, _hurt;
         private ClassType _classType = ClassType.Warrior;
+
+        // Alternate-attack rotation (built from the *Attack1/2/3 variant fields).
+        private System.Collections.Generic.List<Sprite[]> _atkVariants;
+        private System.Collections.Generic.List<Sprite[]> _magicVariants; // mage projectile frames, aligned with _atkVariants
+        private int _atkVariantIndex;   // which attack animation plays next
+        private int _arrowShotIndex;    // which arrow sprite the archer fires next
 
         // Click-to-move (city scene)
         private bool  _hasClickTarget;
@@ -205,6 +238,50 @@ namespace ZulfarakRPG
             if (_idle == null || _idle.Length == 0) _idle = soldierIdleFrames;
             if (_walk == null || _walk.Length == 0) _walk = _idle;
             if (_atk  == null || _atk.Length  == 0) _atk  = _idle;
+
+            BuildAttackVariants();
+        }
+
+        // Gathers this class's distinct attack animations (and, for the mage, the
+        // matching projectile sheets) into parallel rotation lists. Falls back to the
+        // single merged _atk strip when no variant fields are assigned.
+        void BuildAttackVariants()
+        {
+            _atkVariants   = new System.Collections.Generic.List<Sprite[]>();
+            _magicVariants = new System.Collections.Generic.List<Sprite[]>();
+            _atkVariantIndex = 0;
+            _arrowShotIndex  = 0;
+
+            switch (_classType)
+            {
+                case ClassType.Mage:
+                    AddVariant(wizardAttack1Frames, wizardMagic1Frames);
+                    AddVariant(wizardAttack2Frames, wizardMagic2Frames);
+                    break;
+                case ClassType.Archer:
+                    AddVariant(archerAttack1Frames, null);
+                    AddVariant(archerAttack2Frames, null);
+                    break;
+                default:
+                    AddVariant(soldierAttack1Frames, null);
+                    AddVariant(soldierAttack2Frames, null);
+                    AddVariant(soldierAttack3Frames, null);
+                    break;
+            }
+
+            // No variant art assigned → keep the legacy single merged swing.
+            if (_atkVariants.Count == 0)
+            {
+                _atkVariants.Add(_atk);
+                _magicVariants.Add(null);
+            }
+        }
+
+        void AddVariant(Sprite[] frames, Sprite[] magic)
+        {
+            if (frames == null || frames.Length == 0) return;
+            _atkVariants.Add(frames);
+            _magicVariants.Add(magic != null && magic.Length > 0 ? magic : null);
         }
 
         static Sprite[] Pick(Sprite[] preferred, Sprite[] fallback)
@@ -392,6 +469,14 @@ namespace ZulfarakRPG
             bool  crit = Random.value < critChance;
             float dmg  = crit ? attackDamage * critMultiplier : attackDamage;
 
+            // Pick the next attack animation in the class's rotation (a real combo:
+            // Soldier cycles its 3 swings, Wizard/Archer alternate their 2). The chosen
+            // variant also selects the mage's matching projectile sheet.
+            if (_atkVariants == null || _atkVariants.Count == 0) BuildAttackVariants();
+            int      variant   = _atkVariantIndex;
+            Sprite[] atkFrames = _atkVariants[variant];
+            _atkVariantIndex   = (_atkVariantIndex + 1) % _atkVariants.Count;
+
             // Exactly ONE complete swing/draw per attack, played over ~60% of the attack
             // interval (1/attackSpeed). Keeping it below the interval leaves a gap that the
             // player spends in Idle between attacks (see HandleMovement), and since animDur
@@ -400,14 +485,14 @@ namespace ZulfarakRPG
             // Arrow release is timed off THIS animation duration.
             float interval = AttackInterval;
             float animDur  = Mathf.Min(interval * 0.6f, 0.6f);
-            float atkFps   = (_atk != null && _atk.Length > 0) ? _atk.Length / animDur : 12f;
+            float atkFps   = (atkFrames != null && atkFrames.Length > 0) ? atkFrames.Length / animDur : 12f;
 
             // Ranged classes release their projectile partway through the cast/draw; the
             // melee Warrior hits instantly.
             if (_classType == ClassType.Archer)
                 StartCoroutine(FireArrowAfterDraw(target, dmg, crit, animDur));
             else if (_classType == ClassType.Mage)
-                StartCoroutine(FireFireballAfterCast(target, dmg, crit, animDur));
+                StartCoroutine(FireFireballAfterCast(target, dmg, crit, animDur, variant));
             else
             {
                 target.TakeDamage(dmg, crit);
@@ -416,7 +501,7 @@ namespace ZulfarakRPG
 
             _atkTimer   = interval;
             _attackLock = animDur;
-            PlayAnim(_atk, atkFps, forceRestart: true, loop: false);
+            PlayAnim(atkFrames, atkFps, forceRestart: true, loop: false);
         }
 
         // Releases the arrow at ~halfway through the attack animation — the timing is
@@ -443,20 +528,28 @@ namespace ZulfarakRPG
             // Push slightly toward the target so the arrow doesn't start inside the archer
             spawnPos += new Vector3(dir * 0.35f, 0f, 0f);
 
+            // Cycle through the pack's arrow sprites so successive shots differ.
+            Sprite arrowSprite = null;
+            if (arrowVariantSprites != null && arrowVariantSprites.Length > 0)
+            {
+                arrowSprite = arrowVariantSprites[_arrowShotIndex % arrowVariantSprites.Length];
+                _arrowShotIndex++;
+            }
+
             var arrowGO = new GameObject("Arrow");
             arrowGO.transform.position = spawnPos;
             var arrow = arrowGO.AddComponent<Arrow>();
-            arrow.Init(target, dmg, crit);
+            arrow.Init(target, dmg, crit, arrowSprite);
         }
 
         // Mage counterpart of FireArrowAfterDraw: the fireball leaves the staff at the
         // apex of the cast ("ao levantar o cajado"), so the projectile is bound to the
         // attack animation exactly like the archer's arrow.
-        IEnumerator FireFireballAfterCast(SkeletonEnemy target, float dmg, bool crit, float animDur)
+        IEnumerator FireFireballAfterCast(SkeletonEnemy target, float dmg, bool crit, float animDur, int variant)
         {
             yield return new WaitForSeconds(animDur * 0.5f);
             if (target == null || !target.IsAlive) yield break;
-            FireFireball(target, dmg, crit);
+            FireFireball(target, dmg, crit, variant);
 
             // The wizard strip's trailing frames swing the arm back behind the body
             // AFTER the release — cut them and hold the cast-apex pose until the
@@ -465,7 +558,7 @@ namespace ZulfarakRPG
             _currentAnim = null;
         }
 
-        void FireFireball(SkeletonEnemy target, float dmg, bool crit)
+        void FireFireball(SkeletonEnemy target, float dmg, bool crit, int variant)
         {
             if (target == null) return;
             // Spawn from the mage's COLLIDER CENTER (visible body — collider matches art).
@@ -482,10 +575,14 @@ namespace ZulfarakRPG
             // Big fiery burst on the staff tip the instant the spell is released.
             Fireball.SpawnCastFlash(spawnPos, dir);
 
+            // The magic sheet paired with this cast variant (null → procedural orb).
+            Sprite[] magic = (_magicVariants != null && variant < _magicVariants.Count)
+                ? _magicVariants[variant] : null;
+
             var fbGO = new GameObject("Fireball");
             fbGO.transform.position = spawnPos;
             var fb = fbGO.AddComponent<Fireball>();
-            fb.Init(target, dmg, crit);
+            fb.Init(target, dmg, crit, magic);
         }
 
         SkeletonEnemy FindNearest(float range)
@@ -532,6 +629,31 @@ namespace ZulfarakRPG
                 _attackLock = Mathf.Max(_attackLock, _hurt.Length / 14f);
                 PlayAnim(_hurt, 14f, forceRestart: true, loop: false);
             }
+        }
+
+        // True during the inter-wave march (input/auto-attack suppressed, velocity
+        // zero) — MultiplayerSync broadcasts "walk" from this so the partner sees
+        // the march instead of an idle pose.
+        public bool IsRunning => _phase == Phase.Running;
+
+        // Inter-wave regroup: force-walk the hero back to the screen-start X while
+        // input and auto-attack stay suppressed (Phase.Running); WaveManager releases
+        // us via SetRunning(false) once the next wave's enemies are on screen.
+        public IEnumerator WalkBackToStart(float x)
+        {
+            if (_phase == Phase.Dead) yield break;
+            _phase          = Phase.Running;
+            _hasClickTarget = false;
+            PlayAnim(_walk, 10f, forceRestart: true);
+            while (Mathf.Abs(transform.position.x - x) > 0.1f && _phase == Phase.Running)
+            {
+                float dir = Mathf.Sign(x - transform.position.x);
+                _rb.linearVelocity = new Vector2(dir * moveSpeed, _rb.linearVelocity.y);
+                if (_sr) _sr.flipX = dir < 0;
+                yield return null;
+            }
+            _rb.linearVelocity = new Vector2(0f, _rb.linearVelocity.y);
+            if (_sr) _sr.flipX = false;
         }
 
         // Called by WaveManager during the inter-wave run. The player stays put,

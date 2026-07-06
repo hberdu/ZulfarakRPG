@@ -30,6 +30,23 @@ public static class CharacterSpriteImporter
     private static readonly (string anim, string srcFile, int frames) NecromancerBolt =
         ("MagicBolt", "Necromancer_Attack02_Effect.png", 6);
 
+    // Root of the v2.0 pack — the Magic(Projectile) and Arrow(Projectile) folders live
+    // here, one level above the split-characters folder (SrcBase2).
+    private const string PackRootV2 = @"C:\Users\henri\Downloads\Tiny RPG Character Asset Pack 01 v2.0 -Full 22 Characters";
+
+    // Class projectiles (CENTER pivot — flying, not grounded). These give the mage a
+    // distinct spell per cast variant and the archer a set of arrows to cycle through.
+    // (destChar, destAnim, srcRelativeToPackRoot, frameCount)
+    private static readonly (string charName, string anim, string srcFile, int frames)[] ClassProjectiles = {
+        // Mage — two spell sheets alternated with Wizard Attack01 / Attack02.
+        ("Wizard", "Magic1", @"Magic(Projectile)\Wizard_Attack01_Effect.png", 10),
+        ("Wizard", "Magic2", @"Magic(Projectile)\Wizard_Attack02_Effect.png",  7),
+        // Archer — three single-frame arrows the archer cycles through per shot.
+        ("Archer", "Arrow1", @"Arrow(Projectile)\Arrow01(100x100).png", 1),
+        ("Archer", "Arrow2", @"Arrow(Projectile)\Arrow02(100x100).png", 1),
+        ("Archer", "Arrow3", @"Arrow(Projectile)\Arrow03(100x100).png", 1),
+    };
+
     // charName = asset folder name, srcFolder = folder name inside pack
     private static readonly CharDef[] Characters = {
         new CharDef("Wizard", "Wizard", new[] {
@@ -115,6 +132,26 @@ public static class CharacterSpriteImporter
                 ConfigureSprite(destFile, "Necromancer", anim, frames, SpriteAlignment.Center);
             }
             else Debug.LogWarning($"[ZulfarakRPG] Not found: {srcFile}");
+        }
+
+        // Class projectiles (mage spells + archer arrows). Center pivot; copied into the
+        // matching character folder so GetFrames("Wizard","Magic1") etc. picks them up.
+        foreach (var (charName, anim, srcRel, frames) in ClassProjectiles)
+        {
+            Directory.CreateDirectory(Application.dataPath + "/../" + DestBase + "/" + charName);
+            string srcFile  = $@"{PackRootV2}\{srcRel}";
+            string destFile = $"{DestBase}/{charName}/{charName}-{anim}.png";
+            string destAbs  = Application.dataPath + "/../" + destFile;
+
+            if (!File.Exists(srcFile))
+            {
+                Debug.LogWarning($"[ZulfarakRPG] Not found: {srcFile}");
+                continue;
+            }
+
+            File.Copy(srcFile, destAbs, overwrite: true);
+            AssetDatabase.ImportAsset(destFile);
+            ConfigureSprite(destFile, charName, anim, frames, SpriteAlignment.Center);
         }
 
         AssetDatabase.Refresh();

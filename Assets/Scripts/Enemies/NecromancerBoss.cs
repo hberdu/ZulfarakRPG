@@ -51,6 +51,10 @@ namespace ZulfarakRPG
 
             if (_summoning || _casting) return;
 
+            // Fight whichever lobby member is closest (local hero or remote avatar).
+            AcquireNearestTarget();
+            if (_targetTf == null) return;
+
             _summonTimer -= Time.deltaTime;
             _minions.RemoveAll(m => m == null || !m.IsAlive);
 
@@ -63,12 +67,12 @@ namespace ZulfarakRPG
             RangedCastAI();
         }
 
-        // Stand at staff range and lob magic bolts; kite backwards if the player closes in.
+        // Stand at staff range and lob magic bolts; kite backwards if the target closes in.
         void RangedCastAI()
         {
-            float dx   = _player.transform.position.x - transform.position.x;
+            float dx   = _targetTf.position.x - transform.position.x;
             float dist = Mathf.Abs(dx);
-            if (dist > 0.01f) _sr.flipX = dx < 0;   // face the player
+            if (dist > 0.01f) _sr.flipX = dx < 0;   // face the target
 
             if (dist < castMinDistance)
             {
@@ -104,7 +108,7 @@ namespace ZulfarakRPG
 
             // Release the bolt partway through the cast (apex of the raised staff).
             yield return new WaitForSeconds(dur * 0.55f);
-            if (!_dead && _player != null) FireBolt();
+            if (!_dead && _targetTf != null) FireBolt();
             yield return new WaitForSeconds(dur * 0.45f);
             _casting = false;
         }
@@ -113,13 +117,15 @@ namespace ZulfarakRPG
         {
             var myCol = GetComponent<Collider2D>();
             Vector3 spawn = myCol != null ? myCol.bounds.center : transform.position + Vector3.up * 0.5f;
-            float dir = Mathf.Sign(_player.transform.position.x - transform.position.x);
+            float dir = Mathf.Sign(_targetTf.position.x - transform.position.x);
             if (dir == 0f) dir = 1f;
             spawn += new Vector3(dir * 0.35f, 0.15f, 0f);
 
             var go = new GameObject("MagicBolt");
             go.transform.position = spawn;
-            go.AddComponent<MagicBolt>().Init(_player, attackDamage, magicBoltFrames);
+            // Bolts chase the nearest lobby member; only the local hero takes real
+            // damage — the remote victim's client fires its own authoritative bolt.
+            go.AddComponent<MagicBolt>().Init(_targetTf, _targetIsLocal, attackDamage, magicBoltFrames);
         }
 
         IEnumerator EntranceRoutine()

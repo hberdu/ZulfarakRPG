@@ -16,8 +16,16 @@ namespace ZulfarakRPG
         static PlayerHud _instance;
         Canvas _canvas;
 
-        const float SIZE   = 24f;   // small square — about the on-screen size of the map icon
-        const float GAP    = 3f;    // spacing between HUD buttons
+        // Bottom-left button-row metrics (public so the dungeon progress bar can center
+        // itself directly above the row).
+        public const float ButtonSize     = 24f;   // small square — about the on-screen size of the map icon
+        public const float ButtonGap      = 3f;    // spacing between HUD buttons
+        public const float ButtonRowLeftX = 4f;    // x offset of the first button from the left edge
+        public const float ButtonRowY     = 2f;    // y offset of the row from the bottom edge
+        public const int   ButtonCount    = 3;     // Menu / Map / Friends
+
+        const float SIZE   = ButtonSize;
+        const float GAP    = ButtonGap;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         static void Hook()
@@ -74,7 +82,7 @@ namespace ZulfarakRPG
             go.transform.SetParent(parent, false);
             var rt = (RectTransform)go.transform;
             rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0f, 0f);
-            rt.anchoredPosition = new Vector2(4f + slot * (SIZE + GAP), 2f);
+            rt.anchoredPosition = new Vector2(ButtonRowLeftX + slot * (SIZE + GAP), ButtonRowY);
             rt.sizeDelta        = new Vector2(SIZE, SIZE);
 
             // Outer 1px pitch-black outline (target of the button click).

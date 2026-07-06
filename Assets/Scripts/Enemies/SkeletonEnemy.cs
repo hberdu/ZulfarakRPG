@@ -112,13 +112,40 @@ namespace ZulfarakRPG
             UpdateHpBarStagger();
         }
 
+        // In co-op the enemy engages whichever lobby member is CLOSEST — the local
+        // hero or a RemotePlayer avatar — so monsters stop at the first player they
+        // reach instead of always chasing the local user. Real damage is only applied
+        // when the target is the local player: the remote victim's own client runs
+        // the same AI against its own local player, and the HP loss syncs back
+        // through the state packets (popup + flash on RemotePlayer.SetHealth).
+        protected Transform _targetTf;
+        protected bool      _targetIsLocal = true;
+
+        protected void AcquireNearestTarget()
+        {
+            _targetTf      = _player != null ? _player.transform : null;
+            _targetIsLocal = true;
+            float best = _targetTf != null
+                       ? Mathf.Abs(_targetTf.position.x - transform.position.x)
+                       : float.MaxValue;
+            foreach (var rp in FindObjectsByType<RemotePlayer>(FindObjectsSortMode.None))
+            {
+                if (rp == null) continue;
+                float d = Mathf.Abs(rp.transform.position.x - transform.position.x);
+                if (d < best) { best = d; _targetTf = rp.transform; _targetIsLocal = false; }
+            }
+        }
+
         protected virtual void TickAI()
         {
-            float horizontalDist = Mathf.Abs(_player.transform.position.x - transform.position.x);
+            AcquireNearestTarget();
+            if (_targetTf == null) return;
+
+            float horizontalDist = Mathf.Abs(_targetTf.position.x - transform.position.x);
 
             if (horizontalDist > attackRange)
             {
-                float dir = Mathf.Sign(_player.transform.position.x - transform.position.x);
+                float dir = Mathf.Sign(_targetTf.position.x - transform.position.x);
                 _rb.linearVelocity = new Vector2(dir * moveSpeed, _rb.linearVelocity.y);
                 _sr.flipX = dir < 0;
                 if (_attackLock <= 0) PlayAnim(walkFrames, 10f);
@@ -126,11 +153,12 @@ namespace ZulfarakRPG
             else
             {
                 _rb.linearVelocity = new Vector2(0, _rb.linearVelocity.y);
-                float dir = Mathf.Sign(_player.transform.position.x - transform.position.x);
+                float dir = Mathf.Sign(_targetTf.position.x - transform.position.x);
                 if (Mathf.Abs(dir) > 0.001f) _sr.flipX = dir < 0;
                 if (_atkTimer <= 0)
                 {
-                    _player.TakeDamage(attackDamage);
+                    // Swing at whoever is in front; only the local hero loses HP here.
+                    if (_targetIsLocal) _player.TakeDamage(attackDamage);
                     _atkTimer   = attackCooldown;
                     _attackLock = attackFrames != null && attackFrames.Length > 0
                                   ? attackFrames.Length / 12f : 0.5f;

@@ -18,7 +18,9 @@ namespace ZulfarakRPG
 
         [Header("Spawn")]
         public Transform[] spawnPoints;
-        public float spawnInterval = 0.5f;
+        // Time between successive enemy spawns within a wave — kept short so the arena
+        // fills up quickly ("inimigos nascem mais rápido").
+        public float spawnInterval = 0.2f;
 
         [Header("Portal")]
         public Portal2D exitPortal;
@@ -91,6 +93,12 @@ namespace ZulfarakRPG
                 yield return StartCoroutine(RunToNextWave());
                 _waveDone = false;
                 yield return StartCoroutine(StartNextWave());
+                // Keep marching (walk anim, input locked) until the new wave's
+                // enemies actually walk onto the screen — then release the player
+                // to move at their own speed and engage. Keeps co-op partners
+                // visually together through the whole transition.
+                yield return StartCoroutine(WaitEnemiesOnScreen());
+                _player?.SetRunning(false);
             }
             else
             {
@@ -103,6 +111,11 @@ namespace ZulfarakRPG
 
         IEnumerator RunToNextWave()
         {
+            // First regroup at the start (left edge) of the screen, then march in
+            // place while the parallax scrolls. SetRunning(false) is issued later,
+            // once the next wave's enemies arrive on screen (WaitEnemiesOnScreen).
+            if (_player != null)
+                yield return StartCoroutine(_player.WalkBackToStart(_player.sceneBoundsMinX + 0.1f));
             _player?.SetRunning(true);
             float scrolled = 0f;
             while (scrolled < runScrollDistance)
@@ -116,7 +129,20 @@ namespace ZulfarakRPG
                 BackgroundLayers.DungeonScroll += dx * 0.40f;
                 yield return null;
             }
-            _player?.SetRunning(false);
+        }
+
+        // Blocks until at least one alive enemy of the current wave is inside the
+        // visible scene (enemies spawn far off-screen right and walk in).
+        IEnumerator WaitEnemiesOnScreen()
+        {
+            float timeout = Time.time + 20f;   // safety valve — never lock forever
+            while (Time.time < timeout)
+            {
+                foreach (var e in _alive)
+                    if (e != null && e.IsAlive && e.transform.position.x <= e.sceneBoundsMaxX)
+                        yield break;
+                yield return null;
+            }
         }
 
         IEnumerator StartNextWave()

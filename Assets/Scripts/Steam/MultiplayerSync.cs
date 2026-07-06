@@ -137,9 +137,13 @@ namespace ZulfarakRPG
             var sr = _localPlayer.GetComponent<SpriteRenderer>();
             var rb = _localPlayer.GetComponent<Rigidbody2D>();
             // Priority: attacking > walking > idle, so the partner sees swings/casts.
+            // IsRunning covers the inter-wave march, where velocity is zero but the
+            // hero is visibly walking (parallax scroll) — broadcast "walk" so the
+            // remote avatar marches too instead of idling.
             string anim = "idle";
             if (_localPlayer.IsAttacking) anim = "atk";
             else if (rb != null && Mathf.Abs(rb.linearVelocity.x) > 0.05f) anim = "walk";
+            else if (_localPlayer.IsRunning) anim = "walk";
 
             var pd = PlayerManager.Instance?.Data;
             var msg = new P2PMessage

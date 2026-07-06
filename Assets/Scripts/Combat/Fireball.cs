@@ -21,24 +21,35 @@ namespace ZulfarakRPG
         private float          _spawnTime;
         private SpriteRenderer _sr;
         private bool           _isCrit;
+        // Per-cast magic-effect sheet from the pack's Magic(Projectile) folder. When set
+        // the mage's actual spell art is used (and the projectile is only flipped toward
+        // the target, not rotated, since the effect is authored horizontally); otherwise
+        // the shared procedural flame orb below is used.
+        private Sprite[]       _frames;
+        private bool           _usingArt;
 
         const float Fps = 14f;
-        static Sprite[] _frames;
+        static Sprite[] _procFrames;
         static Sprite   _impactSprite;
         static Sprite   _emberSprite;
 
-        public void Init(SkeletonEnemy target, float damage, bool isCrit = false)
+        public void Init(SkeletonEnemy target, float damage, bool isCrit = false, Sprite[] magicFrames = null)
         {
             _target     = target;
             this.damage = damage;
             _isCrit     = isCrit;
             _spawnTime  = Time.time;
 
-            if (_frames == null) _frames = LoadFrames();
+            _usingArt = magicFrames != null && magicFrames.Length > 0;
+            _frames   = _usingArt ? magicFrames : (_procFrames ??= LoadFrames());
             _sr              = gameObject.AddComponent<SpriteRenderer>();
             _sr.sprite       = _frames[0];
             _sr.sortingOrder = 6;   // above the arrow (5) so a mixed party still reads clearly
-            transform.localScale = Vector3.one;
+            // Effect art is 100px @100PPU (1 world unit) — scale down to projectile size;
+            // the procedural orb is already small.
+            transform.localScale = Vector3.one * (_usingArt ? 0.55f : 1f);
+            if (_usingArt && _target != null)
+                _sr.flipX = _target.transform.position.x < transform.position.x;
         }
 
         void Update()
@@ -46,7 +57,7 @@ namespace ZulfarakRPG
             if (Time.time - _spawnTime > maxLifetime) { Destroy(gameObject); return; }
             if (_target == null || !_target.IsAlive)  { Destroy(gameObject); return; }
 
-            // Loop the flame animation (Godot sheet or procedural flicker frames).
+            // Loop the flame animation (magic sheet, Godot sheet, or procedural flicker frames).
             if (_frames.Length > 1)
                 _sr.sprite = _frames[(int)((Time.time - _spawnTime) * Fps) % _frames.Length];
 
@@ -70,8 +81,13 @@ namespace ZulfarakRPG
 
             Vector3 dir = toTarget / dist;
             transform.position += dir * speed * Time.deltaTime;
-            float angle = Mathf.Atan2(dir.y, dir.x) * Mathf.Rad2Deg;
-            transform.rotation = Quaternion.Euler(0f, 0f, angle);   // tail trails behind
+            // Hand-drawn magic art is authored horizontally, so only flip it toward travel;
+            // the procedural orb has a tail, so rotate it to aim.
+            if (!_usingArt)
+            {
+                float angle = Mathf.Atan2(dir.y, dir.x) * Mathf.Rad2Deg;
+                transform.rotation = Quaternion.Euler(0f, 0f, angle);   // tail trails behind
+            }
         }
 
         // ── Frame loading ──────────────────────────────────────────────────────

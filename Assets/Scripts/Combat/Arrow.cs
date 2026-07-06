@@ -20,19 +20,22 @@ namespace ZulfarakRPG
         static Sprite _arrowSprite;
         static Sprite _impactSprite;
 
-        public void Init(SkeletonEnemy target, float damage, bool isCrit = false)
+        // customSprite: a specific arrow from the pack's Arrow(Projectile) folder, cycled
+        // by the archer so successive shots differ. Null → the shared default arrow.
+        public void Init(SkeletonEnemy target, float damage, bool isCrit = false, Sprite customSprite = null)
         {
             _target     = target;
             this.damage = damage;
             _isCrit     = isCrit;
             _spawnTime  = Time.time;
 
-            if (_arrowSprite == null) _arrowSprite = LoadArrowSprite();
+            Sprite sprite = customSprite != null ? customSprite : (_arrowSprite ??= LoadArrowSprite());
             _sr             = gameObject.AddComponent<SpriteRenderer>();
-            _sr.sprite      = _arrowSprite;
+            _sr.sprite      = sprite;
             _sr.sortingOrder = 5;
-            // Arrow03 is a 32×32 frame — scale down so it reads as a slim projectile.
-            transform.localScale = Vector3.one * 0.7f;
+            // Pack arrows are 100×100 (mostly empty) — scale down so they read as slim
+            // projectiles at roughly the same on-screen size as the default arrow.
+            transform.localScale = Vector3.one * (customSprite != null ? 0.5f : 0.7f);
         }
 
         void Update()

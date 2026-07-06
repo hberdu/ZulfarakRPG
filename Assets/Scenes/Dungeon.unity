@@ -994,7 +994,7 @@ MonoBehaviour:
   - {fileID: 115242099}
   - {fileID: 1959389062}
   - {fileID: 367317885}
-  spawnInterval: 0.5
+  spawnInterval: 0.2
   exitPortal: {fileID: 1309078666}
   waveAnnounceText: {fileID: 0}
   clearText: {fileID: 2090981512}

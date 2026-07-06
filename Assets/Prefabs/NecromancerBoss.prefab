@@ -227,11 +227,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 717d06e75f81a5747ae20ef6f883ea3b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: ZulfarakRPG::ZulfarakRPG.NecromancerBoss
-  maxHealth: 800
+  maxHealth: 2400
   moveSpeed: 2.2
   gravityScale: 3
   attackRange: 6
-  attackDamage: 28
+  attackDamage: 84
   attackCooldown: 2.2
   sceneBoundsMinX: 0.45
   sceneBoundsMaxX: 4.55
