@@ -238,6 +238,10 @@ namespace ZulfarakRPG
         // Hook for subclasses (e.g. boss killing its remaining minions).
         protected virtual void OnDeathStarted() { }
 
+        // Multiplier applied on top of server-catalog stats so bosses keep their
+        // buffed HP/damage even when ResolveEnemyFromServer overwrites the fields.
+        protected virtual float ServerStatMultiplier => 1f;
+
         IEnumerator RegisterKillOnServer()
         {
             if (ServerApiClient.Instance == null || !ServerApiClient.Instance.IsReady)
@@ -352,8 +356,8 @@ namespace ZulfarakRPG
             }
 
             enemyId = matched.enemyId;
-            maxHealth = Mathf.Max(1f, matched.hp);
-            attackDamage = Mathf.Max(0f, matched.attack);
+            maxHealth = Mathf.Max(1f, matched.hp) * ServerStatMultiplier;
+            attackDamage = Mathf.Max(0f, matched.attack) * ServerStatMultiplier;
             _hp = maxHealth;
             _hpBar?.SetHealth(_hp, maxHealth);
         }

@@ -24,6 +24,7 @@ namespace ZulfarakRPG
         Vector3 _smoothedPos;
         bool    _flipX;
         bool    _hasFirstState;
+        float   _lastHp = -1f;   // -1 = no health packet received yet
 
         void Awake()
         {
@@ -51,9 +52,23 @@ namespace ZulfarakRPG
                     padding:         0.005f,
                     fillColor:       new Color(0.95f, 0.85f, 0.30f, 1f), // gold = remote
                     widthMultiplier: 0.67f);
-                _hpBar.SetHealth(1, 1);
+                if (_lastHp < 0f) _hpBar.SetHealth(1, 1);   // full until first health packet
                 _hpBar.SetName(PlayerName);
             }
+        }
+
+        // Health arrives with every STATE packet. When HP drops, flash + red popup
+        // so the partner visibly takes damage on this screen too.
+        public void SetHealth(float hp, float maxHp)
+        {
+            if (maxHp <= 0f) return;
+            if (_lastHp >= 0f && hp < _lastHp - 0.01f)
+            {
+                DamagePopup.Spawn(transform, _lastHp - hp, new Color(1f, 0.25f, 0.25f, 1f));
+                HurtFlash.Flash(_sr);
+            }
+            _lastHp = hp;
+            _hpBar?.SetHealth(hp, maxHp);
         }
 
         void RebindSprites()

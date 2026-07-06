@@ -136,8 +136,10 @@ namespace ZulfarakRPG
 
             var sr = _localPlayer.GetComponent<SpriteRenderer>();
             var rb = _localPlayer.GetComponent<Rigidbody2D>();
+            // Priority: attacking > walking > idle, so the partner sees swings/casts.
             string anim = "idle";
-            if (rb != null && Mathf.Abs(rb.linearVelocity.x) > 0.05f) anim = "walk";
+            if (_localPlayer.IsAttacking) anim = "atk";
+            else if (rb != null && Mathf.Abs(rb.linearVelocity.x) > 0.05f) anim = "walk";
 
             var pd = PlayerManager.Instance?.Data;
             var msg = new P2PMessage
@@ -149,6 +151,8 @@ namespace ZulfarakRPG
                 anim  = anim,
                 cls   = pd != null ? (int)pd.classType : (int)ClassType.Warrior,
                 name  = pd?.playerName ?? SteamIntegration.Instance?.SteamName ?? "Player",
+                hp    = _localPlayer.Health,
+                maxHp = _localPlayer.MaxHealthValue,
             };
             SendToAllExceptMe(msg);
         }
@@ -220,6 +224,7 @@ namespace ZulfarakRPG
                     {
                         rp.Configure((ClassType)msg.cls, msg.name);
                         rp.ApplyState(msg.x, msg.y, msg.flipX, msg.anim);
+                        rp.SetHealth(msg.hp, msg.maxHp);
                     }
                     break;
 
@@ -261,6 +266,8 @@ namespace ZulfarakRPG
             public string netId;   // per-instance enemy id for damage packets
             public float  dmg;     // damage amount for "damage" op
             public bool   crit;    // crit flag for "damage" op
+            public float  hp;      // sender's current HP ("state" op)
+            public float  maxHp;   // sender's max HP ("state" op)
         }
     }
 }

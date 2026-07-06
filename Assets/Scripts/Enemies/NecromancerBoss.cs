@@ -23,6 +23,11 @@ namespace ZulfarakRPG
         public float    castFps         = 12f;
 
         private readonly List<SkeletonEnemy> _minions = new();
+
+        // Boss stats are 2× whatever the server catalog says (prefab/editor values
+        // are already authored doubled).
+        protected override float ServerStatMultiplier => 2f;
+
         private bool  _summoning;
         private bool  _casting;
         private float _summonTimer = 1.5f;   // first re-summon shortly after engaging

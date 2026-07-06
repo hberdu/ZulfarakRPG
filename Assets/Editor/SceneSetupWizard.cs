@@ -1068,8 +1068,8 @@ public static class SceneSetupWizard
         boss.magicBoltFrames = CharacterSpriteImporter.GetFrames("Necromancer", "MagicBolt");
         boss.minionPrefab = minionPrefab;
         boss.minionsPerSummon = 5;
-        boss.maxHealth      = 1200f;   // 3× tankier boss
-        boss.attackDamage   = 42f;     // 3× harder-hitting bolts
+        boss.maxHealth      = 2400f;   // doubled per request (was 1200)
+        boss.attackDamage   = 84f;     // doubled per request (was 42)
         boss.attackRange    = 6f;      // ranged (cast AI ignores melee range)
         boss.castMinDistance = 2.4f;   // kites back if the player closes in
         boss.moveSpeed      = 2.2f;

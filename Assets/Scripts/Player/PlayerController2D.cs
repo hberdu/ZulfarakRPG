@@ -67,6 +67,9 @@ namespace ZulfarakRPG
         public float Health    => _hp;
         public float MaxHealthValue => maxHealth;
         public float HealthFraction => maxHealth > 0f ? Mathf.Clamp01(_hp / maxHealth) : 0f;
+        // True while the attack animation is playing — used by MultiplayerSync so
+        // the remote avatar mirrors attack swings instead of only idle/walk.
+        public bool IsAttacking => _attackLock > 0f;
         private float    _atkTimer;
         private float    _attackLock;
         private Sprite[] _idle, _walk, _atk, _death, _hurt;
