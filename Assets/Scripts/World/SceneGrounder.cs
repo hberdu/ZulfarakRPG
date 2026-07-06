@@ -17,14 +17,12 @@ namespace ZulfarakRPG
     {
         struct Deco { public string obj; public string res; public float height; public float x; }
 
-        // 2 trees (edges) + 3 statues + 2 tents, spread across the ~0..5 city width.
+        // 2 trees (edges) + 2 tents, spread across the ~0..5 city width. (Statues removed.)
         static readonly Deco[] Decor =
         {
             new Deco{ obj="Column_L",  res="Tree3",       height=1.10f, x=0.30f },   // far-left tree
-            new Deco{ obj="Statue",    res="AngelStatue", height=0.75f, x=1.00f },
             new Deco{ obj="Vase_L",    res="SmallTent",   height=0.50f, x=1.80f },
             new Deco{ obj="Vase_R",    res="LargeTent",   height=0.55f, x=3.40f },
-            new Deco{ obj="Gate_Arch", res="AngelStatue", height=0.85f, x=4.10f },
             new Deco{ obj="Column_R",  res="Tree3",       height=1.15f, x=4.70f },   // far-right tree
         };
 
@@ -33,7 +31,8 @@ namespace ZulfarakRPG
         {
             "Pyramid_L", "Pyramid_C", "Pyramid_R",
             "Dune_FarL", "Dune_FarR", "Dune_NearL", "Dune_NearR",
-            "Tablet",     // removed middle statue
+            "Tablet",
+            "Statue", "Gate_Arch",   // statues removed from the city per request
             "Kael_NPC",   // Kael removed — only the class master and blacksmith remain
             "Chest",      // chest removed from the city
         };
@@ -114,12 +113,15 @@ namespace ZulfarakRPG
                 GroundAlignUtil.SeatCharacterOnGround(go.transform, sr);
             }
 
-            // Let the hero roam the whole city width, edge to edge.
+            // Let the hero roam the whole city width, edge to edge — and re-seat him
+            // through the SAME path/ground value as the NPCs so all characters share
+            // one visual ground height (his own Start() seat ran frames earlier).
             var player = FindAnyObjectByType<PlayerController2D>();
             if (player != null)
             {
                 player.sceneBoundsMinX = 0.15f;
                 player.sceneBoundsMaxX = 4.85f;
+                GroundAlignUtil.SeatCharacterOnGround(player.transform, player.GetComponent<SpriteRenderer>());
             }
             foreach (var w in new[] { "WallLeft", "WallRight" })
             {

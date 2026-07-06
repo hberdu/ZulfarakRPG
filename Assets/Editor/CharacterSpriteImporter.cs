@@ -13,16 +13,22 @@ public static class CharacterSpriteImporter
     private const int    FrameSize = 100;
 
     // v2 pack uses underscores + parenthesized filenames — mapped explicitly.
-    // (destAnim, srcFileName, frameCount)
+    // Body anims come from the "Necromancer with shadows" folder (per the user's request);
+    // PURE Attack02/Summon (no baked magic effect) because the boss spawns its own separate
+    // MagicBolt projectile. (destAnim, srcFileName, frameCount)
     private static readonly (string anim, string srcFile, int frames)[] NecromancerAnims = {
-        ("Idle",    "Necromancer_Idle.png",                          6),
-        ("Walk",    "Necromancer_Walk.png",                          6),
-        ("Attack01","Necromancer_Attack01.png",                      9),
-        ("Attack02","Necromancer_Attack02(With magic effects).png", 10),
-        ("Summon",  "Necromancer_Summon(With magic effects).png",   13),
-        ("Hurt",    "Necromancer_Hurt.png",                          4),
-        ("Death",   "Necromancer_DEATH.png",                         9),
+        ("Idle",    "Necromancer_Idle.png",     6),
+        ("Walk",    "Necromancer_Walk.png",     6),
+        ("Attack02","Necromancer_Attack02.png",10),
+        ("Summon",  "Necromancer_Summon.png",  10),
+        ("Hurt",    "Necromancer_Hurt.png",     4),
+        ("Death",   "Necromancer_DEATH.png",    9),
     };
+
+    // The magic projectile the necromancer hurls, from the Magic(projectile) folder.
+    // Imported with a CENTER pivot (it's a flying bolt, not a grounded character).
+    private static readonly (string anim, string srcFile, int frames) NecromancerBolt =
+        ("MagicBolt", "Necromancer_Attack02_Effect.png", 6);
 
     // charName = asset folder name, srcFolder = folder name inside pack
     private static readonly CharDef[] Characters = {
@@ -75,9 +81,10 @@ public static class CharacterSpriteImporter
             }
         }
 
-        // Necromancer boss (v2 pack, different path/filename conventions)
+        // Necromancer boss (v2 pack). Body anims from "Necromancer with shadows";
+        // the projectile from "Magic(projectile)".
         Directory.CreateDirectory(Application.dataPath + "/../" + DestBase + "/Necromancer");
-        string necroSrc = $@"{SrcBase2}\Necromancer\Necromancer";
+        string necroSrc = $@"{SrcBase2}\Necromancer\Necromancer with shadows";
         foreach (var (anim, srcName, frames) in NecromancerAnims)
         {
             string srcFile  = $@"{necroSrc}\{srcName}";
@@ -93,6 +100,21 @@ public static class CharacterSpriteImporter
             File.Copy(srcFile, destAbs, overwrite: true);
             AssetDatabase.ImportAsset(destFile);
             ConfigureSprite(destFile, "Necromancer", anim, frames);
+        }
+
+        // Magic projectile (center pivot — it's a flying bolt).
+        {
+            var (anim, srcName, frames) = NecromancerBolt;
+            string srcFile  = $@"{SrcBase2}\Necromancer\Magic(projectile)\{srcName}";
+            string destFile = $"{DestBase}/Necromancer/Necromancer-{anim}.png";
+            string destAbs  = Application.dataPath + "/../" + destFile;
+            if (File.Exists(srcFile))
+            {
+                File.Copy(srcFile, destAbs, overwrite: true);
+                AssetDatabase.ImportAsset(destFile);
+                ConfigureSprite(destFile, "Necromancer", anim, frames, SpriteAlignment.Center);
+            }
+            else Debug.LogWarning($"[ZulfarakRPG] Not found: {srcFile}");
         }
 
         AssetDatabase.Refresh();
@@ -150,7 +172,8 @@ public static class CharacterSpriteImporter
         return null;
     }
 
-    static void ConfigureSprite(string assetPath, string charName, string anim, int frameCount)
+    static void ConfigureSprite(string assetPath, string charName, string anim, int frameCount,
+                                SpriteAlignment alignment = SpriteAlignment.BottomCenter)
     {
         var imp = AssetImporter.GetAtPath(assetPath) as TextureImporter;
         if (imp == null) return;
@@ -164,13 +187,14 @@ public static class CharacterSpriteImporter
         imp.alphaIsTransparency = true;
         imp.isReadable        = true;  // WorldHealthBar pixel-scans the sprite for exact visible width
 
+        Vector2 pivot = alignment == SpriteAlignment.Center ? new Vector2(0.5f, 0.5f) : new Vector2(0.5f, 0f);
         var sprites = new SpriteMetaData[frameCount];
         for (int i = 0; i < frameCount; i++)
             sprites[i] = new SpriteMetaData {
                 name      = $"{charName}-{anim}_{i}",
                 rect      = new Rect(i * FrameSize, 0, FrameSize, FrameSize),
-                pivot     = new Vector2(0.5f, 0f),
-                alignment = (int)SpriteAlignment.BottomCenter
+                pivot     = pivot,
+                alignment = (int)alignment
             };
         imp.spritesheet = sprites;
         imp.SaveAndReimport();

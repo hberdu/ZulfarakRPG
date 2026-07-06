@@ -572,7 +572,7 @@ namespace ZulfarakRPG
 
             int cellW = (w - 4) / 3;
             int cellH = (h - 4) / 2;
-            SelectObject(hdc, _fontSection);
+            SelectObject(hdc, _fontRow);
             for (int i = 0; i < 6; i++)
             {
                 int col = i % 3;
@@ -583,12 +583,15 @@ namespace ZulfarakRPG
                 int ch  = cellH - 4;
                 NativeFrameImage.PixelBevel(hdc, cx, cy, cw, ch,
                     _brushOutline, _brushBevHi, _brushBevLo, _brushPanel);
-                var lblRc = new RECT { Left = cx + 4, Top = cy + 1, Right = cx + cw - 4, Bottom = cy + ch / 2 + 1 };
-                SetTextColor(hdc, Bgr(0.75f, 0.63f, 0.32f));
+                // Single line per cell (the cell is only ~18 px tall — stacking label
+                // over value made them overlap): label left, value right, both vcentered.
+                int split = cx + Mathf.RoundToInt(cw * 0.42f);
+                var lblRc = new RECT { Left = cx + 5, Top = cy, Right = split, Bottom = cy + ch };
+                SetTextColor(hdc, Bgr(0.78f, 0.66f, 0.34f));
                 DrawTextW(hdc, labels[i], -1, ref lblRc,
                     DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
-                var valRc = new RECT { Left = cx + 4, Top = cy + ch / 2, Right = cx + cw - 4, Bottom = cy + ch };
-                SetTextColor(hdc, Bgr(0.96f, 0.94f, 0.86f));
+                var valRc = new RECT { Left = split - 2, Top = cy, Right = cx + cw - 5, Bottom = cy + ch };
+                SetTextColor(hdc, Bgr(0.98f, 0.96f, 0.88f));
                 DrawTextW(hdc, values[i], -1, ref valRc,
                     DT_RIGHT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
             }

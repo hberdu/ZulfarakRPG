@@ -167,7 +167,7 @@ BoxCollider2D:
     drawMode: 0
     adaptiveTiling: 0
   m_AutoTiling: 0
-  m_Size: {x: 0.15, y: 0.2}
+  m_Size: {x: 0.3, y: 0.2}
   m_EdgeRadius: 0
 --- !u!114 &622832363352951181
 MonoBehaviour:
@@ -224,6 +224,13 @@ MonoBehaviour:
   - {fileID: 3109186938332489462, guid: 47238b60175942047a08a0542868997f, type: 3}
   - {fileID: -3761059524881590778, guid: 47238b60175942047a08a0542868997f, type: 3}
   - {fileID: -5862458259485764450, guid: 47238b60175942047a08a0542868997f, type: 3}
+  hurtFrames:
+  - {fileID: -2697582172540151767, guid: e50d5af3fb53acf45be03b507bc9b7d2, type: 3}
+  - {fileID: -4308921335916872857, guid: e50d5af3fb53acf45be03b507bc9b7d2, type: 3}
+  - {fileID: 2907682683811911766, guid: e50d5af3fb53acf45be03b507bc9b7d2, type: 3}
+  - {fileID: -4325738119086067156, guid: e50d5af3fb53acf45be03b507bc9b7d2, type: 3}
+  enemyId: 
+  netInstanceId: 
 --- !u!1 &1381895798055363719
 GameObject:
   m_ObjectHideFlags: 0

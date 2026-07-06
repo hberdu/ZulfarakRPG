@@ -40,6 +40,50 @@ public static class SceneSetupWizard
         Debug.Log("[ZulfarakRPG] Todas as cenas criadas com sucesso!");
     }
 
+    // Rebuilds ONLY the Necromancer boss prefab (from the current sprites/stats) and
+    // rewires the existing Dungeon scene's WaveManager — without regenerating the whole
+    // scene, so manual scene edits are preserved. Run AFTER "Import Character Sprites".
+    [MenuItem("Tools/ZulfarakRPG/Rebuild Necromancer Boss")]
+    public static void RebuildNecromancerBoss()
+    {
+        var skelPrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/SkeletonEnemy.prefab");
+        if (skelPrefab == null)
+        {
+            Debug.LogError("[ZulfarakRPG] Assets/Prefabs/SkeletonEnemy.prefab não encontrado. " +
+                           "Rode 'Import Character Sprites' e 'Setup All Scenes' pelo menos uma vez antes.");
+            return;
+        }
+
+        var necroFrames = CharacterSpriteImporter.GetFrames("Necromancer", "Idle");
+        if (necroFrames == null || necroFrames.Length == 0)
+            Debug.LogWarning("[ZulfarakRPG] Sprites do Necromancer não encontradas — rode 'Import Character Sprites' primeiro, senão o boss fica invisível.");
+
+        Directory.CreateDirectory(Application.dataPath + "/../Assets/Prefabs");
+        var necroScene  = CreateNecromancerGO("NecromancerBoss", skelPrefab);
+        var necroPrefab = PrefabUtility.SaveAsPrefabAsset(necroScene, "Assets/Prefabs/NecromancerBoss.prefab");
+        Object.DestroyImmediate(necroScene);
+
+        // Give the user a chance to save any open work, then rewire the Dungeon scene.
+        EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo();
+        string dungeonPath = SceneFolder + "/Dungeon.unity";
+        var scene = EditorSceneManager.OpenScene(dungeonPath, OpenSceneMode.Single);
+        var wm = Object.FindAnyObjectByType<WaveManager>();
+        if (wm != null)
+        {
+            wm.necromancerPrefab = necroPrefab;
+            EditorUtility.SetDirty(wm);
+            EditorSceneManager.MarkSceneDirty(scene);
+            EditorSceneManager.SaveScene(scene);
+            Debug.Log("[ZulfarakRPG] NecromancerBoss.prefab reconstruído e religado ao WaveManager da cena Dungeon.");
+        }
+        else
+        {
+            Debug.LogError("[ZulfarakRPG] WaveManager não encontrado na cena Dungeon — o prefab foi salvo, mas religue manualmente o campo 'Necromancer Prefab'.");
+        }
+
+        AssetDatabase.Refresh();
+    }
+
     // Injects an `AlphaMaskFeature` instance into every UniversalRendererData asset in
     // the project so URP rewrites the swap-chain alpha channel based on the magenta
     // clear color. Combined with OverlayWindow's DwmExtendFrameIntoClientArea trick,
@@ -1015,19 +1059,21 @@ public static class SceneSetupWizard
         var boss = go.AddComponent<NecromancerBoss>();
         boss.idleFrames   = CharacterSpriteImporter.GetFrames("Necromancer", "Idle");
         boss.walkFrames   = CharacterSpriteImporter.GetFrames("Necromancer", "Walk");
-        boss.attackFrames = CharacterSpriteImporter.MergeFrames(
-            CharacterSpriteImporter.GetFrames("Necromancer", "Attack01"),
-            CharacterSpriteImporter.GetFrames("Necromancer", "Attack02"));
+        // Ranged caster: the ATTACK animation is the magic cast (Attack02); the boss
+        // hurls the separate Magic(projectile) bolt instead of a melee swing.
+        boss.attackFrames = CharacterSpriteImporter.GetFrames("Necromancer", "Attack02");
         boss.deathFrames  = CharacterSpriteImporter.GetFrames("Necromancer", "Death");
         boss.hurtFrames   = CharacterSpriteImporter.GetFrames("Necromancer", "Hurt");
         boss.summonFrames = CharacterSpriteImporter.GetFrames("Necromancer", "Summon");
+        boss.magicBoltFrames = CharacterSpriteImporter.GetFrames("Necromancer", "MagicBolt");
         boss.minionPrefab = minionPrefab;
         boss.minionsPerSummon = 5;
-        boss.maxHealth      = 400f;
-        boss.attackDamage   = 12f;
-        boss.attackRange    = 1.3f;
-        boss.moveSpeed      = 2.4f;
-        boss.attackCooldown = 2.4f;
+        boss.maxHealth      = 1200f;   // 3× tankier boss
+        boss.attackDamage   = 42f;     // 3× harder-hitting bolts
+        boss.attackRange    = 6f;      // ranged (cast AI ignores melee range)
+        boss.castMinDistance = 2.4f;   // kites back if the player closes in
+        boss.moveSpeed      = 2.2f;
+        boss.attackCooldown = 2.2f;
         boss.sceneBoundsMinX = 0.45f;
         boss.sceneBoundsMaxX = 4.55f;
         EditorUtility.SetDirty(boss);

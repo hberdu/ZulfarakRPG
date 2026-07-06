@@ -77,16 +77,19 @@ namespace ZulfarakRPG
                 if (minX > maxX || minY > maxY) { _cache[sp] = fallback; return fallback; }
 
                 // Find feet: start at the WIDEST row (chest/cloak — definitely part of the main body),
-                // then scan DOWN until hitting an empty row. That row's lower neighbour is the feet.
-                // This skips shadows that sit below the feet (often separated by a transparent gap).
+                // then scan DOWN until hitting an empty row OR a row thinner than 40% of the widest.
+                // The width threshold skips 1-2px tips (staff end, cloak point) that hang below the
+                // real feet on some frames — without it feet flicker per animation frame and the
+                // whole body seats a pixel or two high. Also skips shadows below a transparent gap.
                 int maxWidthY = minY;
                 for (int y = minY; y <= maxY; y++)
                     if (rowWidth[y] > rowWidth[maxWidthY]) maxWidthY = y;
 
+                int minFeetWidth = Mathf.Max(1, Mathf.CeilToInt(rowWidth[maxWidthY] * 0.4f));
                 int feetY = maxWidthY;
                 for (int y = maxWidthY - 1; y >= 0; y--)
                 {
-                    if (rowWidth[y] == 0) break;  // gap reached — stop, don't include shadow below
+                    if (rowWidth[y] < minFeetWidth) break;
                     feetY = y;
                 }
 

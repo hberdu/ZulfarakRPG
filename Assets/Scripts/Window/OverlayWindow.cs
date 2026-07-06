@@ -123,7 +123,6 @@ namespace ZulfarakRPG
             bool gameplay = sceneName == "Zulfarak" || sceneName == "Dungeon" || sceneName == "Bootstrap";
             int newW = gameplay ? 600 : 380;
             int newH = gameplay ? 180 : 640;
-            bool sizeChanged = newW != Screen.width || newH != Screen.height;
             windowWidth = newW;
             windowHeight = newH;
 #if !UNITY_EDITOR
@@ -140,21 +139,16 @@ namespace ZulfarakRPG
             // Apply the borderless/topmost style + DWM glass immediately (no reposition
             // here — it would fight the resize below).
             ApplyOverlay(repositionWindow: false);
-            if (sizeChanged)
-            {
-                Screen.SetResolution(windowWidth, windowHeight, FullScreenMode.Windowed);
-                // Screen.SetResolution is DEFERRED to end-of-frame and can leave the OS
-                // window at a DPI-scaled rect, desyncing it from the render backbuffer —
-                // that's why the game looked zoomed until the window was dragged. Pin the
-                // exact pixel size AFTER the resolution has actually applied (the same
-                // SetWindowPos the drag makes), so it's correct from the first frame.
-                if (_resizeCo != null) StopCoroutine(_resizeCo);
-                _resizeCo = StartCoroutine(LockWindowSizeAfterResolution());
-            }
-            else
-            {
-                MenuPopupWindow.Reposition();
-            }
+            // ALWAYS drive the resolution + a hard SetWindowPos pin — even when Screen
+            // already reports the target size. On boot the OS window can still be at a
+            // DPI-scaled rect (bigger than the backbuffer), which zoomed the game AND
+            // desynced mouse hit-testing so the HUD buttons weren't clickable until a
+            // manual drag re-pinned the rect. Gating this on `sizeChanged` skipped the pin
+            // in exactly that case; now it runs unconditionally and re-pins a few times to
+            // beat the deferred Screen.SetResolution / DPI settling.
+            Screen.SetResolution(windowWidth, windowHeight, FullScreenMode.Windowed);
+            if (_resizeCo != null) StopCoroutine(_resizeCo);
+            _resizeCo = StartCoroutine(LockWindowSizeAfterResolution());
 #endif
         }
 
@@ -165,6 +159,14 @@ namespace ZulfarakRPG
             yield return null;
             yield return null;
             ApplyOverlay(repositionWindow: true);
+            MenuPopupWindow.Reposition();
+            // Re-pin a few times over the first ~0.4s: DPI scaling and Unity's window
+            // settling can otherwise leave the rect oversized until the user drags it.
+            for (int i = 0; i < 4; i++)
+            {
+                yield return new WaitForSecondsRealtime(0.1f);
+                ApplyOverlay(repositionWindow: true);
+            }
             MenuPopupWindow.Reposition();
             _resizeCo = null;
         }
