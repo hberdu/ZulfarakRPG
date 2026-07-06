@@ -7,23 +7,40 @@ namespace ZulfarakRPG
 {
     // Native Win32 inventory/equipment popup rendered outside the game window.
     // Actions (equip/unequip/use) call Inventory methods, which forward to server APIs.
+    //
+    // Fixed to the game strip width (400 px). All content — dragon emblem, character
+    // summary, equipment column, scrollable bag, compact stats — fits inside a single
+    // pixel-art beveled frame that sits directly above the game window.
     public static class InventoryPopupWindow
     {
-        public const int PopupWidth = 760;
-        public const int PopupHeight = 460;
-        const int LeftPaneW = 520;
-        const int RightPaneX = LeftPaneW + 6;
+        public const int PopupWidth  = 400;
+        public const int PopupHeight = 360;
 
-        const int HeaderH = 34;
-        const int FooterH = 22;
-        const int EquipRowH = 24;
-        const int BagRowH = 28;
-        const int EquipTop = HeaderH + 6;
+        // Red-Eyes-Black-Dragon emblem (Resources/UI/DragonFrame); absent → plain dark card.
+        const string DragonRes = "UI/DragonFrame";
+
+        // Section layout (popup-local pixels, no outer margins — the pixel bevel IS the frame).
+        const int HeaderH   = 28;
+        const int SummaryH  = 52;              // dragon emblem + name/class/level line
+        const int StatsH    = 48;              // 2 rows × 3 stats compact strip
+        const int SectionHeaderH = 18;         // "Equipamento" / "Sacola" bar
+        const int EquipRowH = 22;
         const int EquipRows = 8;
-        const int EquipBottom = EquipTop + EquipRows * EquipRowH;
-        const int BagTop = EquipBottom + 8;
-        static int BagBottom => PopupHeight - FooterH - 8;
-        static int BagViewH => BagBottom - BagTop;
+        const int BagRowH   = 24;
+        const int FooterH   = 16;
+
+        static int BodyTop     => HeaderH + SummaryH + StatsH;
+        static int BodyBottom  => PopupHeight - FooterH;
+        // Two vertical columns split near the middle (equipment | bag).
+        const int LeftPaneW  = 196;
+        const int RightPaneX = LeftPaneW + 2;
+        static int RightPaneW  => PopupWidth - RightPaneX - 2;
+
+        static int EquipTop     => BodyTop + SectionHeaderH;
+        static int EquipBottom  => EquipTop + EquipRows * EquipRowH;
+        static int BagListTop   => BodyTop + SectionHeaderH;
+        static int BagListBot   => BodyBottom - 2;
+        static int BagViewH     => BagListBot - BagListTop;
         static int MaxBagScroll => Mathf.Max(0, _bagRows.Count * BagRowH - BagViewH);
 
         struct EquipRow
@@ -178,16 +195,18 @@ namespace ZulfarakRPG
 
         static int BagRowAtY(int y)
         {
-            if (y < BagTop || y >= BagBottom) return -1;
-            int idx = (y - BagTop + _bagScrollY) / BagRowH;
+            if (y < BagListTop || y >= BagListBot) return -1;
+            int idx = (y - BagListTop + _bagScrollY) / BagRowH;
             return idx >= 0 && idx < _bagRows.Count ? idx : -1;
         }
 
         static IntPtr _hwnd = IntPtr.Zero;
         static WndProcDelegate _wndProcDelegate;
         static bool _classRegistered;
-        static IntPtr _brushBg, _brushBorder, _brushHeader, _brushRow, _brushRowAlt, _brushTag, _brushClose;
-        static IntPtr _fontTitle, _fontRow, _fontHint, _fontTag;
+        static IntPtr _brushBorder, _brushVoid, _brushPanel;
+        static IntPtr _brushOutline, _brushBevHi, _brushBevLo, _brushRuby, _brushDivider;
+        static IntPtr _brushRowA, _brushRowB, _brushTag, _brushTagUse;
+        static IntPtr _fontTitle, _fontRow, _fontHint, _fontTag, _fontSection, _fontSummary;
         const string ClassName = "ZulfarakInventoryPopup";
 
         static void EnsureClassRegistered()
@@ -210,17 +229,26 @@ namespace ZulfarakRPG
 
         static void EnsureGdiObjects()
         {
-            if (_brushBg == IntPtr.Zero) _brushBg = CreateSolidBrush(Bgr(0.05f, 0.03f, 0.02f));
-            if (_brushBorder == IntPtr.Zero) _brushBorder = CreateSolidBrush(Bgr(0.85f, 0.65f, 0.20f));
-            if (_brushHeader == IntPtr.Zero) _brushHeader = CreateSolidBrush(Bgr(0.18f, 0.10f, 0.05f));
-            if (_brushRow == IntPtr.Zero) _brushRow = CreateSolidBrush(Bgr(0.10f, 0.07f, 0.04f));
-            if (_brushRowAlt == IntPtr.Zero) _brushRowAlt = CreateSolidBrush(Bgr(0.13f, 0.09f, 0.05f));
-            if (_brushTag == IntPtr.Zero) _brushTag = CreateSolidBrush(Bgr(0.28f, 0.16f, 0.06f));
-            if (_brushClose == IntPtr.Zero) _brushClose = CreateSolidBrush(Bgr(0.40f, 0.05f, 0.05f));
-            if (_fontTitle == IntPtr.Zero) _fontTitle = MakeFont(18, FW_BOLD);
-            if (_fontRow == IntPtr.Zero) _fontRow = MakeFont(13, FW_NORMAL);
-            if (_fontHint == IntPtr.Zero) _fontHint = MakeFont(11, FW_NORMAL);
-            if (_fontTag == IntPtr.Zero) _fontTag = MakeFont(12, FW_BOLD);
+            // Pixel-art palette: pitch-black outline, warm gold bevel highlight, dark-gold
+            // shoulder, near-black panel base, ruby corner studs, alternating row bands.
+            if (_brushVoid    == IntPtr.Zero) _brushVoid    = CreateSolidBrush(Bgr(0.02f, 0.02f, 0.03f));
+            if (_brushPanel   == IntPtr.Zero) _brushPanel   = CreateSolidBrush(Bgr(0.06f, 0.05f, 0.05f));
+            if (_brushBorder  == IntPtr.Zero) _brushBorder  = CreateSolidBrush(Bgr(0.52f, 0.40f, 0.15f));
+            if (_brushOutline == IntPtr.Zero) _brushOutline = CreateSolidBrush(Bgr(0.00f, 0.00f, 0.00f));
+            if (_brushBevHi   == IntPtr.Zero) _brushBevHi   = CreateSolidBrush(Bgr(0.95f, 0.75f, 0.30f));
+            if (_brushBevLo   == IntPtr.Zero) _brushBevLo   = CreateSolidBrush(Bgr(0.35f, 0.24f, 0.08f));
+            if (_brushRuby    == IntPtr.Zero) _brushRuby    = CreateSolidBrush(Bgr(0.85f, 0.15f, 0.15f));
+            if (_brushDivider == IntPtr.Zero) _brushDivider = CreateSolidBrush(Bgr(0.20f, 0.15f, 0.06f));
+            if (_brushRowA    == IntPtr.Zero) _brushRowA    = CreateSolidBrush(Bgr(0.10f, 0.08f, 0.08f));
+            if (_brushRowB    == IntPtr.Zero) _brushRowB    = CreateSolidBrush(Bgr(0.14f, 0.11f, 0.10f));
+            if (_brushTag     == IntPtr.Zero) _brushTag     = CreateSolidBrush(Bgr(0.32f, 0.11f, 0.10f));
+            if (_brushTagUse  == IntPtr.Zero) _brushTagUse  = CreateSolidBrush(Bgr(0.16f, 0.32f, 0.12f));
+            if (_fontTitle    == IntPtr.Zero) _fontTitle    = MakeFont(15, FW_BOLD);
+            if (_fontSection  == IntPtr.Zero) _fontSection  = MakeFont(12, FW_BOLD);
+            if (_fontSummary  == IntPtr.Zero) _fontSummary  = MakeFont(11, FW_NORMAL);
+            if (_fontRow      == IntPtr.Zero) _fontRow      = MakeFont(11, FW_NORMAL);
+            if (_fontHint     == IntPtr.Zero) _fontHint     = MakeFont(10, FW_NORMAL);
+            if (_fontTag      == IntPtr.Zero) _fontTag      = MakeFont(10, FW_BOLD);
         }
 
         static IntPtr MakeFont(int sizePx, int weight)
@@ -270,7 +298,8 @@ namespace ZulfarakRPG
                 {
                     int mx = (short)(lParam.ToInt64() & 0xFFFF);
                     int my = (short)((lParam.ToInt64() >> 16) & 0xFFFF);
-                    if (my < HeaderH && mx >= PopupWidth - 30)
+                    // Close box (top-right of header)?
+                    if (my < HeaderH && mx >= PopupWidth - 26)
                     {
                         Hide();
                         return IntPtr.Zero;
@@ -290,7 +319,9 @@ namespace ZulfarakRPG
                             }
                             return IntPtr.Zero;
                         }
-
+                    }
+                    else
+                    {
                         int bagRow = BagRowAtY(my);
                         if (bagRow >= 0)
                         {
@@ -313,146 +344,253 @@ namespace ZulfarakRPG
             return DefWindowProcW(hWnd, msg, wParam, lParam);
         }
 
+        // Alternating opaque row band — the new layout is fully solid (no dragon behind
+        // the text) so the rows use plain FillRect for maximum readability at 400×360.
+        static void FillRow(IntPtr hdc, int left, int top, int right, int bottom, int i)
+        {
+            var rc = new RECT { Left = left, Top = top, Right = right, Bottom = bottom };
+            FillRect(hdc, ref rc, (i & 1) == 0 ? _brushRowA : _brushRowB);
+        }
+
         static void Paint(IntPtr hdc)
         {
             RebuildRows();
 
             int w = PopupWidth;
             int h = PopupHeight;
+
+            // Solid near-black base, then chunky pixel-art bevel + corner studs.
             var full = new RECT { Left = 0, Top = 0, Right = w, Bottom = h };
-            FillRect(hdc, ref full, _brushBg);
-            FrameRect(hdc, ref full, _brushBorder);
-            var inset = new RECT { Left = 1, Top = 1, Right = w - 1, Bottom = h - 1 };
-            FrameRect(hdc, ref inset, _brushBorder);
+            FillRect(hdc, ref full, _brushPanel);
+            NativeFrameImage.PixelBevel(hdc, 0, 0, w, h, _brushOutline, _brushBevHi, _brushBevLo, _brushPanel);
+            NativeFrameImage.PixelCornerStuds(hdc, 0, 0, w, h, _brushRuby, inset: 5, size: 3);
 
             SetBkMode(hdc, TRANSPARENT);
 
-            var header = new RECT { Left = 2, Top = 2, Right = w - 2, Bottom = HeaderH };
-            FillRect(hdc, ref header, _brushHeader);
-            var titleRc = new RECT { Left = 12, Top = 8, Right = w - 36, Bottom = HeaderH };
+            // ── Header bar ────────────────────────────────────────────────
+            var headerBar = new RECT { Left = 3, Top = 3, Right = w - 3, Bottom = HeaderH };
+            FillRect(hdc, ref headerBar, _brushDivider);
+            var titleRc = new RECT { Left = 10, Top = 6, Right = w - 30, Bottom = HeaderH };
             SetTextColor(hdc, Bgr(1.00f, 0.82f, 0.32f));
             var prev = SelectObject(hdc, _fontTitle);
-            DrawTextW(hdc, "Inventario e Equipamentos", -1, ref titleRc, DT_LEFT | DT_TOP | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
-
-            var closeRc = new RECT { Left = w - 30, Top = 7, Right = w - 8, Bottom = HeaderH - 5 };
-            FillRect(hdc, ref closeRc, _brushClose);
+            DrawTextW(hdc, "Inventario", -1, ref titleRc,
+                DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+            // Pixel-beveled close button (X)
+            var closeX = w - 24;
+            var closeY = 6;
+            NativeFrameImage.PixelBevel(hdc, closeX, closeY, 18, HeaderH - 10,
+                _brushOutline, _brushBevHi, _brushBevLo, _brushTag);
             SetTextColor(hdc, Bgr(1f, 1f, 1f));
-            DrawTextW(hdc, "X", -1, ref closeRc, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+            SelectObject(hdc, _fontTag);
+            var xRc = new RECT { Left = closeX, Top = closeY, Right = closeX + 18, Bottom = closeY + HeaderH - 10 };
+            DrawTextW(hdc, "X", -1, ref xRc, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
             SelectObject(hdc, prev);
+
+            // ── Character summary card (dragon emblem + name/class/level) ─
+            int sumTop = HeaderH;
+            var sumBar = new RECT { Left = 3, Top = sumTop, Right = w - 3, Bottom = sumTop + SummaryH };
+            FillRect(hdc, ref sumBar, _brushPanel);
+            // Dragon emblem on the left — square, framed with its own tiny pixel bevel.
+            int emblemSize = SummaryH - 6;
+            int emblemX = 8;
+            int emblemY = sumTop + 3;
+            NativeFrameImage.PixelBevel(hdc, emblemX, emblemY, emblemSize, emblemSize,
+                _brushOutline, _brushBevHi, _brushBevLo, _brushVoid);
+            var dragon = NativeFrameImage.Get(DragonRes);
+            if (dragon.Ready)
+                dragon.BlitAspect(hdc, emblemX + 4, emblemY + 4, emblemSize - 8, emblemSize - 8);
+
+            DrawSummaryText(hdc, emblemX + emblemSize + 8, sumTop + 4,
+                            w - (emblemX + emblemSize + 12), SummaryH - 8);
+
+            // ── Compact stats strip (2 rows × 3 cols) ─────────────────────
+            int statTop = sumTop + SummaryH;
+            DrawStatsStrip(hdc, 6, statTop, w - 12, StatsH);
+
+            // Divider between the summary strip and the body.
+            var div = new RECT { Left = 3, Top = statTop + StatsH - 1, Right = w - 3, Bottom = statTop + StatsH };
+            FillRect(hdc, ref div, _brushDivider);
+
+            // ── Body: equipment (left) + bag (right), split by a 2px divider ─
+            int bodyTop = BodyTop;
+            int bodyBot = BodyBottom;
+            // Column divider
+            var colDiv = new RECT { Left = LeftPaneW, Top = bodyTop, Right = LeftPaneW + 2, Bottom = bodyBot };
+            FillRect(hdc, ref colDiv, _brushDivider);
+
+            // Left column header + equipment slots
+            var equipHdr = new RECT { Left = 6, Top = bodyTop + 2, Right = LeftPaneW - 4, Bottom = bodyTop + SectionHeaderH };
+            FillRect(hdc, ref equipHdr, _brushDivider);
+            SetTextColor(hdc, Bgr(1.00f, 0.82f, 0.32f));
+            SelectObject(hdc, _fontSection);
+            var equipHdrRc = new RECT { Left = 10, Top = bodyTop, Right = LeftPaneW - 4, Bottom = bodyTop + SectionHeaderH };
+            DrawTextW(hdc, "Equipamento", -1, ref equipHdrRc,
+                DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
 
             SelectObject(hdc, _fontRow);
             for (int i = 0; i < _equipRows.Count; i++)
             {
                 int top = EquipTop + i * EquipRowH;
-                int bottom = top + EquipRowH;
-                var rowRc = new RECT { Left = 2, Top = top, Right = LeftPaneW - 2, Bottom = bottom };
-                FillRect(hdc, ref rowRc, (i & 1) == 0 ? _brushRow : _brushRowAlt);
+                int bot = top + EquipRowH;
+                FillRow(hdc, 4, top, LeftPaneW - 2, bot, i);
 
                 var row = _equipRows[i];
-                string itemLabel = string.IsNullOrWhiteSpace(row.itemId) ? "-" : row.itemId;
-                SetTextColor(hdc, Bgr(0.95f, 0.95f, 0.95f));
-                var txtRc = new RECT { Left = 12, Top = top, Right = LeftPaneW - 110, Bottom = bottom };
-                DrawTextW(hdc, $"{row.label}: {itemLabel}", -1, ref txtRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+                bool has = !string.IsNullOrWhiteSpace(row.itemId);
+                string itemLabel = has ? row.itemId : "-";
 
-                if (!string.IsNullOrWhiteSpace(row.itemId))
+                SetTextColor(hdc, has ? Bgr(0.96f, 0.94f, 0.86f) : Bgr(0.62f, 0.62f, 0.62f));
+                var txtRc = new RECT { Left = 10, Top = top, Right = LeftPaneW - 62, Bottom = bot };
+                DrawTextW(hdc, $"{row.label}: {itemLabel}", -1, ref txtRc,
+                    DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+
+                if (has)
                 {
-                    var tagRc = new RECT { Left = LeftPaneW - 102, Top = top + 4, Right = LeftPaneW - 12, Bottom = bottom - 4 };
-                    FillRect(hdc, ref tagRc, _brushTag);
+                    // Pixel-beveled "Desequipar" tag
+                    int tagX = LeftPaneW - 58;
+                    int tagY = top + 3;
+                    int tagW = 52;
+                    int tagH = EquipRowH - 6;
+                    NativeFrameImage.PixelBevel(hdc, tagX, tagY, tagW, tagH,
+                        _brushOutline, _brushBevHi, _brushBevLo, _brushTag);
                     SelectObject(hdc, _fontTag);
-                    SetTextColor(hdc, Bgr(1f, 0.82f, 0.32f));
-                    DrawTextW(hdc, "Desequipar", -1, ref tagRc, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+                    SetTextColor(hdc, Bgr(1f, 0.86f, 0.42f));
+                    var tagRc = new RECT { Left = tagX, Top = tagY, Right = tagX + tagW, Bottom = tagY + tagH };
+                    DrawTextW(hdc, "Retirar", -1, ref tagRc,
+                        DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
                     SelectObject(hdc, _fontRow);
                 }
             }
 
+            // Right column header + bag list (scrollable)
+            var bagHdr = new RECT { Left = RightPaneX + 4, Top = bodyTop + 2, Right = w - 6, Bottom = bodyTop + SectionHeaderH };
+            FillRect(hdc, ref bagHdr, _brushDivider);
+            SelectObject(hdc, _fontSection);
+            SetTextColor(hdc, Bgr(1.00f, 0.82f, 0.32f));
+            var bagHdrRc = new RECT { Left = RightPaneX + 8, Top = bodyTop, Right = w - 6, Bottom = bodyTop + SectionHeaderH };
+            DrawTextW(hdc, "Sacola", -1, ref bagHdrRc,
+                DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+
+            SelectObject(hdc, _fontRow);
             for (int i = 0; i < _bagRows.Count; i++)
             {
-                int rowTop = BagTop + i * BagRowH - _bagScrollY;
-                int rowBottom = rowTop + BagRowH;
-                if (rowBottom <= BagTop || rowTop >= BagBottom) continue;
-
-                int drawTop = Mathf.Max(rowTop, BagTop);
-                int drawBottom = Mathf.Min(rowBottom, BagBottom);
-                var rowRc = new RECT { Left = 2, Top = drawTop, Right = LeftPaneW - 2, Bottom = drawBottom };
-                FillRect(hdc, ref rowRc, (i & 1) == 0 ? _brushRow : _brushRowAlt);
+                int rowTop = BagListTop + i * BagRowH - _bagScrollY;
+                int rowBot = rowTop + BagRowH;
+                if (rowBot <= BagListTop || rowTop >= BagListBot) continue;
+                int drawTop = Mathf.Max(rowTop, BagListTop);
+                int drawBot = Mathf.Min(rowBot, BagListBot);
+                FillRow(hdc, RightPaneX + 2, drawTop, w - 4, drawBot, i);
 
                 var row = _bagRows[i];
-                SetTextColor(hdc, Bgr(0.95f, 0.95f, 0.95f));
-                var txtRc = new RECT { Left = 12, Top = rowTop, Right = LeftPaneW - 110, Bottom = rowBottom };
-                DrawTextW(hdc, $"{row.itemName} x{row.quantity}", -1, ref txtRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+                SetTextColor(hdc, Bgr(0.96f, 0.94f, 0.86f));
+                var txtRc = new RECT { Left = RightPaneX + 8, Top = rowTop, Right = w - 60, Bottom = rowBot };
+                DrawTextW(hdc, $"{row.itemName} x{row.quantity}", -1, ref txtRc,
+                    DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
 
-                var tagRc = new RECT { Left = LeftPaneW - 102, Top = rowTop + 4, Right = LeftPaneW - 12, Bottom = rowBottom - 4 };
-                FillRect(hdc, ref tagRc, _brushTag);
+                int tagX = w - 56;
+                int tagY = rowTop + 3;
+                int tagW = 48;
+                int tagH = BagRowH - 6;
+                NativeFrameImage.PixelBevel(hdc, tagX, tagY, tagW, tagH,
+                    _brushOutline, _brushBevHi, _brushBevLo,
+                    row.consumable ? _brushTagUse : _brushTag);
                 SelectObject(hdc, _fontTag);
-                SetTextColor(hdc, Bgr(1f, 0.82f, 0.32f));
-                DrawTextW(hdc, row.consumable ? "Usar" : "Equipar", -1, ref tagRc, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+                SetTextColor(hdc, row.consumable ? Bgr(0.75f, 1f, 0.75f) : Bgr(1f, 0.86f, 0.42f));
+                var tagRc = new RECT { Left = tagX, Top = tagY, Right = tagX + tagW, Bottom = tagY + tagH };
+                DrawTextW(hdc, row.consumable ? "Usar" : "Equipar", -1, ref tagRc,
+                    DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
                 SelectObject(hdc, _fontRow);
             }
 
-            DrawCharacterPanel(hdc, w, h);
-
+            // ── Footer hint ───────────────────────────────────────────────
             SelectObject(hdc, _fontHint);
-            SetTextColor(hdc, Bgr(0.60f, 0.60f, 0.66f));
-            var hintRc = new RECT { Left = 12, Top = h - FooterH, Right = LeftPaneW - 12, Bottom = h - 4 };
-            DrawTextW(hdc, "Clique para equipar/desequipar/usar · roda do mouse rola · ESC fecha", -1, ref hintRc, DT_LEFT | DT_BOTTOM | DT_SINGLELINE | DT_NOPREFIX);
+            SetTextColor(hdc, Bgr(0.62f, 0.62f, 0.68f));
+            var hintRc = new RECT { Left = 8, Top = h - FooterH, Right = w - 8, Bottom = h - 4 };
+            DrawTextW(hdc, "Clique nos itens · roda do mouse rola a sacola · ESC fecha", -1, ref hintRc,
+                DT_CENTER | DT_BOTTOM | DT_SINGLELINE | DT_NOPREFIX);
+            SelectObject(hdc, prev);
         }
 
-        static void DrawCharacterPanel(IntPtr hdc, int w, int h)
+        // Compact identity line to the right of the dragon emblem: name, class, level.
+        static void DrawSummaryText(IntPtr hdc, int x, int y, int w, int h)
         {
-            var panel = new RECT
-            {
-                Left = RightPaneX,
-                Top = HeaderH + 6,
-                Right = w - 2,
-                Bottom = h - 6
-            };
-            FillRect(hdc, ref panel, _brushRowAlt);
-            FrameRect(hdc, ref panel, _brushBorder);
-
-            var titleRc = new RECT { Left = RightPaneX + 10, Top = HeaderH + 12, Right = w - 12, Bottom = HeaderH + 36 };
-            SelectObject(hdc, _fontTitle);
-            SetTextColor(hdc, Bgr(1.00f, 0.82f, 0.32f));
-            DrawTextW(hdc, "Status do Personagem", -1, ref titleRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
-
             var player = PlayerManager.Instance != null ? PlayerManager.Instance.Data : null;
-            SelectObject(hdc, _fontRow);
-            SetTextColor(hdc, Bgr(0.95f, 0.95f, 0.95f));
-
+            SelectObject(hdc, _fontSummary);
             if (player == null)
             {
-                var emptyRc = new RECT { Left = RightPaneX + 10, Top = HeaderH + 48, Right = w - 12, Bottom = HeaderH + 78 };
-                DrawTextW(hdc, "Sem dados do personagem.", -1, ref emptyRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+                SetTextColor(hdc, Bgr(0.70f, 0.70f, 0.70f));
+                var rc = new RECT { Left = x, Top = y, Right = x + w, Bottom = y + h };
+                DrawTextW(hdc, "Sem dados do personagem.", -1, ref rc,
+                    DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
                 return;
             }
 
-            var xpNext = Mathf.Max(1L, player.expToNextLevel);
-            var xpPct = Mathf.Clamp01((float)player.currentExp / xpNext) * 100f;
-            var shownMaxHp = Mathf.Max(1, Mathf.Max(player.maxHp, player.hp));
-            var shownHp = Mathf.Clamp(player.hp, 0, shownMaxHp);
+            // Three tight rows of 14 px each — fits inside the 44 px summary strip
+            // without spilling into the stats cells below.
+            SetTextColor(hdc, Bgr(1f, 0.90f, 0.55f));
+            var nameRc = new RECT { Left = x, Top = y, Right = x + w, Bottom = y + 14 };
+            DrawTextW(hdc, Safe(player.playerName), -1, ref nameRc,
+                DT_LEFT | DT_TOP | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
 
-            var lines = new[]
+            SetTextColor(hdc, Bgr(0.86f, 0.86f, 0.92f));
+            var classRc = new RECT { Left = x, Top = y + 14, Right = x + w, Bottom = y + 28 };
+            DrawTextW(hdc, $"{player.classType} / {player.subclassType}", -1, ref classRc,
+                DT_LEFT | DT_TOP | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+
+            var xpNext = Mathf.Max(1L, player.expToNextLevel);
+            var xpPct  = Mathf.Clamp01((float)player.currentExp / xpNext) * 100f;
+            SetTextColor(hdc, Bgr(0.75f, 0.80f, 0.90f));
+            var lvlRc = new RECT { Left = x, Top = y + 28, Right = x + w, Bottom = y + 42 };
+            DrawTextW(hdc, $"Nivel {player.level}   XP {xpPct:0.0}%", -1, ref lvlRc,
+                DT_LEFT | DT_TOP | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+        }
+
+        // Six compact stat cells arranged in two rows of three — HP, Dano, Defesa /
+        // Velocidade, Regen, Ouro. Each cell has a tiny pixel bevel so they read as
+        // enameled tokens on the character card.
+        static void DrawStatsStrip(IntPtr hdc, int x, int y, int w, int h)
+        {
+            var player = PlayerManager.Instance != null ? PlayerManager.Instance.Data : null;
+            if (player == null)
             {
-                $"Nome: {Safe(player.playerName)}",
-                $"Classe: {player.classType} / {player.subclassType}",
-                $"Nivel: {player.level}",
-                $"XP atual: {player.currentExp:N0}",
-                $"XP proximo nivel: {xpNext:N0} ({xpPct:0.0}%)",
-                $"Vida: {shownHp:N0} / {shownMaxHp:N0}",
-                $"Dano: {player.attack:N0}",
-                $"Defesa: {player.defense:N0}",
-                $"Velocidade: {player.speed:0.00}",
-                $"Regeneracao/s: {player.healPower:0.00}",
-                $"Ouro: {player.gold:N0}",
-                $"Cidade: {Safe(player.currentCity)}",
-                $"Guilda: {Safe(player.guildId)}"
+                var rc = new RECT { Left = x, Top = y, Right = x + w, Bottom = y + h };
+                FillRect(hdc, ref rc, _brushPanel);
+                return;
+            }
+
+            var shownMaxHp = Mathf.Max(1, Mathf.Max(player.maxHp, player.hp));
+            var shownHp    = Mathf.Clamp(player.hp, 0, shownMaxHp);
+            string[] labels = { "Vida", "Dano", "Defesa", "Vel", "Regen", "Ouro" };
+            string[] values =
+            {
+                $"{shownHp:N0}/{shownMaxHp:N0}",
+                $"{player.attack:N0}",
+                $"{player.defense:N0}",
+                $"{player.speed:0.0}",
+                $"{player.healPower:0.0}",
+                $"{player.gold:N0}",
             };
 
-            int y = HeaderH + 44;
-            for (int i = 0; i < lines.Length; i++)
+            int cellW = (w - 4) / 3;
+            int cellH = (h - 4) / 2;
+            SelectObject(hdc, _fontSection);
+            for (int i = 0; i < 6; i++)
             {
-                var lineRc = new RECT { Left = RightPaneX + 10, Top = y, Right = w - 12, Bottom = y + 22 };
-                DrawTextW(hdc, lines[i], -1, ref lineRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
-                y += 24;
+                int col = i % 3;
+                int row = i / 3;
+                int cx  = x + col * cellW + 2;
+                int cy  = y + row * cellH + 2;
+                int cw  = cellW - 4;
+                int ch  = cellH - 4;
+                NativeFrameImage.PixelBevel(hdc, cx, cy, cw, ch,
+                    _brushOutline, _brushBevHi, _brushBevLo, _brushPanel);
+                var lblRc = new RECT { Left = cx + 4, Top = cy + 1, Right = cx + cw - 4, Bottom = cy + ch / 2 + 1 };
+                SetTextColor(hdc, Bgr(0.75f, 0.63f, 0.32f));
+                DrawTextW(hdc, labels[i], -1, ref lblRc,
+                    DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+                var valRc = new RECT { Left = cx + 4, Top = cy + ch / 2, Right = cx + cw - 4, Bottom = cy + ch };
+                SetTextColor(hdc, Bgr(0.96f, 0.94f, 0.86f));
+                DrawTextW(hdc, values[i], -1, ref valRc,
+                    DT_RIGHT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
             }
         }
 
@@ -523,6 +661,7 @@ namespace ZulfarakRPG
         const uint DT_TOP = 0x00000000;
         const uint DT_LEFT = 0x00000000;
         const uint DT_CENTER = 0x00000001;
+        const uint DT_RIGHT = 0x00000002;
         const uint DT_VCENTER = 0x00000004;
         const uint DT_BOTTOM = 0x00000008;
         const uint DT_SINGLELINE = 0x00000020;

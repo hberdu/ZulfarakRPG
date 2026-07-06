@@ -19,10 +19,10 @@ namespace ZulfarakRPG
         public static void Show()
         {
             if (_instance == null) Build();
-            // Anchor next to the WorldMapIcon so the panel reads as a tooltip
-            // hanging from the icon (icon sits in the upper-left corner; the
-            // panel sits just below it and extends to the right, leaving the
-            // icon fully visible above the panel's top edge).
+            // No more floating WorldMapIcon in the corner — anchor the panel to the
+            // camera centre so the parchment sits in front of the player, matching
+            // where the native WorldMapPopup would appear above the game strip in a
+            // build. If a manual WorldMapIcon has been placed we still hang from it.
             var icon = Object.FindAnyObjectByType<WorldMapIcon>();
             if (icon != null)
             {
@@ -31,6 +31,12 @@ namespace ZulfarakRPG
                     a.x + 1.55f,   // half panel-width — icon ends up just left of the paper
                     a.y - 0.68f,   // panel top sits below the icon's bottom edge
                     -1f);
+            }
+            else
+            {
+                var cam = Camera.main;
+                var pos = cam != null ? cam.transform.position : new Vector3(2.5f, 0f, 0f);
+                _instance.transform.position = new Vector3(pos.x, pos.y, -1f);
             }
             _instance.gameObject.SetActive(true);
         }

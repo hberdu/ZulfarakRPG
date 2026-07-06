@@ -94,9 +94,13 @@ namespace ZulfarakRPG
         static bool _classRegistered;
         static IntPtr _fontTitle, _fontBody;
         static IntPtr _brushBg, _brushBorder;
+        static IntPtr _brushOutline, _brushBevHi, _brushBevLo, _brushRuby;
         static int    _popupWidth = 400;
 
         const string ClassName = "ZulfarakMenuPopup";
+        // Red-Eyes-Black-Dragon frame (Resources/UI/DragonFrame). Painted behind the
+        // dark content card; absent → the card simply sits on the near-black bg.
+        const string DragonRes = "UI/DragonFrame";
 
         static int CurrentWidth()
             => OverlayWindow.Instance != null ? OverlayWindow.Instance.windowWidth : 400;
@@ -136,10 +140,16 @@ namespace ZulfarakRPG
 
         static void EnsureGdiObjects()
         {
-            if (_brushBg     == IntPtr.Zero) _brushBg     = CreateSolidBrush(Bgr(0.05f, 0.03f, 0.08f));
-            if (_brushBorder == IntPtr.Zero) _brushBorder = CreateSolidBrush(Bgr(0.85f, 0.65f, 0.20f));
-            if (_fontTitle   == IntPtr.Zero) _fontTitle   = MakeFont(22, FW_BOLD);
-            if (_fontBody    == IntPtr.Zero) _fontBody    = MakeFont(14, FW_NORMAL);
+            // Dark dragon palette: near-black window base, tarnished-gold trim with a
+            // classic pixel-art bevel (dark outline + light/dark gold shoulders + panel).
+            if (_brushBg      == IntPtr.Zero) _brushBg      = CreateSolidBrush(Bgr(0.03f, 0.02f, 0.03f));
+            if (_brushBorder  == IntPtr.Zero) _brushBorder  = CreateSolidBrush(Bgr(0.52f, 0.40f, 0.15f));
+            if (_brushOutline == IntPtr.Zero) _brushOutline = CreateSolidBrush(Bgr(0.00f, 0.00f, 0.00f));
+            if (_brushBevHi   == IntPtr.Zero) _brushBevHi   = CreateSolidBrush(Bgr(0.95f, 0.75f, 0.30f));
+            if (_brushBevLo   == IntPtr.Zero) _brushBevLo   = CreateSolidBrush(Bgr(0.35f, 0.24f, 0.08f));
+            if (_brushRuby    == IntPtr.Zero) _brushRuby    = CreateSolidBrush(Bgr(0.85f, 0.15f, 0.15f));
+            if (_fontTitle    == IntPtr.Zero) _fontTitle    = MakeFont(20, FW_BOLD);
+            if (_fontBody     == IntPtr.Zero) _fontBody     = MakeFont(14, FW_NORMAL);
         }
 
         static IntPtr MakeFont(int sizePx, int weight)
@@ -199,31 +209,52 @@ namespace ZulfarakRPG
             int w = _popupWidth;
             int h = PopupHeight;
             var full = new RECT { Left = 0, Top = 0, Right = w, Bottom = h };
-            FillRect(hdc, ref full, _brushBg);
+            FillRect(hdc, ref full, _brushBg);   // near-black base
 
-            // 2-pixel gold border drawn as two nested 1-px frames.
-            FrameRect(hdc, ref full, _brushBorder);
-            var inset = new RECT { Left = 1, Top = 1, Right = w - 1, Bottom = h - 1 };
-            FrameRect(hdc, ref inset, _brushBorder);
+            // Chunky pixel-art bevel across the whole window (outline + gold shoulders +
+            // dark panel). This is the "menu frame" the dragon sits inside — no more
+            // stretched dragon-across-everything, so the wings keep their true silhouette.
+            NativeFrameImage.PixelBevel(hdc, 0, 0, w, h,
+                _brushOutline, _brushBevHi, _brushBevLo, _brushBg);
+            NativeFrameImage.PixelCornerStuds(hdc, 0, 0, w, h, _brushRuby, inset: 5, size: 3);
+
+            // Compact dragon emblem — top-left badge, native aspect ratio (no squash),
+            // with its own smaller pixel bevel so it reads as a framed portrait next to
+            // the title. The dragon "integrates" the menu instead of drowning it.
+            const int EmblemPad = 6;
+            int emblemH = h - EmblemPad * 2;                // fills the vertical strip
+            int emblemW = emblemH;                          // square badge (art is ~square)
+            int emblemX = EmblemPad;
+            int emblemY = EmblemPad;
+            NativeFrameImage.PixelBevel(hdc, emblemX, emblemY, emblemW, emblemH,
+                _brushOutline, _brushBevHi, _brushBevLo, _brushBg);
+            var frame = NativeFrameImage.Get(DragonRes);
+            if (frame.Ready)
+                frame.BlitAspect(hdc, emblemX + 4, emblemY + 4, emblemW - 8, emblemH - 8);
 
             SetBkMode(hdc, TRANSPARENT);
 
-            // Title
-            var titleRc = new RECT { Left = 16, Top = 12, Right = w - 16, Bottom = 46 };
+            // Title + body pushed right of the emblem.
+            int textLeft = emblemX + emblemW + 12;
+            var titleRc = new RECT { Left = textLeft, Top = 12, Right = w - 12, Bottom = 40 };
             SetTextColor(hdc, Bgr(1.00f, 0.82f, 0.32f));
             var prev = SelectObject(hdc, _fontTitle);
             DrawTextW(hdc, _title, -1, ref titleRc, DT_LEFT | DT_TOP | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
             SelectObject(hdc, prev);
 
+            // 1-px gold rule under the title.
+            var rule = new RECT { Left = textLeft, Top = 42, Right = w - 12, Bottom = 43 };
+            FillRect(hdc, ref rule, _brushBorder);
+
             // Body
-            var bodyRc = new RECT { Left = 16, Top = 52, Right = w - 16, Bottom = h - 26 };
-            SetTextColor(hdc, Bgr(0.92f, 0.92f, 0.96f));
+            var bodyRc = new RECT { Left = textLeft, Top = 48, Right = w - 12, Bottom = h - 24 };
+            SetTextColor(hdc, Bgr(0.94f, 0.94f, 0.98f));
             prev = SelectObject(hdc, _fontBody);
             DrawTextW(hdc, _body, -1, ref bodyRc, DT_LEFT | DT_TOP | DT_WORDBREAK | DT_NOPREFIX);
 
             // Footer hint
-            var hintRc = new RECT { Left = 16, Top = h - 22, Right = w - 16, Bottom = h - 6 };
-            SetTextColor(hdc, Bgr(0.60f, 0.60f, 0.66f));
+            var hintRc = new RECT { Left = textLeft, Top = h - 22, Right = w - 12, Bottom = h - 6 };
+            SetTextColor(hdc, Bgr(0.62f, 0.62f, 0.68f));
             DrawTextW(hdc, "Clique ou ESC para fechar", -1, ref hintRc, DT_RIGHT | DT_BOTTOM | DT_SINGLELINE | DT_NOPREFIX);
             SelectObject(hdc, prev);
         }

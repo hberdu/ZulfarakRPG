@@ -4,20 +4,20 @@ using UnityEngine.SceneManagement;
 
 namespace ZulfarakRPG
 {
-    // Bottom-left HUD, collapsed to a SINGLE small "menu" button with an up-arrow
-    // glyph — roughly the on-screen size of the floating world-map icon. Tapping it
-    // opens the consolidated menu popup above the game strip.
+    // Bottom-left HUD: a compact row of pixel-art beveled buttons anchored to the
+    // corner of the game strip. From left to right: the up-arrow menu button (opens
+    // the inventory popup), a Map button (opens the World Map popup), and a Friends
+    // button (opens the Steam invite popup).
     //
-    // The old round HP-bar / statue portrait frame ("face") and the four square
-    // action buttons were removed — health is shown by the world-space bar over the
-    // character's head, and the four systems now live behind this one button.
+    // The old floating world icons (WorldMapIcon, InventoryWorldIcon, InviteFriendIcon)
+    // are gone — the systems they exposed now live behind these HUD buttons instead.
     public class PlayerHud : MonoBehaviour
     {
         static PlayerHud _instance;
         Canvas _canvas;
 
         const float SIZE   = 24f;   // small square — about the on-screen size of the map icon
-        const float MARGIN = 8f;    // gap from screen edge
+        const float GAP    = 3f;    // spacing between HUD buttons
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         static void Hook()
@@ -47,50 +47,108 @@ namespace ZulfarakRPG
             root.AddComponent<GraphicRaycaster>();
             _instance._canvas = canvas;
 
-            BuildMenuButton(canvas.transform);
+            // Three pixel-art beveled buttons in a row along the bottom-left of the
+            // game strip. All share the same 24×24 size + gold-bevel styling so they
+            // read as a single tarnished-metal panel.
+            BuildHudButton(canvas.transform, slot: 0, name: "MenuButton",   glyph: UpArrowSprite(),
+                onClick: () => InventoryPopupWindow.Toggle());
+            BuildHudButton(canvas.transform, slot: 1, name: "MapButton",    glyph: MapGlyphSprite(),
+                onClick: () => WorldMapPopup.Show());
+            BuildHudButton(canvas.transform, slot: 2, name: "FriendsButton", glyph: FriendsGlyphSprite(),
+                onClick: () =>
+                {
+                    SteamLobbyManager.Instance?.EnsureLobby();
+                    FriendsListPopup.Show();
+                });
+
             BuildWindowButtons(canvas.transform);
         }
 
-        static void BuildMenuButton(Transform parent)
+        // Pixel-art beveled HUD button: pitch-black outline, gold bevel (bright top/left
+        // + dark bottom/right shoulder), near-black panel, ruby corner studs, then the
+        // glyph centered inside. `slot` (0..n) offsets the button along the bottom-left row.
+        static void BuildHudButton(Transform parent, int slot, string name, Sprite glyph,
+                                   UnityEngine.Events.UnityAction onClick)
         {
-            var go = new GameObject("MenuButton", typeof(RectTransform));
+            var go = new GameObject(name, typeof(RectTransform));
             go.transform.SetParent(parent, false);
             var rt = (RectTransform)go.transform;
             rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0f, 0f);
-            rt.anchoredPosition = new Vector2(4f, 2f);   // low in the bottom-left corner
+            rt.anchoredPosition = new Vector2(4f + slot * (SIZE + GAP), 2f);
             rt.sizeDelta        = new Vector2(SIZE, SIZE);
 
-            // Gold border + dark inner panel — matches the tooltip / popup theme.
-            var border = go.AddComponent<Image>();
-            border.color         = new Color(0.85f, 0.65f, 0.20f, 1f);
-            border.raycastTarget = true;
+            // Outer 1px pitch-black outline (target of the button click).
+            var outline = go.AddComponent<Image>();
+            outline.sprite        = SolidPixel();
+            outline.color         = Color.black;
+            outline.raycastTarget = true;
 
+            // Bright gold shoulder — sits inside the outline and defines the button's
+            // full-bright silhouette; the darker lower-right shoulder is painted over it.
+            var hiGO = new GameObject("Hi", typeof(RectTransform));
+            hiGO.transform.SetParent(go.transform, false);
+            var hrt = (RectTransform)hiGO.transform;
+            hrt.anchorMin = Vector2.zero; hrt.anchorMax = Vector2.one;
+            hrt.offsetMin = new Vector2( 1f,  1f);
+            hrt.offsetMax = new Vector2(-1f, -1f);
+            var hi = hiGO.AddComponent<Image>();
+            hi.sprite        = SolidPixel();
+            hi.color         = new Color(0.95f, 0.75f, 0.30f, 1f);
+            hi.raycastTarget = false;
+
+            // Dark gold shoulder: shifted 2px down+right so the bright edges peek out
+            // above and to the left — that's what gives the button its pixel-art bevel.
+            var loGO = new GameObject("Lo", typeof(RectTransform));
+            loGO.transform.SetParent(go.transform, false);
+            var lrt = (RectTransform)loGO.transform;
+            lrt.anchorMin = Vector2.zero; lrt.anchorMax = Vector2.one;
+            lrt.offsetMin = new Vector2( 3f,  1f);
+            lrt.offsetMax = new Vector2(-1f, -3f);
+            var lo = loGO.AddComponent<Image>();
+            lo.sprite        = SolidPixel();
+            lo.color         = new Color(0.35f, 0.24f, 0.08f, 1f);
+            lo.raycastTarget = false;
+
+            // Inner near-black panel that the glyph sits on.
             var innerGO = new GameObject("Inner", typeof(RectTransform));
             innerGO.transform.SetParent(go.transform, false);
             var irt = (RectTransform)innerGO.transform;
             irt.anchorMin = Vector2.zero; irt.anchorMax = Vector2.one;
-            irt.offsetMin = new Vector2( 2f,  2f);
-            irt.offsetMax = new Vector2(-2f, -2f);
+            irt.offsetMin = new Vector2( 3f,  3f);
+            irt.offsetMax = new Vector2(-3f, -3f);
             var inner = innerGO.AddComponent<Image>();
-            inner.color         = new Color(0.10f, 0.08f, 0.06f, 0.95f);
+            inner.sprite        = SolidPixel();
+            inner.color         = new Color(0.08f, 0.06f, 0.05f, 1f);
             inner.raycastTarget = false;
 
-            // Up-arrow glyph (procedural) centred in the button.
-            var arrowGO = new GameObject("Arrow", typeof(RectTransform));
-            arrowGO.transform.SetParent(innerGO.transform, false);
-            var art = (RectTransform)arrowGO.transform;
-            art.anchorMin = Vector2.zero; art.anchorMax = Vector2.one;
-            art.offsetMin = new Vector2( 3f,  3f);
-            art.offsetMax = new Vector2(-3f, -3f);
-            var arrow = arrowGO.AddComponent<Image>();
-            arrow.sprite        = UpArrowSprite();
-            arrow.color         = new Color(1f, 0.93f, 0.72f, 1f);
-            arrow.raycastTarget = false;
+            // Ruby corner stud (single dot in the upper-left corner) — classic
+            // pixel-art bolt so the buttons feel like enameled metal instead of flat UI.
+            var studGO = new GameObject("Stud", typeof(RectTransform));
+            studGO.transform.SetParent(go.transform, false);
+            var srt = (RectTransform)studGO.transform;
+            srt.anchorMin = srt.anchorMax = srt.pivot = new Vector2(0f, 1f);
+            srt.anchoredPosition = new Vector2(2f, -2f);
+            srt.sizeDelta = new Vector2(2f, 2f);
+            var stud = studGO.AddComponent<Image>();
+            stud.sprite = SolidPixel();
+            stud.color  = new Color(0.85f, 0.15f, 0.15f, 1f);
+            stud.raycastTarget = false;
 
-            // Click handler: opens inventory/equipment native popup.
+            // Centered glyph on top of the inner panel.
+            var glyphGO = new GameObject("Glyph", typeof(RectTransform));
+            glyphGO.transform.SetParent(innerGO.transform, false);
+            var grt = (RectTransform)glyphGO.transform;
+            grt.anchorMin = Vector2.zero; grt.anchorMax = Vector2.one;
+            grt.offsetMin = new Vector2( 1f,  1f);
+            grt.offsetMax = new Vector2(-1f, -1f);
+            var gi = glyphGO.AddComponent<Image>();
+            gi.sprite        = glyph;
+            gi.color         = new Color(1f, 0.93f, 0.72f, 1f);
+            gi.raycastTarget = false;
+
             var btn = go.AddComponent<Button>();
-            btn.targetGraphic = border;
-            btn.onClick.AddListener(() => InventoryPopupWindow.Toggle());
+            btn.targetGraphic = outline;
+            btn.onClick.AddListener(onClick);
         }
 
         void Update()
@@ -217,6 +275,108 @@ namespace ZulfarakRPG
             t.Apply();
             _upArrow = Sprite.Create(t, new Rect(0, 0, N, N), new Vector2(0.5f, 0.5f), 100f);
             return _upArrow;
+        }
+
+        // Full-white 1×1 sprite so Unity's Image can tint solid-colour rectangles for the
+        // pixel bevel/shoulder layers (Point filter keeps corners crisp at any scale).
+        static Sprite _solid;
+        static Sprite SolidPixel()
+        {
+            if (_solid != null) return _solid;
+            var t = new Texture2D(1, 1, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point };
+            t.SetPixel(0, 0, Color.white);
+            t.Apply();
+            _solid = Sprite.Create(t, new Rect(0, 0, 1, 1), new Vector2(0.5f, 0.5f), 1f);
+            return _solid;
+        }
+
+        // Chunky pixel-art map glyph: rolled parchment with a dashed route and a red
+        // "you are here" marker. Fits the 24×24 HUD button (rendered at higher rez here
+        // for tint clarity + Point filter → pixel-perfect scale-down).
+        static Sprite _mapGlyph;
+        static Sprite MapGlyphSprite()
+        {
+            if (_mapGlyph != null) return _mapGlyph;
+            const int N = 16;
+            var t = new Texture2D(N, N, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point };
+            for (int y = 0; y < N; y++)
+                for (int x = 0; x < N; x++)
+                    t.SetPixel(x, y, Color.clear);
+
+            // Parchment body (tinted white → any tint recolors it).
+            for (int y = 3; y <= 12; y++)
+                for (int x = 2; x <= 13; x++)
+                    t.SetPixel(x, y, Color.white);
+            // Rolled top/bottom bands — leave 1-pixel gaps to read as rolls.
+            for (int x = 2; x <= 13; x++)
+            {
+                t.SetPixel(x, 2, Color.white);
+                t.SetPixel(x, 13, Color.white);
+            }
+            // Ink dashed route across the middle.
+            var ink = new Color(0.15f, 0.10f, 0.02f, 1f);
+            for (int x = 3; x <= 12; x++)
+            {
+                int y = 7 + (int)(Mathf.Sin(x * 0.75f) * 1.2f);
+                if (x % 2 == 0) t.SetPixel(x, y, ink);
+            }
+            // City dots
+            t.SetPixel(4, 7, ink); t.SetPixel(5, 7, ink);
+            t.SetPixel(9, 8, ink); t.SetPixel(10, 8, ink);
+            // Red "you are here" marker
+            var red = new Color(0.85f, 0.18f, 0.18f, 1f);
+            t.SetPixel(12, 6, red); t.SetPixel(12, 7, red);
+
+            t.Apply();
+            _mapGlyph = Sprite.Create(t, new Rect(0, 0, N, N), new Vector2(0.5f, 0.5f), 100f);
+            return _mapGlyph;
+        }
+
+        // Chunky pixel-art envelope glyph with a small "+" badge for the friends invite
+        // button. Reads instantly as "convidar" at 24×24 with Point filter.
+        static Sprite _friendsGlyph;
+        static Sprite FriendsGlyphSprite()
+        {
+            if (_friendsGlyph != null) return _friendsGlyph;
+            const int N = 16;
+            var t = new Texture2D(N, N, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point };
+            for (int y = 0; y < N; y++)
+                for (int x = 0; x < N; x++)
+                    t.SetPixel(x, y, Color.clear);
+
+            // Envelope body (tinted white so Image colour recolors it).
+            for (int y = 3; y <= 11; y++)
+                for (int x = 1; x <= 11; x++)
+                    t.SetPixel(x, y, Color.white);
+            // Flap V (drawn as a slightly darker inset).
+            var fold = new Color(0.55f, 0.42f, 0.20f, 1f);
+            for (int i = 0; i <= 5; i++)
+            {
+                t.SetPixel(1 + i, 10 - i, fold);
+                t.SetPixel(11 - i, 10 - i, fold);
+            }
+            // "+" badge (green disk with a white plus) in the bottom-right corner.
+            var plus   = new Color(0.20f, 0.82f, 0.40f, 1f);
+            var plusDk = new Color(0.06f, 0.32f, 0.14f, 1f);
+            // Disk radius 3 around (12, 3).
+            for (int y = -3; y <= 3; y++)
+                for (int x = -3; x <= 3; x++)
+                {
+                    if (x * x + y * y > 9) continue;
+                    int px = 12 + x, py = 3 + y;
+                    if (px < 0 || px >= N || py < 0 || py >= N) continue;
+                    t.SetPixel(px, py, (Mathf.Abs(x) == 3 || Mathf.Abs(y) == 3) ? plusDk : plus);
+                }
+            // Plus glyph (white arms).
+            for (int d = -1; d <= 1; d++)
+            {
+                t.SetPixel(12, 3 + d, Color.white);
+                t.SetPixel(12 + d, 3, Color.white);
+            }
+
+            t.Apply();
+            _friendsGlyph = Sprite.Create(t, new Rect(0, 0, N, N), new Vector2(0.5f, 0.5f), 100f);
+            return _friendsGlyph;
         }
     }
 }

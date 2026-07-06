@@ -4,32 +4,14 @@ using UnityEngine.SceneManagement;
 
 namespace ZulfarakRPG
 {
-    // Small "Convidar amigo" icon shown in Zulfarak next to the world-map icon.
-    // Hover shows a tooltip; clicking pops the Steam friend-invite overlay
-    // scoped to the player's current lobby (creating one on demand). Auto-
-    // spawns at scene load so no scene editing is required.
+    // World-space Steam friend invite icon. The auto-spawn hook was removed — the
+    // friends popup is now opened from the pixel-art HUD button, so no floating icon
+    // appears in the city. Class kept so manual callers still work.
     public class InviteFriendIcon : MonoBehaviour
     {
         public float  bobAmplitude = 0.05f;
         public float  bobSpeed     = 1.5f;
         public string tooltipText  = "Convidar amigo da Steam";
-
-        // ── Auto-spawn ────────────────────────────────────────────────────
-        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-        static void RegisterSceneHook()
-        {
-            SceneManager.sceneLoaded -= OnSceneLoaded;
-            SceneManager.sceneLoaded += OnSceneLoaded;
-        }
-
-        static void OnSceneLoaded(Scene scene, LoadSceneMode mode)
-        {
-            if (scene.name != "Zulfarak") return;
-            if (Object.FindAnyObjectByType<InviteFriendIcon>() != null) return;
-            // Sit just to the right of the WorldMapIcon (0.65, 0.55) so the
-            // two "system" buttons line up in the upper-left HUD area.
-            SpawnAt(new Vector3(1.05f, 0.55f, 0f));
-        }
 
         public static InviteFriendIcon SpawnAt(Vector3 worldPos)
         {
@@ -86,7 +68,6 @@ namespace ZulfarakRPG
             {
                 _hovering = inside;
                 if (_tooltipRoot != null) _tooltipRoot.SetActive(_hovering);
-                if (inside) PortalSmoke.WhiteBurst(transform.position + Vector3.up * 0.1f, 4);
             }
             if (_hovering && Input.GetMouseButtonDown(0))
             {

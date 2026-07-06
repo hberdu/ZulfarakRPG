@@ -39,9 +39,10 @@ namespace ZulfarakRPG
             }
             if (frames == null || frames.Length == 0) return;
 
-            // Slot just to the right of the ClassMaster (x≈2.55) and well clear of
-            // the DungeonPortal (x≈4.5) so the three NPCs line up as a group.
-            SpawnAt(new Vector3(3.10f, -1.144f, 0f), frames);
+            // Just left of the ClassMaster (x≈3.85) and clear of the DungeonPortal
+            // (x≈4.0) so the NPCs read as a group. Y puts the character's feet on the
+            // ground line; SceneGrounder re-grounds it by collider on load as well.
+            SpawnAt(new Vector3(3.10f, -0.144f, 0f), frames);
         }
 
         public static BlacksmithNPC SpawnAt(Vector3 worldPos, Sprite[] idleFrames)
@@ -61,12 +62,16 @@ namespace ZulfarakRPG
 
             var col = go.AddComponent<BoxCollider2D>();
             col.isTrigger = true;
+            // The Swordsman figure sits dead-centre in its 100×100 cell (feet ~10px
+            // below the cell centre), so the trigger is centred on the origin to wrap the
+            // visible character. This also makes SceneGrounder's ground-by-collider land
+            // the feet exactly on the ground line — the old offset 0.5 assumed the feet
+            // were high in the cell and buried the sprite ~1 unit below the camera view.
             col.size      = new Vector2(0.3f, 0.2f);
-            col.offset    = new Vector2(0f, 0.5f);
+            col.offset    = new Vector2(0f, 0f);
 
-            // Static at its spawn Y (Kael's ground line, y=-1.144) with only the trigger
-            // collider above — so it rests correctly AND doesn't physically block the
-            // player from walking past to the portal.
+            // Trigger-only (isTrigger) so it never physically blocks the player from
+            // walking past to the portal.
 
             var anim = go.AddComponent<SimpleIdleAnim>();
             anim.frames = idleFrames;
@@ -74,7 +79,7 @@ namespace ZulfarakRPG
 
             var inter = go.AddComponent<Interactable2D>();
             inter.tooltipText   = "Ferreiro";
-            inter.tooltipOffset = new Vector2(0f, 0.85f);
+            inter.tooltipOffset = new Vector2(0f, 0.35f);
             inter.popupTitle    = "Ferreiro";
             inter.popupBody     =
                 "Forja em construção.\n\n" +

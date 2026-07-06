@@ -4,32 +4,15 @@ using UnityEngine.SceneManagement;
 
 namespace ZulfarakRPG
 {
-    // Floating "world map" icon shown only in the Zulfarak city scene. Bobs
-    // up/down with a gentle sine, hover shows a tooltip, click toggles the
-    // WorldMapPanel overlay. Auto-spawned on scene load — no scene editing
-    // required.
+    // World-space map icon. The auto-spawn hook was removed — the WorldMapPopup is now
+    // opened from the pixel-art HUD button, so this class stays only for the editor
+    // fallback (WorldMapPanel anchors to it if present) and for callers that still
+    // want to place a map icon manually. No icons appear in the city HUD anymore.
     public class WorldMapIcon : MonoBehaviour
     {
         public float bobAmplitude = 0.06f;
         public float bobSpeed     = 1.8f;
         public string tooltipText = "Mapa do Mundo";
-
-        // ── Auto-spawn ────────────────────────────────────────────────────
-        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-        static void RegisterSceneHook()
-        {
-            SceneManager.sceneLoaded -= OnSceneLoaded;
-            SceneManager.sceneLoaded += OnSceneLoaded;
-        }
-
-        static void OnSceneLoaded(Scene scene, LoadSceneMode mode)
-        {
-            if (scene.name != "Zulfarak") return;
-            if (Object.FindAnyObjectByType<WorldMapIcon>() != null) return;
-            // Upper-left corner of the camera viewport, well clear of the
-            // DungeonPortal (x ≈ 4.5) and any NPCs.
-            SpawnAt(new Vector3(0.65f, 0.55f, 0f));
-        }
 
         public static WorldMapIcon SpawnAt(Vector3 worldPos)
         {
@@ -112,7 +95,6 @@ namespace ZulfarakRPG
             {
                 _hovering = inside;
                 if (_tooltipRoot != null) _tooltipRoot.SetActive(_hovering);
-                if (inside) PortalSmoke.WhiteBurst(transform.position + Vector3.up * 0.1f, 4);
             }
             if (_hovering && Input.GetMouseButtonDown(0))
                 WorldMapPopup.Show();

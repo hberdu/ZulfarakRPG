@@ -24,6 +24,13 @@ namespace ZulfarakRPG
         [Range(0f, 1f)] public float critChance     = 0.05f;  // 5% initial crit chance
         public float                  critMultiplier = 2f;
 
+        [Header("Mage Kiting")]
+        // The mage never lets an enemy close in: once one is within kitePreferredDistance
+        // it backpedals (facing the enemy) to keep firing fireballs from range. kiteSpeed
+        // is deliberately brisk so it out-paces the approach and stays "sempre de longe".
+        public float kitePreferredDistance = 4.0f;
+        public float kiteSpeed             = 3.4f;
+
         float AttackInterval => 1f / Mathf.Max(0.1f, attackSpeed);
 
         [Header("Warrior Sprites")]
@@ -122,10 +129,10 @@ namespace ZulfarakRPG
             // onto the ground line. Deterministic; no reliance on alpha-readable art.
             RestOnGroundAtSpawn();
 
-            // Class-specific reach (overrides the authored value): the archer snipes from
-            // range, while melee (Warrior/Mage) must close right up to the enemy before it
-            // swings.
-            attackRange = (_classType == ClassType.Archer) ? 6f : 1.1f;
+            // Class-specific reach (overrides the authored value): the archer AND the mage
+            // fight from range (the mage lobs a fireball), while the melee Warrior must
+            // close right up to the enemy before it swings.
+            attackRange = (_classType == ClassType.Archer || _classType == ClassType.Mage) ? 6f : 1.1f;
 
             // Tight GREEN HP bar: width and Y both auto-detected from the sprite alpha.
             _hpBar?.AttachAbove(_sr,
@@ -303,17 +310,28 @@ namespace ZulfarakRPG
 
             if (InDungeon)
             {
-                // Approach the nearest enemy ONLY until it enters attack range, then hold
-                // position and fight in place — the hero must not keep stepping forward
-                // while attacking.
-                var target = FindNearest(attackRange * 5f);
-                if (target != null)
+                if (_classType == ClassType.Mage)
                 {
-                    float dist = Vector2.Distance(transform.position, target.transform.position);
-                    if (dist > attackRange)
+                    // The mage NEVER fights up close: it retreats to keep enemies at staff
+                    // range and blasts them with fireballs on the way in. Only when cornered
+                    // against a scene bound does it stand and keep casting.
+                    var near = FindNearest(kitePreferredDistance);
+                    if (near != null && TryKiteAwayFrom(near)) return;
+                }
+                else
+                {
+                    // Approach the nearest enemy ONLY until it enters attack range, then hold
+                    // position and fight in place — the hero must not keep stepping forward
+                    // while attacking.
+                    var target = FindNearest(attackRange * 5f);
+                    if (target != null)
                     {
-                        MoveTowardX(target.transform.position.x);
-                        return;
+                        float dist = Vector2.Distance(transform.position, target.transform.position);
+                        if (dist > attackRange)
+                        {
+                            MoveTowardX(target.transform.position.x);
+                            return;
+                        }
                     }
                 }
             }
@@ -341,6 +359,22 @@ namespace ZulfarakRPG
             if (_attackLock <= 0) PlayAnim(_walk, 10f);
         }
 
+        // Mage-only: steps away from `enemy` to preserve firing distance while keeping the
+        // sprite facing the enemy (backpedal). Returns false when already pinned against a
+        // scene bound — nowhere left to retreat, so the caller lets it stand and keep casting.
+        bool TryKiteAwayFrom(SkeletonEnemy enemy)
+        {
+            float away  = transform.position.x < enemy.transform.position.x ? -1f : 1f;
+            float nextX = transform.position.x + away * kiteSpeed * Time.deltaTime;
+            if (nextX <= sceneBoundsMinX + 0.01f || nextX >= sceneBoundsMaxX - 0.01f)
+                return false;   // cornered — hold ground and keep firing fireballs
+
+            _rb.linearVelocity = new Vector2(away * kiteSpeed, _rb.linearVelocity.y);
+            _sr.flipX = enemy.transform.position.x < transform.position.x;   // face the enemy while retreating
+            if (_attackLock <= 0) PlayAnim(_walk, 10f);
+            return true;
+        }
+
         // ── Auto-attack ────────────────────────────────────────────────────
         void HandleAutoAttack()
         {
@@ -365,9 +399,14 @@ namespace ZulfarakRPG
             float animDur  = Mathf.Min(interval * 0.6f, 0.6f);
             float atkFps   = (_atk != null && _atk.Length > 0) ? _atk.Length / animDur : 12f;
 
-            // Archer releases the arrow partway through the swing; melee hits instantly.
-            if (_classType == ClassType.Archer) StartCoroutine(FireArrowAfterDraw(target, dmg, crit, animDur));
-            else                                target.TakeDamage(dmg, crit);
+            // Ranged classes release their projectile partway through the cast/draw; the
+            // melee Warrior hits instantly.
+            if (_classType == ClassType.Archer)
+                StartCoroutine(FireArrowAfterDraw(target, dmg, crit, animDur));
+            else if (_classType == ClassType.Mage)
+                StartCoroutine(FireFireballAfterCast(target, dmg, crit, animDur));
+            else
+                target.TakeDamage(dmg, crit);
 
             _atkTimer   = interval;
             _attackLock = animDur;
@@ -402,6 +441,39 @@ namespace ZulfarakRPG
             arrowGO.transform.position = spawnPos;
             var arrow = arrowGO.AddComponent<Arrow>();
             arrow.Init(target, dmg, crit);
+        }
+
+        // Mage counterpart of FireArrowAfterDraw: the fireball leaves the staff at the
+        // apex of the cast ("ao levantar o cajado"), so the projectile is bound to the
+        // attack animation exactly like the archer's arrow.
+        IEnumerator FireFireballAfterCast(SkeletonEnemy target, float dmg, bool crit, float animDur)
+        {
+            yield return new WaitForSeconds(animDur * 0.5f);
+            if (target == null || !target.IsAlive) yield break;
+            FireFireball(target, dmg, crit);
+        }
+
+        void FireFireball(SkeletonEnemy target, float dmg, bool crit)
+        {
+            if (target == null) return;
+            // Spawn from the mage's COLLIDER CENTER (visible body — collider matches art).
+            var myCol = GetComponent<Collider2D>();
+            Vector3 spawnPos = myCol != null
+                ? myCol.bounds.center
+                : transform.position + Vector3.up * 0.5f;
+
+            float dir = Mathf.Sign(target.transform.position.x - transform.position.x);
+            if (dir == 0f) dir = 1f;
+            // Launch from the raised staff tip: a little forward and up from the body center.
+            spawnPos += new Vector3(dir * 0.35f, 0.15f, 0f);
+
+            // Big fiery burst on the staff tip the instant the spell is released.
+            Fireball.SpawnCastFlash(spawnPos, dir);
+
+            var fbGO = new GameObject("Fireball");
+            fbGO.transform.position = spawnPos;
+            var fb = fbGO.AddComponent<Fireball>();
+            fb.Init(target, dmg, crit);
         }
 
         SkeletonEnemy FindNearest(float range)
@@ -475,50 +547,22 @@ namespace ZulfarakRPG
             StartCoroutine(PortalAbsorbRoutine(Mathf.Max(0.05f, duration)));
         }
 
-        // Portal's signature violet — the player is dyed this colour as it's pulled in.
-        static readonly Color PortalColor = new Color(0.66f, 0.38f, 1f, 1f);
-
         IEnumerator PortalAbsorbRoutine(float duration)
         {
-            var halo = BuildPortalAbsorbHalo();
-            Color baseColor  = _sr != null ? _sr.color : Color.white;
+            // The player no longer trembles or dyes — it simply stands in place while a
+            // dense smoke cloud swallows it ("apenas jogue a fumaça"), which then carries
+            // over into the Dungeon load.
             Vector3 basePos  = transform.position;
             float t = 0f;
             float nextPuff = 0f;
-            // Initial burst so the effect opens with an impact.
-            PortalSmoke.BurstAt(basePos, 14);
+            PortalSmoke.BurstAt(basePos, 14);   // opening burst
             while (t < duration)
             {
                 float p = t / duration;                       // 0 → 1
-                float ramp = p * p;                           // accelerate the "suck-in"
-
-                // Heavy tremble: much larger amplitude, ramps hard toward the end.
-                float shakeAmp = 0.04f + ramp * 0.22f;
-                Vector3 jitter = new Vector3(
-                    (Mathf.PerlinNoise(t * 55f, 0.3f) - 0.5f),
-                    (Mathf.PerlinNoise(0.7f, t * 55f) - 0.5f), 0f) * (shakeAmp * 2f);
-
-                // Trembles in place — no scale change, character stays full size all the way in.
-                transform.position = basePos + jitter;
-
-                // Whole sprite dyes to the portal colour as it dissolves in.
-                if (_sr != null)
-                    _sr.color = Color.Lerp(baseColor, PortalColor, Mathf.Clamp01(p * 1.3f));
-
-                // Halo pulses fast in the portal colour and inflates.
-                if (halo != null)
-                {
-                    float pulse = (Mathf.Sin(t * 18f) + 1f) * 0.5f;
-                    var sr = halo.GetComponent<SpriteRenderer>();
-                    if (sr != null)
-                        sr.color = new Color(PortalColor.r, PortalColor.g, PortalColor.b, 0.45f + pulse * 0.45f);
-                    halo.transform.localScale = Vector3.one * (1.10f + p * 0.90f + pulse * 0.12f);
-                }
-
                 // Continuous smoke stream so the character disappears into a dense cloud.
                 if (t >= nextPuff)
                 {
-                    PortalSmoke.BurstAt(basePos, 3 + Mathf.RoundToInt(ramp * 6f));
+                    PortalSmoke.BurstAt(basePos, 3 + Mathf.RoundToInt(p * p * 6f));
                     nextPuff = t + 0.06f;
                 }
                 t += Time.deltaTime;
@@ -528,40 +572,6 @@ namespace ZulfarakRPG
             PortalSmoke.BurstAt(basePos, 22);
             // Tell the next (Dungeon) scene to bloom purple smoke that dissipates as the wave begins.
             PortalSmoke.PendingAtWaveStart = true;
-        }
-
-        GameObject BuildPortalAbsorbHalo()
-        {
-            var go = new GameObject("PortalAbsorbHalo");
-            go.transform.SetParent(transform, false);
-            go.transform.localPosition = new Vector3(0f, 0.50f, -0.1f);
-            var sr = go.AddComponent<SpriteRenderer>();
-            sr.sprite       = MakeAbsorbHaloSprite();
-            sr.color        = new Color(PortalColor.r, PortalColor.g, PortalColor.b, 0.55f);
-            sr.sortingOrder = 50;
-            return go;
-        }
-
-        static Sprite _absorbHalo;
-        static Sprite MakeAbsorbHaloSprite()
-        {
-            if (_absorbHalo != null) return _absorbHalo;
-            const int N = 64;
-            var t = new Texture2D(N, N, TextureFormat.RGBA32, false);
-            t.filterMode = FilterMode.Bilinear;
-            float cx = (N - 1) * 0.5f;
-            for (int y = 0; y < N; y++)
-                for (int x = 0; x < N; x++)
-                {
-                    float dx = (x - cx) / cx;
-                    float dy = (y - cx) / cx;
-                    float d  = Mathf.Sqrt(dx * dx + dy * dy);
-                    float a  = Mathf.Clamp01(1f - d);
-                    t.SetPixel(x, y, new Color(1f, 1f, 1f, a * a * 0.85f));
-                }
-            t.Apply();
-            _absorbHalo = Sprite.Create(t, new Rect(0, 0, N, N), new Vector2(0.5f, 0.5f), 100f);
-            return _absorbHalo;
         }
 
         IEnumerator DieRoutine()

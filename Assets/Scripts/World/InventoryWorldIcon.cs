@@ -5,28 +5,14 @@ using UnityEngine.SceneManagement;
 
 namespace ZulfarakRPG
 {
-    // Floating inventory icon shown in Zulfarak beside the other world-system icons.
-    // Uses the provided ItemMall icon and opens the native inventory popup on click.
+    // World-space inventory icon. The auto-spawn hook was removed — the inventory
+    // popup is now opened from the pixel-art HUD button (and still the `I` shortcut),
+    // so no floating icon appears in the city. Class kept so manual callers still work.
     public class InventoryWorldIcon : MonoBehaviour
     {
         public float bobAmplitude = 0.05f;
         public float bobSpeed = 1.6f;
         public string tooltipText = "Inventario";
-
-        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-        static void RegisterSceneHook()
-        {
-            SceneManager.sceneLoaded -= OnSceneLoaded;
-            SceneManager.sceneLoaded += OnSceneLoaded;
-        }
-
-        static void OnSceneLoaded(Scene scene, LoadSceneMode mode)
-        {
-            if (scene.name != "Zulfarak") return;
-            if (Object.FindAnyObjectByType<InventoryWorldIcon>() != null) return;
-            // Right side of map + invite icons.
-            SpawnAt(new Vector3(1.45f, 0.55f, 0f));
-        }
 
         public static InventoryWorldIcon SpawnAt(Vector3 worldPos)
         {
@@ -75,7 +61,6 @@ namespace ZulfarakRPG
             {
                 _hovering = inside;
                 if (_tooltipRoot != null) _tooltipRoot.SetActive(_hovering);
-                if (inside) PortalSmoke.WhiteBurst(transform.position + Vector3.up * 0.1f, 4);
             }
 
             if (_hovering && Input.GetMouseButtonDown(0))
