@@ -196,10 +196,12 @@ namespace ZulfarakRPG
         static IntPtr _hwnd = IntPtr.Zero;
         static WndProcDelegate _wndProcDelegate;
         static bool   _classRegistered;
-        static IntPtr _brushBg, _brushBorder, _brushHeader, _brushRow, _brushRowAlt;
-        static IntPtr _brushOnline, _brushOffline, _brushInvite, _brushSent, _brushClose;
+        // Red-Eyes-Black-Dragon palette (matches InventoryPopupWindow).
+        static IntPtr _brushPanel, _brushOutline, _brushBevHi, _brushBevLo, _brushRuby, _brushDivider;
+        static IntPtr _brushRowA,  _brushRowB,   _brushTag,   _brushTagUse, _brushOnline, _brushOffline;
         static IntPtr _fontTitle, _fontRow, _fontHint, _fontTag;
-        const string ClassName = "ZulfarakFriendsPopup";
+        const string  ClassName  = "ZulfarakFriendsPopup";
+        const string  DragonRes  = "UI/DragonFrame";
 
         static void EnsureClassRegistered()
         {
@@ -221,16 +223,19 @@ namespace ZulfarakRPG
 
         static void EnsureGdiObjects()
         {
-            if (_brushBg      == IntPtr.Zero) _brushBg      = CreateSolidBrush(Bgr(0.05f, 0.03f, 0.02f));
-            if (_brushBorder  == IntPtr.Zero) _brushBorder  = CreateSolidBrush(Bgr(0.85f, 0.65f, 0.20f));
-            if (_brushHeader  == IntPtr.Zero) _brushHeader  = CreateSolidBrush(Bgr(0.18f, 0.10f, 0.05f));
-            if (_brushRow     == IntPtr.Zero) _brushRow     = CreateSolidBrush(Bgr(0.10f, 0.07f, 0.04f));
-            if (_brushRowAlt  == IntPtr.Zero) _brushRowAlt  = CreateSolidBrush(Bgr(0.13f, 0.09f, 0.05f));
+            // Dark near-black panel + gold pixel bevel + ruby corner studs (mirrors inventory menu).
+            if (_brushPanel   == IntPtr.Zero) _brushPanel   = CreateSolidBrush(Bgr(0.06f, 0.05f, 0.05f));
+            if (_brushOutline == IntPtr.Zero) _brushOutline = CreateSolidBrush(Bgr(0.00f, 0.00f, 0.00f));
+            if (_brushBevHi   == IntPtr.Zero) _brushBevHi   = CreateSolidBrush(Bgr(0.95f, 0.75f, 0.30f));
+            if (_brushBevLo   == IntPtr.Zero) _brushBevLo   = CreateSolidBrush(Bgr(0.35f, 0.24f, 0.08f));
+            if (_brushRuby    == IntPtr.Zero) _brushRuby    = CreateSolidBrush(Bgr(0.85f, 0.15f, 0.15f));
+            if (_brushDivider == IntPtr.Zero) _brushDivider = CreateSolidBrush(Bgr(0.20f, 0.15f, 0.06f));
+            if (_brushRowA    == IntPtr.Zero) _brushRowA    = CreateSolidBrush(Bgr(0.10f, 0.08f, 0.08f));
+            if (_brushRowB    == IntPtr.Zero) _brushRowB    = CreateSolidBrush(Bgr(0.14f, 0.11f, 0.10f));
+            if (_brushTag     == IntPtr.Zero) _brushTag     = CreateSolidBrush(Bgr(0.32f, 0.11f, 0.10f));
+            if (_brushTagUse  == IntPtr.Zero) _brushTagUse  = CreateSolidBrush(Bgr(0.16f, 0.32f, 0.12f));
             if (_brushOnline  == IntPtr.Zero) _brushOnline  = CreateSolidBrush(Bgr(0.30f, 0.85f, 0.30f));
             if (_brushOffline == IntPtr.Zero) _brushOffline = CreateSolidBrush(Bgr(0.45f, 0.45f, 0.45f));
-            if (_brushInvite  == IntPtr.Zero) _brushInvite  = CreateSolidBrush(Bgr(0.28f, 0.16f, 0.06f));
-            if (_brushSent    == IntPtr.Zero) _brushSent    = CreateSolidBrush(Bgr(0.10f, 0.40f, 0.18f));
-            if (_brushClose   == IntPtr.Zero) _brushClose   = CreateSolidBrush(Bgr(0.40f, 0.05f, 0.05f));
             if (_fontTitle    == IntPtr.Zero) _fontTitle    = MakeFont(18, FW_BOLD);
             if (_fontRow      == IntPtr.Zero) _fontRow      = MakeFont(13, FW_NORMAL);
             if (_fontHint     == IntPtr.Zero) _fontHint     = MakeFont(11, FW_NORMAL);
@@ -301,76 +306,91 @@ namespace ZulfarakRPG
         static void Paint(IntPtr hdc)
         {
             int w = PopupWidth, h = PopupHeight;
+
+            // ── Frame: dark panel + gold pixel bevel + ruby corner studs ──
             var full = new RECT { Left = 0, Top = 0, Right = w, Bottom = h };
-            FillRect(hdc, ref full, _brushBg);
-            FrameRect(hdc, ref full, _brushBorder);
-            var inset = new RECT { Left = 1, Top = 1, Right = w - 1, Bottom = h - 1 };
-            FrameRect(hdc, ref inset, _brushBorder);
+            FillRect(hdc, ref full, _brushPanel);
+            NativeFrameImage.PixelBevel(hdc, 0, 0, w, h, _brushOutline, _brushBevHi, _brushBevLo, _brushPanel);
+            NativeFrameImage.PixelCornerStuds(hdc, 0, 0, w, h, _brushRuby, inset: 5, size: 3);
 
             SetBkMode(hdc, TRANSPARENT);
 
-            // Header bar
-            var header = new RECT { Left = 2, Top = 2, Right = w - 2, Bottom = HeaderH };
-            FillRect(hdc, ref header, _brushHeader);
-            var titleRc = new RECT { Left = 12, Top = 8, Right = w - 36, Bottom = HeaderH };
+            // ── Header bar with divider strip ──
+            var headerBar = new RECT { Left = 3, Top = 3, Right = w - 3, Bottom = HeaderH };
+            FillRect(hdc, ref headerBar, _brushDivider);
+
+            // Small dragon emblem inside a bevelled square on the left of the header.
+            const int EmblemSize = 24;
+            int emblemY = 3 + (HeaderH - 3 - EmblemSize) / 2;
+            int emblemX = 6;
+            NativeFrameImage.PixelBevel(hdc, emblemX, emblemY, EmblemSize, EmblemSize,
+                _brushOutline, _brushBevHi, _brushBevLo, _brushPanel);
+            var dragon = NativeFrameImage.Get(DragonRes);
+            if (dragon.Ready)
+                dragon.BlitAspect(hdc, emblemX + 3, emblemY + 3, EmblemSize - 6, EmblemSize - 6);
+
+            // Title
+            var titleRc = new RECT { Left = emblemX + EmblemSize + 8, Top = 6, Right = w - 36, Bottom = HeaderH };
             SetTextColor(hdc, Bgr(1.00f, 0.82f, 0.32f));
             var prev = SelectObject(hdc, _fontTitle);
             DrawTextW(hdc, "Convidar amigo da Steam", -1, ref titleRc,
                 DT_LEFT | DT_TOP | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
-            // Close box
-            var closeRc = new RECT { Left = w - 30, Top = 7, Right = w - 8, Bottom = HeaderH - 5 };
-            FillRect(hdc, ref closeRc, _brushClose);
-            SetTextColor(hdc, Bgr(1f, 1f, 1f));
+
+            // Bevelled close box (top-right).
+            NativeFrameImage.PixelBevel(hdc, w - 26, 7, 20, HeaderH - 11,
+                _brushOutline, _brushBevHi, _brushBevLo, _brushTag);
+            var closeRc = new RECT { Left = w - 26, Top = 7, Right = w - 6, Bottom = HeaderH - 4 };
+            SetTextColor(hdc, Bgr(1f, 0.92f, 0.85f));
             DrawTextW(hdc, "X", -1, ref closeRc, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
             SelectObject(hdc, prev);
 
-            // Rows (clipped to the list viewport)
+            // ── Rows (clipped to the list viewport) ──
             for (int i = 0; i < _friends.Count; i++)
             {
                 int rowTop = ListTop + i * RowH - _scrollY;
                 int rowBot = rowTop + RowH;
-                if (rowBot <= ListTop || rowTop >= ListBottom) continue;   // off-screen
+                if (rowBot <= ListTop || rowTop >= ListBottom) continue;
                 int drawTop = Mathf.Max(rowTop, ListTop);
                 int drawBot = Mathf.Min(rowBot, ListBottom);
 
                 var f = _friends[i];
-                var rowRc = new RECT { Left = 2, Top = drawTop, Right = w - 2, Bottom = drawBot };
-                FillRect(hdc, ref rowRc, f.isCopy ? _brushHeader : ((i & 1) == 0 ? _brushRow : _brushRowAlt));
+                var rowRc = new RECT { Left = 3, Top = drawTop, Right = w - 3, Bottom = drawBot };
+                FillRect(hdc, ref rowRc, f.isCopy ? _brushDivider : ((i & 1) == 0 ? _brushRowA : _brushRowB));
 
                 bool placeholder = f.id == 0 && !f.isCopy;
                 bool actionable  = !placeholder;
                 if (actionable && !f.isCopy)
                 {
-                    // Status dot (Steam friends only)
                     var dot = new RECT { Left = 12, Top = rowTop + RowH / 2 - 4, Right = 20, Bottom = rowTop + RowH / 2 + 4 };
                     FillRect(hdc, ref dot, f.online ? _brushOnline : _brushOffline);
                 }
 
-                // Name
                 SelectObject(hdc, _fontRow);
-                SetTextColor(hdc, f.isCopy   ? Bgr(1f, 0.82f, 0.32f)
+                SetTextColor(hdc, f.isCopy    ? Bgr(1f, 0.82f, 0.32f)
                                 : placeholder ? Bgr(0.65f, 0.60f, 0.55f)
                                 : (f.online ? Bgr(0.95f, 0.95f, 0.95f) : Bgr(0.62f, 0.62f, 0.62f)));
-                var nameRc = new RECT { Left = (placeholder || f.isCopy) ? 12 : 28, Top = rowTop, Right = w - 90, Bottom = rowBot };
+                var nameRc = new RECT { Left = (placeholder || f.isCopy) ? 12 : 28, Top = rowTop, Right = w - 92, Bottom = rowBot };
                 DrawTextW(hdc, f.name, -1, ref nameRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
 
-                // Action tag
+                // Bevelled action tag (green when sent, ruby-dark when actionable).
                 if (actionable)
                 {
-                    var tagRc = new RECT { Left = w - 84, Top = rowTop + 4, Right = w - 12, Bottom = rowBot - 4 };
-                    FillRect(hdc, ref tagRc, f.sent ? _brushSent : _brushInvite);
+                    int tagX = w - 86, tagY = rowTop + 4, tagW = 74, tagH = RowH - 8;
+                    NativeFrameImage.PixelBevel(hdc, tagX, tagY, tagW, tagH,
+                        _brushOutline, _brushBevHi, _brushBevLo, f.sent ? _brushTagUse : _brushTag);
+                    var tagRc = new RECT { Left = tagX, Top = tagY, Right = tagX + tagW, Bottom = tagY + tagH };
                     SelectObject(hdc, _fontTag);
-                    SetTextColor(hdc, f.sent ? Bgr(0.75f, 1f, 0.75f) : Bgr(1f, 0.82f, 0.32f));
+                    SetTextColor(hdc, f.sent ? Bgr(0.85f, 1f, 0.85f) : Bgr(1f, 0.90f, 0.55f));
                     string tag = f.isCopy ? (f.sent ? "Copiado!" : "Copiar")
                                           : (f.sent ? "Enviado!" : "Convidar");
                     DrawTextW(hdc, tag, -1, ref tagRc, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
                 }
             }
 
-            // Footer
+            // ── Footer hint ──
             SelectObject(hdc, _fontHint);
-            SetTextColor(hdc, Bgr(0.60f, 0.60f, 0.66f));
-            var hintRc = new RECT { Left = 12, Top = h - FooterH, Right = w - 12, Bottom = h - 4 };
+            SetTextColor(hdc, Bgr(0.72f, 0.62f, 0.42f));
+            var hintRc = new RECT { Left = 12, Top = h - FooterH, Right = w - 12, Bottom = h - 6 };
             DrawTextW(hdc, "Clique num amigo para convidar · roda do mouse rola · ESC fecha", -1, ref hintRc,
                 DT_LEFT | DT_BOTTOM | DT_SINGLELINE | DT_NOPREFIX);
         }

@@ -26,20 +26,26 @@ namespace ZulfarakRPG
         public Sprite[] walkFrames;
         public Sprite[] attackFrames;
         public Sprite[] deathFrames;
+        public Sprite[] hurtFrames;
 
         [Header("Server")]
         public string enemyId;
 
-        // ── State ──────────────────────────────────────────────────────────
-        private Rigidbody2D    _rb;
-        private SpriteRenderer _sr;
-        private WorldHealthBar _hpBar;
-        private PlayerController2D _player;
+        // Per-instance ID used to route co-op damage packets. WaveManager assigns
+        // wave{n}_{index} deterministically so both host and guest agree on which
+        // skeleton a remote attack hit. Empty for enemies not spawned by WaveManager.
+        [HideInInspector] public string netInstanceId;
 
-        private float  _hp;
-        private float  _atkTimer;
-        private float  _attackLock;
-        private bool   _dead;
+        // ── State ──────────────────────────────────────────────────────────
+        protected Rigidbody2D    _rb;
+        protected SpriteRenderer _sr;
+        protected WorldHealthBar _hpBar;
+        protected PlayerController2D _player;
+
+        protected float  _hp;
+        protected float  _atkTimer;
+        protected float  _attackLock;
+        protected bool   _dead;
 
         private Coroutine _animCoroutine;
         private string    _currentAnim;
@@ -100,6 +106,14 @@ namespace ZulfarakRPG
             _atkTimer   -= Time.deltaTime;
             _attackLock -= Time.deltaTime;
 
+            TickAI();
+
+            ClampToSceneBounds();
+            UpdateHpBarStagger();
+        }
+
+        protected virtual void TickAI()
+        {
             float horizontalDist = Mathf.Abs(_player.transform.position.x - transform.position.x);
 
             if (horizontalDist > attackRange)
@@ -127,9 +141,6 @@ namespace ZulfarakRPG
                 else if (_attackLock <= 0)
                     PlayAnim(idleFrames, 8f);
             }
-
-            ClampToSceneBounds();
-            UpdateHpBarStagger();
         }
 
         // When skeletons stand close together (similar X), shift each HP bar up by a
@@ -184,7 +195,7 @@ namespace ZulfarakRPG
         }
 
         // ── Combat ─────────────────────────────────────────────────────────
-        public void TakeDamage(float dmg, bool isCrit = false)
+        public virtual void TakeDamage(float dmg, bool isCrit = false)
         {
             if (_dead) return;
             // White popup (crits render yellow with a "*"). Only the player damages
@@ -193,12 +204,21 @@ namespace ZulfarakRPG
             HurtFlash.Flash(_sr);
             _hp = Mathf.Max(0, _hp - dmg);
             _hpBar?.SetHealth(_hp, maxHealth);
-            if (_hp <= 0) StartCoroutine(Die());
+            if (_hp <= 0)
+            {
+                StartCoroutine(Die());
+            }
+            else if (hurtFrames != null && hurtFrames.Length > 0)
+            {
+                _attackLock = Mathf.Max(_attackLock, hurtFrames.Length / 14f);
+                PlayAnim(hurtFrames, 14f, forceRestart: true, loop: false);
+            }
         }
 
         IEnumerator Die()
         {
             _dead = true;
+            OnDeathStarted();
             _rb.linearVelocity = Vector2.zero;
             GetComponent<BoxCollider2D>().enabled = false;
             if (_animCoroutine != null) StopCoroutine(_animCoroutine);
@@ -219,6 +239,9 @@ namespace ZulfarakRPG
             WaveManager.Instance?.OnEnemyDied(this);
             Destroy(gameObject, 0.3f);
         }
+
+        // Hook for subclasses (e.g. boss killing its remaining minions).
+        protected virtual void OnDeathStarted() { }
 
         IEnumerator RegisterKillOnServer()
         {
@@ -404,7 +427,7 @@ namespace ZulfarakRPG
         }
 
         // ── Animation ──────────────────────────────────────────────────────
-        void PlayAnim(Sprite[] frames, float fps, bool forceRestart = false, bool loop = true)
+        protected void PlayAnim(Sprite[] frames, float fps, bool forceRestart = false, bool loop = true)
         {
             if (frames == null || frames.Length == 0) return;
             string key = frames[0]?.name;

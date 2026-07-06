@@ -8,6 +8,8 @@ namespace ZulfarakRPG
     // First MonoBehaviour that runs. Decides which scene to load.
     public class GameBootstrap : MonoBehaviour
     {
+        private LoadingScreenUI _loading;
+
         private void Awake()
         {
             // Ensure singleton managers exist
@@ -29,32 +31,48 @@ namespace ZulfarakRPG
         private async void Start()
         {
             Debug.Log("[Bootstrap] Start iniciado.");
+            _loading = LoadingScreenUI.Create();
+            _loading.SetProgress(0.05f, "Conectando ao servidor...");
+
             // Connect to server
             NetworkManager.Instance.Connect();
 
+            _loading.SetProgress(0.15f, "Verificando Steam...");
             if (!SteamIntegration.Instance.IsInitialized)
             {
                 Debug.LogError("Steam não inicializado. Abra o jogo pelo Steam.");
+                _loading.SetProgress(0.15f, "Erro: abra o jogo pelo Steam.");
                 // In production: show error screen
                 return;
             }
 
+            _loading.SetProgress(0.25f, "Autenticando...");
             bool authOk = await AuthenticateBackend();
             if (!authOk)
             {
                 Debug.LogError("[Bootstrap] Falha ao autenticar no backend. Encerrando fluxo de inicialização.");
+                _loading.SetProgress(0.25f, "Erro de autenticação.");
                 return;
             }
+
+            _loading.SetProgress(0.65f, "Carregando personagem...");
             PlayerManager.Instance.Load();
             Inventory.Instance.Load();
 
             bool hasChar = PlayerManager.Instance.HasSavedData();
             Debug.Log($"[Bootstrap] steamInit={SteamIntegration.Instance.IsInitialized} " +
                       $"hasSavedCharacter={hasChar} → {(hasChar ? "Zulfarak" : "CharacterCreation")}");
-            if (!hasChar)
-                SceneManager.LoadScene("CharacterCreation");
-            else
-                SceneManager.LoadScene("Zulfarak");
+
+            _loading.SetProgress(0.75f, "Carregando mundo...");
+            var op = SceneManager.LoadSceneAsync(hasChar ? "Zulfarak" : "CharacterCreation");
+            while (op != null && !op.isDone)
+            {
+                // AsyncOperation.progress caps at 0.9 until activation completes.
+                _loading.SetProgress(0.75f + 0.25f * Mathf.Clamp01(op.progress / 0.9f), "Carregando mundo...");
+                await Task.Yield();
+            }
+
+            _loading.FinishAndFadeOut();
         }
 
         private static async Task<bool> AuthenticateBackend()

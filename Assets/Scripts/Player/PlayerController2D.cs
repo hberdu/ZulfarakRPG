@@ -38,18 +38,21 @@ namespace ZulfarakRPG
         public Sprite[] soldierWalkFrames;
         public Sprite[] soldierAttackFrames;
         public Sprite[] soldierDeathFrames;
+        public Sprite[] soldierHurtFrames;
 
         [Header("Mage Sprites")]
         public Sprite[] wizardIdleFrames;
         public Sprite[] wizardWalkFrames;
         public Sprite[] wizardAttackFrames;
         public Sprite[] wizardDeathFrames;
+        public Sprite[] wizardHurtFrames;
 
         [Header("Archer Sprites")]
         public Sprite[] archerIdleFrames;
         public Sprite[] archerWalkFrames;
         public Sprite[] archerAttackFrames;
         public Sprite[] archerDeathFrames;
+        public Sprite[] archerHurtFrames;
 
         // ── Runtime state ──────────────────────────────────────────────────
         private enum Phase { Playing, Celebrating, WalkingToPortal, Running, Dead }
@@ -66,7 +69,7 @@ namespace ZulfarakRPG
         public float HealthFraction => maxHealth > 0f ? Mathf.Clamp01(_hp / maxHealth) : 0f;
         private float    _atkTimer;
         private float    _attackLock;
-        private Sprite[] _idle, _walk, _atk, _death;
+        private Sprite[] _idle, _walk, _atk, _death, _hurt;
         private ClassType _classType = ClassType.Warrior;
 
         // Click-to-move (city scene)
@@ -179,18 +182,21 @@ namespace ZulfarakRPG
                     _walk  = Pick(wizardWalkFrames,   soldierWalkFrames);
                     _atk   = Pick(wizardAttackFrames, soldierAttackFrames);
                     _death = Pick(wizardDeathFrames,  soldierDeathFrames);
+                    _hurt  = Pick(wizardHurtFrames,   soldierHurtFrames);
                     break;
                 case ClassType.Archer:
                     _idle  = Pick(archerIdleFrames,   soldierIdleFrames);
                     _walk  = Pick(archerWalkFrames,   soldierWalkFrames);
                     _atk   = Pick(archerAttackFrames, soldierAttackFrames);
                     _death = Pick(archerDeathFrames,  soldierDeathFrames);
+                    _hurt  = Pick(archerHurtFrames,   soldierHurtFrames);
                     break;
                 default:
                     _idle  = soldierIdleFrames;
                     _walk  = soldierWalkFrames;
                     _atk   = soldierAttackFrames;
                     _death = soldierDeathFrames;
+                    _hurt  = soldierHurtFrames;
                     break;
             }
             if (_idle == null || _idle.Length == 0) _idle = soldierIdleFrames;
@@ -406,7 +412,10 @@ namespace ZulfarakRPG
             else if (_classType == ClassType.Mage)
                 StartCoroutine(FireFireballAfterCast(target, dmg, crit, animDur));
             else
+            {
                 target.TakeDamage(dmg, crit);
+                MultiplayerSync.Instance?.BroadcastDamage(target.netInstanceId, dmg, crit);
+            }
 
             _atkTimer   = interval;
             _attackLock = animDur;
@@ -511,7 +520,15 @@ namespace ZulfarakRPG
             _hp = Mathf.Max(0f, _hp - dmg);
             SyncPlayerDataHealthFromRuntime();
             _hpBar?.SetHealth(_hp, maxHealth);
-            if (_hp <= 0f) StartCoroutine(DieRoutine());
+            if (_hp <= 0f)
+            {
+                StartCoroutine(DieRoutine());
+            }
+            else if (_hurt != null && _hurt.Length > 0)
+            {
+                _attackLock = Mathf.Max(_attackLock, _hurt.Length / 14f);
+                PlayAnim(_hurt, 14f, forceRestart: true, loop: false);
+            }
         }
 
         // Called by WaveManager during the inter-wave run. The player stays put,

@@ -117,11 +117,16 @@ namespace ZulfarakRPG
         static IntPtr _hwnd = IntPtr.Zero;
         static WndProcDelegate _wndProcDelegate;
         static bool   _classRegistered;
-        static IntPtr _brushBg, _brushBorder, _brushPaper, _brushPaperDk;
+        // Red-Eyes-Black-Dragon palette (matches InventoryPopupWindow / FriendsListPopup).
+        static IntPtr _brushPanel, _brushOutline, _brushBevHi, _brushBevLo, _brushRuby, _brushDivider, _brushTag;
+        static IntPtr _brushPaper, _brushPaperDk;
         static IntPtr _brushCityActive, _brushCityLocked, _brushCityEdge, _brushGlow;
         static IntPtr _penInk;
-        static IntPtr _fontTitle, _fontCity, _fontHint;
+        static IntPtr _fontTitle, _fontCity, _fontHint, _fontClose;
         const string ClassName = "ZulfarakWorldMapPopup";
+        const string DragonRes = "UI/DragonFrame";
+        const int    HeaderH   = 34;
+        const int    EmblemSz  = 24;
 
         static void EnsureClassRegistered()
         {
@@ -143,8 +148,13 @@ namespace ZulfarakRPG
 
         static void EnsureGdiObjects()
         {
-            if (_brushBg          == IntPtr.Zero) _brushBg          = CreateSolidBrush(Bgr(0.05f, 0.03f, 0.02f));
-            if (_brushBorder      == IntPtr.Zero) _brushBorder      = CreateSolidBrush(Bgr(0.85f, 0.65f, 0.20f));
+            if (_brushPanel       == IntPtr.Zero) _brushPanel       = CreateSolidBrush(Bgr(0.06f, 0.05f, 0.05f));
+            if (_brushOutline     == IntPtr.Zero) _brushOutline     = CreateSolidBrush(Bgr(0.00f, 0.00f, 0.00f));
+            if (_brushBevHi       == IntPtr.Zero) _brushBevHi       = CreateSolidBrush(Bgr(0.95f, 0.75f, 0.30f));
+            if (_brushBevLo       == IntPtr.Zero) _brushBevLo       = CreateSolidBrush(Bgr(0.35f, 0.24f, 0.08f));
+            if (_brushRuby        == IntPtr.Zero) _brushRuby        = CreateSolidBrush(Bgr(0.85f, 0.15f, 0.15f));
+            if (_brushDivider     == IntPtr.Zero) _brushDivider     = CreateSolidBrush(Bgr(0.20f, 0.15f, 0.06f));
+            if (_brushTag         == IntPtr.Zero) _brushTag         = CreateSolidBrush(Bgr(0.32f, 0.11f, 0.10f));
             if (_brushPaper       == IntPtr.Zero) _brushPaper       = CreateSolidBrush(Bgr(0.94f, 0.85f, 0.58f));
             if (_brushPaperDk     == IntPtr.Zero) _brushPaperDk     = CreateSolidBrush(Bgr(0.28f, 0.18f, 0.06f));
             if (_brushCityActive  == IntPtr.Zero) _brushCityActive  = CreateSolidBrush(Bgr(0.95f, 0.62f, 0.20f));
@@ -152,9 +162,10 @@ namespace ZulfarakRPG
             if (_brushCityEdge    == IntPtr.Zero) _brushCityEdge    = CreateSolidBrush(Bgr(0.30f, 0.20f, 0.08f));
             if (_brushGlow        == IntPtr.Zero) _brushGlow        = CreateSolidBrush(Bgr(1.00f, 0.78f, 0.30f));
             if (_penInk           == IntPtr.Zero) _penInk           = CreatePen(PS_SOLID, 2, Bgr(0.30f, 0.18f, 0.05f));
-            if (_fontTitle        == IntPtr.Zero) _fontTitle        = MakeFont(20, FW_BOLD);
+            if (_fontTitle        == IntPtr.Zero) _fontTitle        = MakeFont(18, FW_BOLD);
             if (_fontCity         == IntPtr.Zero) _fontCity         = MakeFont(12, FW_BOLD);
             if (_fontHint         == IntPtr.Zero) _fontHint         = MakeFont(11, FW_NORMAL);
+            if (_fontClose        == IntPtr.Zero) _fontClose        = MakeFont(14, FW_BOLD);
         }
 
         static IntPtr MakeFont(int sizePx, int weight)
@@ -209,14 +220,38 @@ namespace ZulfarakRPG
             int w = PopupWidth;
             int h = PopupHeight;
             var full = new RECT { Left = 0, Top = 0, Right = w, Bottom = h };
-            FillRect(hdc, ref full, _brushBg);
-            FrameRect(hdc, ref full, _brushBorder);
-            var inset = new RECT { Left = 1, Top = 1, Right = w - 1, Bottom = h - 1 };
-            FrameRect(hdc, ref inset, _brushBorder);
+            FillRect(hdc, ref full, _brushPanel);
+            NativeFrameImage.PixelBevel(hdc, 0, 0, w, h, _brushOutline, _brushBevHi, _brushBevLo, _brushPanel);
+            NativeFrameImage.PixelCornerStuds(hdc, 0, 0, w, h, _brushRuby, inset: 5, size: 3);
 
-            // Paper rectangle (inset from the outer popup)
-            int paperLeft   = 22, paperTop = 44, paperRight = w - 22, paperBottom = h - 30;
-            // Dark border behind paper
+            // Header divider bar.
+            var headerBar = new RECT { Left = 6, Top = HeaderH, Right = w - 6, Bottom = HeaderH + 2 };
+            FillRect(hdc, ref headerBar, _brushDivider);
+
+            // Dragon emblem (top-left of header) inside a bevelled square.
+            int emblemX = 8, emblemY = 5;
+            NativeFrameImage.PixelBevel(hdc, emblemX, emblemY, EmblemSz, EmblemSz,
+                _brushOutline, _brushBevHi, _brushBevLo, _brushPanel);
+            var dragon = NativeFrameImage.Get(DragonRes);
+            if (dragon.Ready) dragon.BlitAspect(hdc, emblemX + 3, emblemY + 3, EmblemSz - 6, EmblemSz - 6);
+
+            // Title text (right of emblem).
+            SetBkMode(hdc, TRANSPARENT);
+            SetTextColor(hdc, Bgr(0.95f, 0.75f, 0.30f));
+            var prevFont = SelectObject(hdc, _fontTitle);
+            var titleRc = new RECT { Left = emblemX + EmblemSz + 8, Top = 7, Right = w - 34, Bottom = HeaderH - 4 };
+            DrawTextW(hdc, "Mapa do Mundo", -1, ref titleRc, DT_LEFT | DT_TOP | DT_SINGLELINE | DT_NOPREFIX);
+
+            // Bevelled close box (top-right).
+            NativeFrameImage.PixelBevel(hdc, w - 26, 7, 20, HeaderH - 11,
+                _brushOutline, _brushBevHi, _brushBevLo, _brushTag);
+            SelectObject(hdc, _fontClose);
+            SetTextColor(hdc, Bgr(0.95f, 0.85f, 0.60f));
+            var closeRc = new RECT { Left = w - 26, Top = 6, Right = w - 6, Bottom = HeaderH - 4 };
+            DrawTextW(hdc, "X", -1, ref closeRc, DT_CENTER | DT_TOP | DT_SINGLELINE | DT_NOPREFIX);
+
+            // Paper rectangle (inset from the outer popup, below the header)
+            int paperLeft   = 22, paperTop = HeaderH + 12, paperRight = w - 22, paperBottom = h - 30;
             var paperBorder = new RECT { Left = paperLeft - 3, Top = paperTop - 3, Right = paperRight + 3, Bottom = paperBottom + 3 };
             FillRect(hdc, ref paperBorder, _brushPaperDk);
             var paper = new RECT { Left = paperLeft, Top = paperTop, Right = paperRight, Bottom = paperBottom };
@@ -225,15 +260,7 @@ namespace ZulfarakRPG
             int cx = (paperLeft + paperRight) / 2;
             int cy = (paperTop  + paperBottom) / 2;
 
-            // Title above the paper
-            SetBkMode(hdc, TRANSPARENT);
-            var titleRc = new RECT { Left = 0, Top = 10, Right = w, Bottom = 36 };
-            SetTextColor(hdc, Bgr(1.00f, 0.82f, 0.32f));
-            var prevFont = SelectObject(hdc, _fontTitle);
-            DrawTextW(hdc, "Mapa do Mundo", -1, ref titleRc, DT_CENTER | DT_TOP | DT_SINGLELINE | DT_NOPREFIX);
-
-            // Dashed connectors between consecutive cities (short LineTo segments
-            // give us the dashed look without needing a custom PS_DASH pen style).
+            // Dashed connectors between consecutive cities.
             var prevPen = SelectObject(hdc, _penInk);
             for (int i = 0; i < Cities.Length - 1; i++)
             {
@@ -248,16 +275,13 @@ namespace ZulfarakRPG
             {
                 int x = cx + Cities[i].X, y = cy + Cities[i].Y;
                 int r = 9;
-                // Outer ring
                 var outer = new RECT { Left = x - r, Top = y - r, Right = x + r, Bottom = y + r };
                 FillRect(hdc, ref outer, _brushCityEdge);
-                // Inner fill
                 int ri = r - 3;
                 var inner = new RECT { Left = x - ri, Top = y - ri, Right = x + ri, Bottom = y + ri };
                 FillRect(hdc, ref inner, Cities[i].Locked ? _brushCityLocked : _brushCityActive);
                 if (!Cities[i].Locked)
                 {
-                    // Bright core dot for the active city ("you are here").
                     int rg = 2;
                     var glow = new RECT { Left = x - rg, Top = y - rg, Right = x + rg, Bottom = y + rg };
                     FillRect(hdc, ref glow, _brushGlow);
@@ -276,7 +300,6 @@ namespace ZulfarakRPG
                 DrawTextW(hdc, Cities[i].Name, -1, ref lblRc, DT_CENTER | DT_TOP | DT_SINGLELINE | DT_NOPREFIX);
                 if (Cities[i].Locked)
                 {
-                    // "?" tag floating above the locked dot
                     SetTextColor(hdc, Bgr(0.65f, 0.60f, 0.50f));
                     var qRc = new RECT { Left = x - 8, Top = y - 22, Right = x + 8, Bottom = y - 6 };
                     DrawTextW(hdc, "?", -1, ref qRc, DT_CENTER | DT_TOP | DT_SINGLELINE | DT_NOPREFIX);
@@ -285,7 +308,7 @@ namespace ZulfarakRPG
 
             // Footer hint
             SelectObject(hdc, _fontHint);
-            SetTextColor(hdc, Bgr(0.60f, 0.60f, 0.66f));
+            SetTextColor(hdc, Bgr(0.75f, 0.65f, 0.45f));
             var hintRc = new RECT { Left = 0, Top = h - 22, Right = w, Bottom = h - 6 };
             DrawTextW(hdc, "Clique ou ESC para fechar", -1, ref hintRc,
                 DT_CENTER | DT_BOTTOM | DT_SINGLELINE | DT_NOPREFIX);
@@ -383,6 +406,7 @@ namespace ZulfarakRPG
         const int  TRANSPARENT    = 1;
         const int  VK_ESCAPE      = 0x1B;
         const uint DT_TOP         = 0x00000000;
+        const uint DT_LEFT        = 0x00000000;
         const uint DT_CENTER      = 0x00000001;
         const uint DT_BOTTOM      = 0x00000008;
         const uint DT_SINGLELINE  = 0x00000020;

@@ -14,6 +14,7 @@ namespace ZulfarakRPG
         [Header("Prefabs")]
         public GameObject skeletonPrefab;
         public GameObject armoredSkeletonPrefab;
+        public GameObject necromancerPrefab;
 
         [Header("Spawn")]
         public Transform[] spawnPoints;
@@ -26,6 +27,7 @@ namespace ZulfarakRPG
         public TextMeshProUGUI waveAnnounceText;  // unused — left for backwards compat
         public TextMeshProUGUI clearText;
         public TextMeshProUGUI defeatText;
+        public TextMeshProUGUI bossText;
 
         [Header("Inter-wave run")]
         public ParallaxLayer[] parallaxLayers;
@@ -34,12 +36,18 @@ namespace ZulfarakRPG
 
         // ── State ──────────────────────────────────────────────────────────
         private int  _wave        = 0;
-        private int  _totalWaves  = 2;
+        private int  _totalWaves  = 10;
         private bool _waveDone    = false;
         private List<SkeletonEnemy> _alive = new();
         private PlayerController2D _player;
+        private DungeonProgressBar _progressBar;
         private EnemyDefinitionDto[] _enemyCatalog = Array.Empty<EnemyDefinitionDto>();
         private bool _enemyCatalogLoaded;
+
+        // (normal, armored) skeletons per wave 1-9; wave 10 is the Necromancer.
+        private static readonly int[,] WaveComp = {
+            {4,0}, {2,2}, {4,1}, {3,2}, {5,1}, {3,3}, {5,2}, {4,3}, {3,4}
+        };
 
         void Awake()
         {
@@ -52,6 +60,8 @@ namespace ZulfarakRPG
             if (clearText)        clearText.gameObject.SetActive(false);
             if (defeatText)       defeatText.gameObject.SetActive(false);
             if (waveAnnounceText) waveAnnounceText.gameObject.SetActive(false);
+            if (bossText)         bossText.gameObject.SetActive(false);
+            _progressBar = DungeonProgressBar.Create(clearText != null ? clearText.canvas : null, _totalWaves);
             StartCoroutine(StartWavesRoutine());
         }
 
@@ -72,6 +82,7 @@ namespace ZulfarakRPG
         IEnumerator WaveCleared()
         {
             _waveDone = true;
+            _progressBar?.SetWave(_wave);
             yield return new WaitForSeconds(0.5f);
 
             if (_wave < _totalWaves)
@@ -112,14 +123,26 @@ namespace ZulfarakRPG
         {
             _wave++;
             _alive.Clear();
-            // No wave-announcement banner — the only HUD strings are CLEAR and DEFEAT.
+            _progressBar?.SetWave(_wave - 1);
+            // No wave-announcement banner — the only HUD strings are BOSS, CLEAR and DEFEAT.
             yield return new WaitForSeconds(0.25f);
 
-            var prefab = (_wave == 1) ? skeletonPrefab : armoredSkeletonPrefab;
-            if (prefab == null) prefab = skeletonPrefab;
-
-            for (int i = 0; i < 4; i++)
+            if (_wave >= _totalWaves)
             {
+                yield return StartCoroutine(SpawnBossWave());
+                yield break;
+            }
+
+            int idx      = Mathf.Clamp(_wave - 1, 0, WaveComp.GetLength(0) - 1);
+            int normals  = WaveComp[idx, 0];
+            int armored  = WaveComp[idx, 1];
+            int total    = normals + armored;
+
+            for (int i = 0; i < total; i++)
+            {
+                var prefab = i < normals ? skeletonPrefab : armoredSkeletonPrefab;
+                if (prefab == null) prefab = skeletonPrefab;
+
                 var sp  = spawnPoints != null && spawnPoints.Length > 0
                         ? spawnPoints[i % spawnPoints.Length].position
                         : new Vector3(40 + i * 2f, -1.5f, 0);
@@ -128,10 +151,53 @@ namespace ZulfarakRPG
                 if (sk)
                 {
                     ApplyServerEnemyMapping(sk, prefab != null ? prefab.name : string.Empty);
+                    // Deterministic per-wave/per-index ID so co-op damage packets from
+                    // the other client can find the exact same skeleton locally.
+                    sk.netInstanceId = $"w{_wave}_i{i}";
                     _alive.Add(sk);
                 }
                 yield return new WaitForSeconds(spawnInterval);
             }
+        }
+
+        IEnumerator SpawnBossWave()
+        {
+            if (bossText == null && clearText != null)
+            {
+                // Scene built before bossText existed — clone the CLEAR label.
+                bossText = Instantiate(clearText, clearText.transform.parent);
+                bossText.name  = "BossText";
+                bossText.color = new Color(0.9f, 0.15f, 0.15f);
+                bossText.gameObject.SetActive(false);
+            }
+            if (bossText)
+            {
+                bossText.text = "BOSS";
+                yield return StartCoroutine(ScrollBanner(bossText));
+            }
+
+            var prefab = necromancerPrefab != null ? necromancerPrefab
+                       : armoredSkeletonPrefab != null ? armoredSkeletonPrefab
+                       : skeletonPrefab;
+            if (prefab == null) yield break;
+
+            var sp = spawnPoints != null && spawnPoints.Length > 0
+                   ? spawnPoints[0].position
+                   : new Vector3(40, -1.5f, 0);
+            var go = Instantiate(prefab, sp, Quaternion.identity);
+            var boss = go.GetComponent<SkeletonEnemy>();
+            if (boss)
+            {
+                ApplyServerEnemyMapping(boss, prefab.name);
+                boss.netInstanceId = $"w{_wave}_boss";
+                _alive.Add(boss);
+            }
+        }
+
+        // Called by NecromancerBoss so summoned minions gate wave completion too.
+        public void RegisterSummon(SkeletonEnemy sk)
+        {
+            if (sk != null && !_alive.Contains(sk)) _alive.Add(sk);
         }
 
         private IEnumerator LoadEnemyCatalogFromServer()
@@ -261,11 +327,8 @@ namespace ZulfarakRPG
         {
             StopAllCoroutines();
             if (clearText)  clearText.gameObject.SetActive(false);
-            if (defeatText)
-            {
-                defeatText.gameObject.SetActive(true);
-                StartCoroutine(PulseText(defeatText));
-            }
+            if (bossText)   bossText.gameObject.SetActive(false);
+            if (defeatText) StartCoroutine(ScrollBanner(defeatText));
         }
 
         // ── Called by PlayerController2D after celebration jumps ───────────
@@ -283,20 +346,46 @@ namespace ZulfarakRPG
         {
             if (!clearText) return;
             clearText.text = "CLEAR";
-            clearText.gameObject.SetActive(true);
-            StartCoroutine(PulseText(clearText));
+            StartCoroutine(ScrollBanner(clearText));
         }
 
-        IEnumerator PulseText(TextMeshProUGUI label)
+        // Big banner sliding in from the left, holding center, then sliding out
+        // to the right. Works with stretch anchors via anchoredPosition offset.
+        IEnumerator ScrollBanner(TextMeshProUGUI label)
         {
-            float t = 0;
-            while (label && label.gameObject.activeSelf)
+            if (!label) yield break;
+            var rt = label.rectTransform;
+            var basePos = rt.anchoredPosition;
+            const float off = 460f;
+
+            rt.anchoredPosition = basePos + new Vector2(-off, 0);
+            label.gameObject.SetActive(true);
+
+            float t = 0f;
+            const float inDur = 0.45f;
+            while (t < inDur)
             {
                 t += Time.deltaTime;
-                float s = 1f + Mathf.Sin(t * 5f) * 0.06f;
-                label.transform.localScale = Vector3.one * s;
+                float p = 1f - Mathf.Pow(1f - Mathf.Clamp01(t / inDur), 3f);   // ease-out
+                rt.anchoredPosition = basePos + new Vector2(-off * (1f - p), 0);
                 yield return null;
             }
+            rt.anchoredPosition = basePos;
+
+            yield return new WaitForSeconds(0.9f);
+
+            t = 0f;
+            const float outDur = 0.45f;
+            while (t < outDur)
+            {
+                t += Time.deltaTime;
+                float p = Mathf.Pow(Mathf.Clamp01(t / outDur), 3f);            // ease-in
+                rt.anchoredPosition = basePos + new Vector2(off * p, 0);
+                yield return null;
+            }
+
+            label.gameObject.SetActive(false);
+            rt.anchoredPosition = basePos;
         }
     }
 }

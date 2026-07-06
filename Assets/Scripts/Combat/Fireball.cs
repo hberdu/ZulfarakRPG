@@ -62,6 +62,7 @@ namespace ZulfarakRPG
             if (dist < hitDistance)
             {
                 _target.TakeDamage(damage, _isCrit);
+                MultiplayerSync.Instance?.BroadcastDamage(_target.netInstanceId, damage, _isCrit);
                 SpawnImpact(targetPos);
                 Destroy(gameObject);
                 return;

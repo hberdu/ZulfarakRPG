@@ -158,6 +158,22 @@ namespace ZulfarakRPG
             SendToAllExceptMe(new P2PMessage { op = "portal", dest = destinationScene });
         }
 
+        // Co-op combat sync: whenever the local player lands a hit (melee, arrow,
+        // fireball), broadcast the damage so the remote client applies the same hit
+        // to their local copy of the enemy. Both clients spawn identical enemies
+        // deterministically via WaveManager, so netInstanceId matches on both sides.
+        public void BroadcastDamage(string netInstanceId, float dmg, bool crit)
+        {
+            if (string.IsNullOrEmpty(netInstanceId)) return;
+            SendToAllExceptMe(new P2PMessage
+            {
+                op    = "damage",
+                netId = netInstanceId,
+                dmg   = dmg,
+                crit  = crit,
+            });
+        }
+
         void SendToAllExceptMe(P2PMessage msg)
         {
             if (SteamP2P.Instance == null || SteamLobbyManager.Instance == null) return;
@@ -212,6 +228,22 @@ namespace ZulfarakRPG
                     if (!string.IsNullOrEmpty(msg.dest))
                         SceneManager.LoadScene(msg.dest);
                     break;
+
+                case "damage":
+                    // Remote player hit an enemy — apply the same damage to our
+                    // local copy so both clients see synchronized HP/kills.
+                    if (!string.IsNullOrEmpty(msg.netId))
+                    {
+                        foreach (var e in UnityEngine.Object.FindObjectsByType<SkeletonEnemy>(FindObjectsSortMode.None))
+                        {
+                            if (e != null && e.IsAlive && e.netInstanceId == msg.netId)
+                            {
+                                e.TakeDamage(msg.dmg, msg.crit);
+                                break;
+                            }
+                        }
+                    }
+                    break;
             }
         }
 
@@ -226,6 +258,9 @@ namespace ZulfarakRPG
             public int    cls;
             public string name;
             public string dest;
+            public string netId;   // per-instance enemy id for damage packets
+            public float  dmg;     // damage amount for "damage" op
+            public bool   crit;    // crit flag for "damage" op
         }
     }
 }

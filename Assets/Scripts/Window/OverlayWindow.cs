@@ -59,8 +59,8 @@ namespace ZulfarakRPG
         public static readonly Color BackgroundColor = new Color(0f, 0f, 0f, 0f);
 
         // ── Public settings ───────────────────────────────────────────────────
-        public int windowWidth  = 400;
-        public int windowHeight = 240;
+        public int windowWidth  = 600;
+        public int windowHeight = 180;
 
         public static OverlayWindow Instance { get; private set; }
         public static int WinX { get; private set; } = 40;
@@ -118,10 +118,12 @@ namespace ZulfarakRPG
 
         void ApplyWindowModeForScene(string sceneName)
         {
-            bool gameplay = sceneName == "Zulfarak" || sceneName == "Dungeon";
-            int newW = gameplay ? 400 : 380;
-            int newH = gameplay ? 120 : 640;
-            bool sizeChanged = newW != windowWidth || newH != windowHeight;
+            // Bootstrap boots at the gameplay resolution so the loading screen and
+            // the game share the exact same window size (no resize on scene swap).
+            bool gameplay = sceneName == "Zulfarak" || sceneName == "Dungeon" || sceneName == "Bootstrap";
+            int newW = gameplay ? 600 : 380;
+            int newH = gameplay ? 180 : 640;
+            bool sizeChanged = newW != Screen.width || newH != Screen.height;
             windowWidth = newW;
             windowHeight = newH;
 #if !UNITY_EDITOR

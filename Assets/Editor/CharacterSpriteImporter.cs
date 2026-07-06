@@ -8,8 +8,21 @@ using System.Collections.Generic;
 public static class CharacterSpriteImporter
 {
     private const string SrcBase   = @"C:\Users\henri\Downloads\Tiny RPG Character Asset Pack v1.03b -Full 20 Characters\Tiny RPG Character Asset Pack v1.03 -Full 20 Characters\Characters(100x100)";
+    private const string SrcBase2  = @"C:\Users\henri\Downloads\Tiny RPG Character Asset Pack 01 v2.0 -Full 22 Characters\Characters(100x100 split)";
     private const string DestBase  = "Assets/Art/Characters";
     private const int    FrameSize = 100;
+
+    // v2 pack uses underscores + parenthesized filenames — mapped explicitly.
+    // (destAnim, srcFileName, frameCount)
+    private static readonly (string anim, string srcFile, int frames)[] NecromancerAnims = {
+        ("Idle",    "Necromancer_Idle.png",                          6),
+        ("Walk",    "Necromancer_Walk.png",                          6),
+        ("Attack01","Necromancer_Attack01.png",                      9),
+        ("Attack02","Necromancer_Attack02(With magic effects).png", 10),
+        ("Summon",  "Necromancer_Summon(With magic effects).png",   13),
+        ("Hurt",    "Necromancer_Hurt.png",                          4),
+        ("Death",   "Necromancer_DEATH.png",                         9),
+    };
 
     // charName = asset folder name, srcFolder = folder name inside pack
     private static readonly CharDef[] Characters = {
@@ -60,6 +73,26 @@ public static class CharacterSpriteImporter
                 AssetDatabase.ImportAsset(destFile);
                 ConfigureSprite(destFile, def.Name, anim, frames);
             }
+        }
+
+        // Necromancer boss (v2 pack, different path/filename conventions)
+        Directory.CreateDirectory(Application.dataPath + "/../" + DestBase + "/Necromancer");
+        string necroSrc = $@"{SrcBase2}\Necromancer\Necromancer";
+        foreach (var (anim, srcName, frames) in NecromancerAnims)
+        {
+            string srcFile  = $@"{necroSrc}\{srcName}";
+            string destFile = $"{DestBase}/Necromancer/Necromancer-{anim}.png";
+            string destAbs  = Application.dataPath + "/../" + destFile;
+
+            if (!File.Exists(srcFile))
+            {
+                Debug.LogWarning($"[ZulfarakRPG] Not found: {srcFile}");
+                continue;
+            }
+
+            File.Copy(srcFile, destAbs, overwrite: true);
+            AssetDatabase.ImportAsset(destFile);
+            ConfigureSprite(destFile, "Necromancer", anim, frames);
         }
 
         AssetDatabase.Refresh();

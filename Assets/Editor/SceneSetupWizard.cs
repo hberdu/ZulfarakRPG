@@ -556,6 +556,9 @@ public static class SceneSetupWizard
         pc.soldierDeathFrames  = CharacterSpriteImporter.GetFrames("Soldier", "Death");
         pc.wizardDeathFrames   = CharacterSpriteImporter.GetFrames("Wizard",  "DEATH");
         pc.archerDeathFrames   = CharacterSpriteImporter.GetFrames("Archer",  "Death");
+        pc.soldierHurtFrames   = CharacterSpriteImporter.GetFrames("Soldier", "Hurt");
+        pc.wizardHurtFrames    = CharacterSpriteImporter.GetFrames("Wizard",  "Hurt");
+        pc.archerHurtFrames    = CharacterSpriteImporter.GetFrames("Archer",  "Hurt");
         pc.sceneBoundsMinX = 0.45f;
         pc.sceneBoundsMaxX = 4.55f;
         EditorUtility.SetDirty(pc);
@@ -707,7 +710,7 @@ public static class SceneSetupWizard
         gsr2.sprite       = dungGroundSpr;
         gsr2.drawMode     = SpriteDrawMode.Tiled;
         gsr2.size         = new Vector2(7.0f, GROUND_H);
-        gsr2.color        = new Color(0.40f, 0.30f, 0.55f);
+        gsr2.color        = new Color(0.22f, 0.16f, 0.30f);
         gsr2.sortingOrder = -5;
         var gcol    = ground.AddComponent<BoxCollider2D>();
         gcol.size   = new Vector2(7.0f, GROUND_H);
@@ -722,7 +725,7 @@ public static class SceneSetupWizard
         var farLayerGO = new GameObject("ParallaxFar");
         var farPL = farLayerGO.AddComponent<ParallaxLayer>();
         farPL.speedFactor = 0.30f;
-        farPL.tint        = new Color(0.10f, 0.08f, 0.14f, 1f);
+        farPL.tint        = new Color(0.05f, 0.04f, 0.08f, 1f);
         farPL.sprites = new[] {
             ZulfarakTextureImporter.Load("TX Struct.png", "struct_building1"),
             ZulfarakTextureImporter.Load("TX Struct.png", "struct_building3"),
@@ -740,7 +743,7 @@ public static class SceneSetupWizard
         var midLayerGO = new GameObject("ParallaxMid");
         var midPL = midLayerGO.AddComponent<ParallaxLayer>();
         midPL.speedFactor = 0.65f;
-        midPL.tint        = new Color(0.20f, 0.16f, 0.26f, 1f);
+        midPL.tint        = new Color(0.10f, 0.08f, 0.14f, 1f);
         midPL.sprites = new[] {
             ZulfarakTextureImporter.Load("TX Tileset Wall.png", "wall_bldg1"),
             ZulfarakTextureImporter.Load("TX Tileset Wall.png", "wall_bldg3"),
@@ -759,7 +762,7 @@ public static class SceneSetupWizard
         var nearLayerGO = new GameObject("ParallaxNear");
         var nearPL = nearLayerGO.AddComponent<ParallaxLayer>();
         nearPL.speedFactor = 1.0f;
-        nearPL.tint        = new Color(0.32f, 0.28f, 0.38f, 1f);
+        nearPL.tint        = new Color(0.17f, 0.14f, 0.21f, 1f);
         nearPL.sprites = new[] {
             ZulfarakTextureImporter.Load("TX Plant.png", "plant_tree1"),
             ZulfarakTextureImporter.Load("TX Plant.png", "plant_tree2"),
@@ -797,6 +800,9 @@ public static class SceneSetupWizard
         pc.soldierDeathFrames  = CharacterSpriteImporter.GetFrames("Soldier", "Death");
         pc.wizardDeathFrames   = CharacterSpriteImporter.GetFrames("Wizard",  "DEATH");
         pc.archerDeathFrames   = CharacterSpriteImporter.GetFrames("Archer",  "Death");
+        pc.soldierHurtFrames   = CharacterSpriteImporter.GetFrames("Soldier", "Hurt");
+        pc.wizardHurtFrames    = CharacterSpriteImporter.GetFrames("Wizard",  "Hurt");
+        pc.archerHurtFrames    = CharacterSpriteImporter.GetFrames("Archer",  "Hurt");
         pc.sceneBoundsMinX = 0.45f;
         pc.sceneBoundsMaxX = 4.55f;
         EditorUtility.SetDirty(pc);
@@ -832,11 +838,16 @@ public static class SceneSetupWizard
         var armPrefab = PrefabUtility.SaveAsPrefabAsset(armScene, "Assets/Prefabs/ArmoredSkeletonEnemy.prefab");
         Object.DestroyImmediate(armScene);
 
+        var necroScene = CreateNecromancerGO("NecromancerBoss", skelPrefab);
+        var necroPrefab = PrefabUtility.SaveAsPrefabAsset(necroScene, "Assets/Prefabs/NecromancerBoss.prefab");
+        Object.DestroyImmediate(necroScene);
+
         // ── WaveManager ───────────────────────────────────────────────
         var wmGO = new GameObject("WaveManager");
         var wm   = wmGO.AddComponent<WaveManager>();
         wm.skeletonPrefab        = skelPrefab;
         wm.armoredSkeletonPrefab = armPrefab;
+        wm.necromancerPrefab     = necroPrefab;
         wm.spawnPoints           = spawnPts;
         wm.exitPortal            = exitPortal;
         wm.parallaxLayers        = new[] { farPL, midPL, nearPL };
@@ -871,8 +882,20 @@ public static class SceneSetupWizard
         defeatTMP.color     = new Color(0.85f, 0.15f, 0.15f);
         defeatGO.SetActive(false);
 
+        var bossGO = new GameObject("BossText");
+        bossGO.transform.SetParent(hudCanvas.transform, false);
+        SetAnchors(bossGO.AddComponent<RectTransform>(), Vec(0, 0.3f), Vec(1, 0.7f));
+        var bossTMP = bossGO.AddComponent<TextMeshProUGUI>();
+        bossTMP.text      = "BOSS";
+        bossTMP.fontSize  = 64;
+        bossTMP.fontStyle = TMPro.FontStyles.Bold;
+        bossTMP.alignment = TextAlignmentOptions.Center;
+        bossTMP.color     = new Color(0.90f, 0.15f, 0.15f);
+        bossGO.SetActive(false);
+
         wm.clearText        = clearTMP;
         wm.defeatText       = defeatTMP;
+        wm.bossText         = bossTMP;
         wm.waveAnnounceText = null;  // intentionally no wave banner
         EditorUtility.SetDirty(wm);
 
@@ -957,11 +980,57 @@ public static class SceneSetupWizard
             CharacterSpriteImporter.GetFrames(cn, "Attack01"),
             CharacterSpriteImporter.GetFrames(cn, "Attack02"));
         enemy.deathFrames  = CharacterSpriteImporter.GetFrames(cn, "Death");
+        enemy.hurtFrames   = CharacterSpriteImporter.GetFrames(cn, "Hurt");
         enemy.maxHealth    = isArmored ? 90f : 50f;
         enemy.attackDamage = isArmored ? 14f : 8f;
         enemy.sceneBoundsMinX = 0.45f;
         enemy.sceneBoundsMaxX = 4.55f;
         EditorUtility.SetDirty(enemy);
+        return go;
+    }
+
+    private static GameObject CreateNecromancerGO(string name, GameObject minionPrefab)
+    {
+        var go = new GameObject(name);
+
+        // Slightly bigger than regular enemies so the boss reads as a boss.
+        go.transform.localScale = new Vector3(2.6f, 2.6f, 1f);
+
+        var rb = go.AddComponent<Rigidbody2D>();
+        rb.gravityScale = 3f;
+        rb.constraints  = RigidbodyConstraints2D.FreezeRotation;
+
+        go.AddComponent<SpriteRenderer>().sortingOrder = 1;
+
+        var col = go.AddComponent<BoxCollider2D>();
+        col.size   = new Vector2(0.30f, CHAR_HEIGHT);
+        col.offset = new Vector2(0f, FEET_OFFSET + CHAR_HEIGHT * 0.5f);
+
+        var hpGO = new GameObject("HealthBar");
+        hpGO.transform.SetParent(go.transform, false);
+        hpGO.transform.localPosition = new Vector3(0f, FEET_OFFSET + CHAR_HEIGHT + 0.02f, -0.1f);
+        var whb = hpGO.AddComponent<WorldHealthBar>();
+        whb.barHeight = 0.025f;
+
+        var boss = go.AddComponent<NecromancerBoss>();
+        boss.idleFrames   = CharacterSpriteImporter.GetFrames("Necromancer", "Idle");
+        boss.walkFrames   = CharacterSpriteImporter.GetFrames("Necromancer", "Walk");
+        boss.attackFrames = CharacterSpriteImporter.MergeFrames(
+            CharacterSpriteImporter.GetFrames("Necromancer", "Attack01"),
+            CharacterSpriteImporter.GetFrames("Necromancer", "Attack02"));
+        boss.deathFrames  = CharacterSpriteImporter.GetFrames("Necromancer", "Death");
+        boss.hurtFrames   = CharacterSpriteImporter.GetFrames("Necromancer", "Hurt");
+        boss.summonFrames = CharacterSpriteImporter.GetFrames("Necromancer", "Summon");
+        boss.minionPrefab = minionPrefab;
+        boss.minionsPerSummon = 6;
+        boss.maxHealth      = 400f;
+        boss.attackDamage   = 12f;
+        boss.attackRange    = 1.3f;
+        boss.moveSpeed      = 2.4f;
+        boss.attackCooldown = 2.4f;
+        boss.sceneBoundsMinX = 0.45f;
+        boss.sceneBoundsMaxX = 4.55f;
+        EditorUtility.SetDirty(boss);
         return go;
     }
 
