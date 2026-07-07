@@ -994,7 +994,7 @@ MonoBehaviour:
   - {fileID: 115242099}
   - {fileID: 1959389062}
   - {fileID: 367317885}
-  spawnInterval: 0.2
+  spawnInterval: 0.5
   exitPortal: {fileID: 1309078666}
   waveAnnounceText: {fileID: 0}
   clearText: {fileID: 2090981512}
@@ -1381,78 +1381,16 @@ MonoBehaviour:
   - {fileID: -9144092880859920769, guid: d3ab494b00f59bb4e8be4479ea853fca, type: 3}
   - {fileID: -1294198657845372363, guid: d3ab494b00f59bb4e8be4479ea853fca, type: 3}
   - {fileID: 5832391082227068111, guid: d3ab494b00f59bb4e8be4479ea853fca, type: 3}
-  soldierAttack1Frames:
-  - {fileID: -3291933047493928793, guid: 4e5e73e978a8e024eadc9e061e48e983, type: 3}
-  - {fileID: -6387132180496740656, guid: 4e5e73e978a8e024eadc9e061e48e983, type: 3}
-  - {fileID: 3584784805190714906, guid: 4e5e73e978a8e024eadc9e061e48e983, type: 3}
-  - {fileID: -4079507207558419125, guid: 4e5e73e978a8e024eadc9e061e48e983, type: 3}
-  - {fileID: -868544849082176367, guid: 4e5e73e978a8e024eadc9e061e48e983, type: 3}
-  - {fileID: -3853612353132079948, guid: 4e5e73e978a8e024eadc9e061e48e983, type: 3}
-  soldierAttack2Frames:
-  - {fileID: 4811190364059900513, guid: 53ecb738f136b194994e05b7824fa7a2, type: 3}
-  - {fileID: -3630134925126372854, guid: 53ecb738f136b194994e05b7824fa7a2, type: 3}
-  - {fileID: -3996107768381173192, guid: 53ecb738f136b194994e05b7824fa7a2, type: 3}
-  - {fileID: 8152592829446542042, guid: 53ecb738f136b194994e05b7824fa7a2, type: 3}
-  - {fileID: 4949258004858939775, guid: 53ecb738f136b194994e05b7824fa7a2, type: 3}
-  - {fileID: -8030318945529727460, guid: 53ecb738f136b194994e05b7824fa7a2, type: 3}
-  soldierAttack3Frames:
-  - {fileID: 2678340717539739597, guid: 81824b7c64e078c4ea006623bd0073d1, type: 3}
-  - {fileID: 8264772736047417878, guid: 81824b7c64e078c4ea006623bd0073d1, type: 3}
-  - {fileID: -8177698193463788761, guid: 81824b7c64e078c4ea006623bd0073d1, type: 3}
-  - {fileID: 3077160686069078848, guid: 81824b7c64e078c4ea006623bd0073d1, type: 3}
-  - {fileID: 7626175841199979023, guid: 81824b7c64e078c4ea006623bd0073d1, type: 3}
-  - {fileID: 8620046016495470792, guid: 81824b7c64e078c4ea006623bd0073d1, type: 3}
-  wizardAttack1Frames:
-  - {fileID: -8496485956532845581, guid: 0835a7986f4966a4fbf27cd3ec84bdd3, type: 3}
-  - {fileID: -7740336918144759574, guid: 0835a7986f4966a4fbf27cd3ec84bdd3, type: 3}
-  - {fileID: 1625464189833880361, guid: 0835a7986f4966a4fbf27cd3ec84bdd3, type: 3}
-  - {fileID: -8860026988961411046, guid: 0835a7986f4966a4fbf27cd3ec84bdd3, type: 3}
-  - {fileID: -6497609216809267125, guid: 0835a7986f4966a4fbf27cd3ec84bdd3, type: 3}
-  - {fileID: -4662332910533861248, guid: 0835a7986f4966a4fbf27cd3ec84bdd3, type: 3}
-  wizardAttack2Frames:
-  - {fileID: 5471508272590747321, guid: 27ecabbd0ed31854b97ad4d526786031, type: 3}
-  - {fileID: 1002792907740398717, guid: 27ecabbd0ed31854b97ad4d526786031, type: 3}
-  - {fileID: -4542030752679094845, guid: 27ecabbd0ed31854b97ad4d526786031, type: 3}
-  - {fileID: 3775637706807407896, guid: 27ecabbd0ed31854b97ad4d526786031, type: 3}
-  - {fileID: -3122339934425536318, guid: 27ecabbd0ed31854b97ad4d526786031, type: 3}
-  - {fileID: -4833585155154018467, guid: 27ecabbd0ed31854b97ad4d526786031, type: 3}
-  wizardMagic1Frames:
-  - {fileID: -2854932440666337452, guid: 4abd33f717ab9654abc7639abda6d84b, type: 3}
-  - {fileID: -5718181960877111286, guid: 4abd33f717ab9654abc7639abda6d84b, type: 3}
-  - {fileID: -8208418987652068602, guid: 4abd33f717ab9654abc7639abda6d84b, type: 3}
-  - {fileID: -8285540958251992892, guid: 4abd33f717ab9654abc7639abda6d84b, type: 3}
-  - {fileID: -8996555573239604985, guid: 4abd33f717ab9654abc7639abda6d84b, type: 3}
-  - {fileID: 8374462428242781231, guid: 4abd33f717ab9654abc7639abda6d84b, type: 3}
-  - {fileID: 847410989676250780, guid: 4abd33f717ab9654abc7639abda6d84b, type: 3}
-  - {fileID: 6904732454505692843, guid: 4abd33f717ab9654abc7639abda6d84b, type: 3}
-  - {fileID: -7564456672289674959, guid: 4abd33f717ab9654abc7639abda6d84b, type: 3}
-  - {fileID: 7711480303763554288, guid: 4abd33f717ab9654abc7639abda6d84b, type: 3}
-  wizardMagic2Frames:
-  - {fileID: -2253832773091057187, guid: 207ff31ab9199fa40925654c2dee3093, type: 3}
-  - {fileID: -866407451664653012, guid: 207ff31ab9199fa40925654c2dee3093, type: 3}
-  - {fileID: 7019797684267040672, guid: 207ff31ab9199fa40925654c2dee3093, type: 3}
-  - {fileID: -5781036605385728385, guid: 207ff31ab9199fa40925654c2dee3093, type: 3}
-  - {fileID: -5009647623897518109, guid: 207ff31ab9199fa40925654c2dee3093, type: 3}
-  - {fileID: -5202429471124130767, guid: 207ff31ab9199fa40925654c2dee3093, type: 3}
-  - {fileID: -6820210459028915867, guid: 207ff31ab9199fa40925654c2dee3093, type: 3}
-  archerAttack1Frames:
-  - {fileID: -4969225072168162266, guid: 240e913f8b4f645478b202147b1ead4e, type: 3}
-  - {fileID: -3815940653392281268, guid: 240e913f8b4f645478b202147b1ead4e, type: 3}
-  - {fileID: -2159089512590075460, guid: 240e913f8b4f645478b202147b1ead4e, type: 3}
-  - {fileID: 21099746009664023, guid: 240e913f8b4f645478b202147b1ead4e, type: 3}
-  - {fileID: -3892745761945488508, guid: 240e913f8b4f645478b202147b1ead4e, type: 3}
-  - {fileID: 2613844047449293589, guid: 240e913f8b4f645478b202147b1ead4e, type: 3}
-  archerAttack2Frames:
-  - {fileID: 3284080105117198173, guid: bdae230e5a738d44ca98d038271c5d06, type: 3}
-  - {fileID: -3439938975914402308, guid: bdae230e5a738d44ca98d038271c5d06, type: 3}
-  - {fileID: -912804988329809371, guid: bdae230e5a738d44ca98d038271c5d06, type: 3}
-  - {fileID: 4043648015451174233, guid: bdae230e5a738d44ca98d038271c5d06, type: 3}
-  - {fileID: 3207939523946445512, guid: bdae230e5a738d44ca98d038271c5d06, type: 3}
-  - {fileID: -6192626820240751074, guid: bdae230e5a738d44ca98d038271c5d06, type: 3}
-  arrowVariantSprites:
-  - {fileID: -1259040500915936605, guid: 97155c2ee60e9c44693dee9581f17b91, type: 3}
-  - {fileID: -1266805468324228171, guid: 9d54c989c5a37084db64affe26f45310, type: 3}
-  - {fileID: -1652940668427857940, guid: 7bbf71445ccc3ef439c29de07a18f17e, type: 3}
+  soldierAttack1Frames: []
+  soldierAttack2Frames: []
+  soldierAttack3Frames: []
+  wizardAttack1Frames: []
+  wizardAttack2Frames: []
+  wizardMagic1Frames: []
+  wizardMagic2Frames: []
+  archerAttack1Frames: []
+  archerAttack2Frames: []
+  arrowVariantSprites: []
 --- !u!212 &1363305780
 SpriteRenderer:
   serializedVersion: 3
