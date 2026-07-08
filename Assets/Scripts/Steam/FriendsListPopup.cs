@@ -20,8 +20,13 @@ namespace ZulfarakRPG
     public static class FriendsListPopup
     {
         // ── Public API ────────────────────────────────────────────────────
-        public const int PopupWidth  = 380;
-        public const int PopupHeight = 260;
+        // Width is pinned to the live game-strip width (like MenuPopupWindow) so the
+        // invite panel sits flush above the game and shares its exact width.
+        public static int PopupWidth => _popupWidth;
+        public const int PopupHeight = 300;
+
+        static int _popupWidth = 380;   // actual created window width; refreshed from the game strip
+        static int CurrentWidth() => OverlayWindow.Instance != null ? OverlayWindow.Instance.windowWidth : 400;
 
         public static bool IsOpen => _hwnd != IntPtr.Zero;
 
@@ -50,6 +55,9 @@ namespace ZulfarakRPG
             EnsureClassRegistered();
             EnsureGdiObjects();
             _scrollY = 0;
+            _search = "";
+            RebuildView();
+            _popupWidth = CurrentWidth();
             (int x, int y) = ComputePosition();
 
             _hwnd = CreateWindowExW(
@@ -84,9 +92,21 @@ namespace ZulfarakRPG
         public static void Reposition()
         {
             if (_hwnd == IntPtr.Zero) return;
+            int newW = CurrentWidth();
+            bool sizeChanged = newW != _popupWidth;
+            _popupWidth = newW;
             (int x, int y) = ComputePosition();
-            SetWindowPos(_hwnd, HWND_TOPMOST, x, y, 0, 0,
-                SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOACTIVATE);
+            if (sizeChanged)
+            {
+                SetWindowPos(_hwnd, HWND_TOPMOST, x, y, _popupWidth, PopupHeight,
+                    SWP_SHOWWINDOW | SWP_NOACTIVATE);
+                InvalidateRect(_hwnd, IntPtr.Zero, true);
+            }
+            else
+            {
+                SetWindowPos(_hwnd, HWND_TOPMOST, x, y, 0, 0,
+                    SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOACTIVATE);
+            }
         }
 
         // Centered above the game strip — mirrors MenuPopupWindow's anchor.
@@ -94,7 +114,7 @@ namespace ZulfarakRPG
         {
             int gx = OverlayWindow.WinX;
             int gy = OverlayWindow.WinY;
-            int gw = OverlayWindow.Instance != null ? OverlayWindow.Instance.windowWidth : 400;
+            int gw = CurrentWidth();
             int x  = gx + (gw - PopupWidth) / 2;
             int y  = gy - PopupHeight;
             int sw = Screen.currentResolution.width;
@@ -107,8 +127,43 @@ namespace ZulfarakRPG
         // ── Friend data ───────────────────────────────────────────────────
         struct FriendEntry { public string name; public ulong id; public bool online; public bool sent; public bool isCopy; }
         static readonly List<FriendEntry> _friends = new List<FriendEntry>();
+        // Indices into _friends actually shown, after applying the name search filter.
+        static readonly List<int> _view = new List<int>();
+        // Current text typed into the search box (case-insensitive substring filter).
+        static string _search = "";
 
+        // Rebuilds _view from _friends applying the current search text. The "outside
+        // Steam" action row is always kept; placeholder/info rows are hidden while
+        // filtering so only matching friends remain.
+        static void RebuildView()
+        {
+            _view.Clear();
+            bool filtering = !string.IsNullOrEmpty(_search);
+            for (int i = 0; i < _friends.Count; i++)
+            {
+                var f = _friends[i];
+                if (f.isCopy) { _view.Add(i); continue; }
+                bool placeholder = f.id == 0;
+                if (!filtering)
+                {
+                    _view.Add(i);
+                    continue;
+                }
+                if (placeholder) continue;
+                if (!string.IsNullOrEmpty(f.name) &&
+                    f.name.IndexOf(_search, StringComparison.OrdinalIgnoreCase) >= 0)
+                    _view.Add(i);
+            }
+        }
+
+        // Reloads the friend list from Steam and rebuilds the filtered view.
         static void RefreshFriends()
+        {
+            PopulateFriends();
+            RebuildView();
+        }
+
+        static void PopulateFriends()
         {
             _friends.Clear();
             // Always-available "outside Steam" option: copy a download link + lobby code.
@@ -174,22 +229,24 @@ namespace ZulfarakRPG
 
         // ── Layout constants (popup-local pixels) ─────────────────────────
         const int HeaderH = 34;
+        const int SearchH = 30;                     // search bar strip below the header
         const int FooterH = 22;
         const int RowH    = 30;
-        static int ListTop    => HeaderH + 2;
+        static int SearchTop  => HeaderH + 4;
+        static int ListTop    => HeaderH + SearchH + 4;
         static int ListBottom => PopupHeight - FooterH - 2;
         static int ListViewH  => ListBottom - ListTop;
-        static int ContentH   => _friends.Count * RowH;
+        static int ContentH   => _view.Count * RowH;
         static int MaxScroll  => Mathf.Max(0, ContentH - ListViewH);
 
         static int _scrollY;
 
-        // Maps a click Y (popup-local) to a friend row index, or -1.
+        // Maps a click Y (popup-local) to a view-row index, or -1.
         static int RowAtY(int y)
         {
             if (y < ListTop || y >= ListBottom) return -1;
             int idx = (y - ListTop + _scrollY) / RowH;
-            return (idx >= 0 && idx < _friends.Count) ? idx : -1;
+            return (idx >= 0 && idx < _view.Count) ? idx : -1;
         }
 
         // ── Internal state ────────────────────────────────────────────────
@@ -276,8 +333,30 @@ namespace ZulfarakRPG
                 case WM_ERASEBKGND:
                     return new IntPtr(1);
                 case WM_KEYDOWN:
-                    if (wParam.ToInt32() == VK_ESCAPE) Hide();
+                    if (wParam.ToInt32() == VK_ESCAPE)
+                    {
+                        // First ESC clears an active search; a second ESC closes.
+                        if (_search.Length > 0) { _search = ""; RebuildView(); _scrollY = 0; InvalidateRect(hWnd, IntPtr.Zero, true); }
+                        else Hide();
+                    }
                     return IntPtr.Zero;
+                case WM_CHAR:
+                {
+                    int ch = wParam.ToInt32();
+                    if (ch == 8) // Backspace
+                    {
+                        if (_search.Length > 0) _search = _search.Substring(0, _search.Length - 1);
+                    }
+                    else if (ch >= 32) // printable
+                    {
+                        _search += (char)ch;
+                    }
+                    else return IntPtr.Zero; // ignore Enter/Tab/ESC etc.
+                    _scrollY = 0;
+                    RebuildView();
+                    InvalidateRect(hWnd, IntPtr.Zero, true);
+                    return IntPtr.Zero;
+                }
                 case WM_MOUSEWHEEL:
                 {
                     int delta = (short)((wParam.ToInt64() >> 16) & 0xFFFF);
@@ -291,8 +370,8 @@ namespace ZulfarakRPG
                     int my = (short)((lParam.ToInt64() >> 16) & 0xFFFF);
                     // Close box (top-right of header)?
                     if (my < HeaderH && mx >= PopupWidth - 30) { Hide(); return IntPtr.Zero; }
-                    int row = RowAtY(my);
-                    if (row >= 0) InviteRow(row);
+                    int viewRow = RowAtY(my);
+                    if (viewRow >= 0) InviteRow(_view[viewRow]);
                     return IntPtr.Zero;
                 }
                 case WM_CLOSE:
@@ -344,10 +423,30 @@ namespace ZulfarakRPG
             DrawTextW(hdc, "X", -1, ref closeRc, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
             SelectObject(hdc, prev);
 
-            // ── Rows (clipped to the list viewport) ──
-            for (int i = 0; i < _friends.Count; i++)
+            // ── Search bar (type to filter the friend list by name) ──
+            int searchX = 8, searchY = SearchTop, searchW = w - 16, searchBoxH = SearchH - 8;
+            NativeFrameImage.PixelBevel(hdc, searchX, searchY, searchW, searchBoxH,
+                _brushOutline, _brushBevHi, _brushBevLo, _brushPanel);
+            SelectObject(hdc, _fontRow);
+            var searchRc = new RECT { Left = searchX + 12, Top = searchY, Right = searchX + searchW - 10, Bottom = searchY + searchBoxH };
+            if (string.IsNullOrEmpty(_search))
             {
-                int rowTop = ListTop + i * RowH - _scrollY;
+                SetTextColor(hdc, Bgr(0.55f, 0.50f, 0.42f));
+                DrawTextW(hdc, "Buscar amigo pelo nome...", -1, ref searchRc,
+                    DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+            }
+            else
+            {
+                SetTextColor(hdc, Bgr(0.98f, 0.96f, 0.88f));
+                DrawTextW(hdc, _search + "|", -1, ref searchRc,
+                    DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+            }
+
+            // ── Rows (the filtered view, clipped to the list viewport) ──
+            for (int vi = 0; vi < _view.Count; vi++)
+            {
+                int i = _view[vi];
+                int rowTop = ListTop + vi * RowH - _scrollY;
                 int rowBot = rowTop + RowH;
                 if (rowBot <= ListTop || rowTop >= ListBottom) continue;
                 int drawTop = Mathf.Max(rowTop, ListTop);
@@ -355,7 +454,7 @@ namespace ZulfarakRPG
 
                 var f = _friends[i];
                 var rowRc = new RECT { Left = 3, Top = drawTop, Right = w - 3, Bottom = drawBot };
-                FillRect(hdc, ref rowRc, f.isCopy ? _brushDivider : ((i & 1) == 0 ? _brushRowA : _brushRowB));
+                FillRect(hdc, ref rowRc, f.isCopy ? _brushDivider : ((vi & 1) == 0 ? _brushRowA : _brushRowB));
 
                 bool placeholder = f.id == 0 && !f.isCopy;
                 bool actionable  = !placeholder;
@@ -387,11 +486,30 @@ namespace ZulfarakRPG
                 }
             }
 
+            // ── Empty-search state ──
+            if (!string.IsNullOrEmpty(_search))
+            {
+                bool anyFriend = false;
+                for (int k = 0; k < _view.Count; k++)
+                {
+                    var fe = _friends[_view[k]];
+                    if (!fe.isCopy && fe.id != 0) { anyFriend = true; break; }
+                }
+                if (!anyFriend)
+                {
+                    SelectObject(hdc, _fontRow);
+                    SetTextColor(hdc, Bgr(0.65f, 0.60f, 0.55f));
+                    var emptyRc = new RECT { Left = 12, Top = ListTop + RowH + 6, Right = w - 12, Bottom = ListTop + RowH * 3 };
+                    DrawTextW(hdc, $"Nenhum amigo encontrado para \"{_search}\".", -1, ref emptyRc,
+                        DT_CENTER | DT_TOP | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+                }
+            }
+
             // ── Footer hint ──
             SelectObject(hdc, _fontHint);
             SetTextColor(hdc, Bgr(0.72f, 0.62f, 0.42f));
             var hintRc = new RECT { Left = 12, Top = h - FooterH, Right = w - 12, Bottom = h - 6 };
-            DrawTextW(hdc, "Clique num amigo para convidar · roda do mouse rola · ESC fecha", -1, ref hintRc,
+            DrawTextW(hdc, "Digite para buscar · clique para convidar · roda rola · ESC limpa/fecha", -1, ref hintRc,
                 DT_LEFT | DT_BOTTOM | DT_SINGLELINE | DT_NOPREFIX);
         }
 
@@ -437,6 +555,7 @@ namespace ZulfarakRPG
         static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
         const int  WM_PAINT       = 0x000F;
         const int  WM_KEYDOWN     = 0x0100;
+        const int  WM_CHAR        = 0x0102;
         const int  WM_LBUTTONDOWN = 0x0201;
         const int  WM_MOUSEWHEEL  = 0x020A;
         const int  WM_DESTROY     = 0x0002;

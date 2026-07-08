@@ -222,6 +222,8 @@ namespace ZulfarakRPG
             MenuPopupWindow.Reposition();
             WorldMapPopup.Reposition();
             FriendsListPopup.Reposition();
+            InventoryPopupWindow.Reposition();
+            SkillTreePopup.Reposition();
 #endif
         }
 

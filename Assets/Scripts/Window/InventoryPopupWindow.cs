@@ -13,41 +13,52 @@ namespace ZulfarakRPG
     // pixel-art beveled frame that sits directly above the game window.
     public static class InventoryPopupWindow
     {
-        public const int PopupWidth  = 400;
-        public const int PopupHeight = 360;
+        // Width is pinned to the live game-strip width (like MenuPopupWindow) so the
+        // inventory sits flush above the game and shares its exact width. Height is fixed.
+        public static int PopupWidth => _popupWidth;
+        public const int PopupHeight = 440;
+
+        static int _popupWidth = 400;   // actual created window width; refreshed from the game strip
+        static int CurrentWidth() => OverlayWindow.Instance != null ? OverlayWindow.Instance.windowWidth : 400;
 
         // Red-Eyes-Black-Dragon emblem (Resources/UI/DragonFrame); absent → plain dark card.
         const string DragonRes = "UI/DragonFrame";
 
         // Section layout (popup-local pixels, no outer margins — the pixel bevel IS the frame).
         const int HeaderH   = 28;
-        const int SummaryH  = 52;              // dragon emblem + name/class/level line
-        const int StatsH    = 48;              // 2 rows × 3 stats compact strip
+        const int SummaryH  = 46;              // name/class/level line
+        const int StatsH    = 44;              // 2 rows × 3 stats compact strip
         const int SectionHeaderH = 18;         // "Equipamento" / "Sacola" bar
-        const int EquipRowH = 22;
-        const int EquipRows = 8;
-        const int BagRowH   = 24;
         const int FooterH   = 16;
+        const int DollSlot  = 44;              // equipment slot cell (paper-doll)
+        const int BagCell   = 46;              // bag icon cell
+        const int BagGap    = 4;
 
         static int BodyTop     => HeaderH + SummaryH + StatsH;
         static int BodyBottom  => PopupHeight - FooterH;
-        // Two vertical columns split near the middle (equipment | bag).
-        const int LeftPaneW  = 196;
-        const int RightPaneX = LeftPaneW + 2;
+        // Two panes: left = Diablo-style paper doll, right = bag icon grid.
+        static int LeftPaneW   => PopupWidth * 46 / 100;
+        static int RightPaneX  => LeftPaneW + 2;
         static int RightPaneW  => PopupWidth - RightPaneX - 2;
 
-        static int EquipTop     => BodyTop + SectionHeaderH;
-        static int EquipBottom  => EquipTop + EquipRows * EquipRowH;
-        static int BagListTop   => BodyTop + SectionHeaderH;
-        static int BagListBot   => BodyBottom - 2;
-        static int BagViewH     => BagListBot - BagListTop;
-        static int MaxBagScroll => Mathf.Max(0, _bagRows.Count * BagRowH - BagViewH);
+        // Bag grid metrics.
+        static int GridLeft  => RightPaneX + 6;
+        static int GridRight => PopupWidth - 8;
+        static int GridTop   => BodyTop + SectionHeaderH + 4;
+        static int GridBot   => BodyBottom - 4;
+        static int BagCols     => Mathf.Max(1, (GridRight - GridLeft + BagGap) / (BagCell + BagGap));
+        static int BagRowsCount => Mathf.CeilToInt(_bagRows.Count / (float)BagCols);
+        static int MaxBagScroll => Mathf.Max(0, BagRowsCount * (BagCell + BagGap) - (GridBot - GridTop));
 
         struct EquipRow
         {
             public string label;
             public ItemType slotType;
             public string itemId;
+            public string itemName;
+            public ItemRarity rarity;
+            public bool has;
+            public string iconPath;
         }
 
         struct BagRow
@@ -56,9 +67,11 @@ namespace ZulfarakRPG
             public string itemName;
             public int quantity;
             public bool consumable;
+            public ItemRarity rarity;
+            public string iconPath;
         }
 
-        static readonly List<EquipRow> _equipRows = new List<EquipRow>(EquipRows);
+        static readonly List<EquipRow> _equipRows = new List<EquipRow>(6);
         static readonly List<BagRow> _bagRows = new List<BagRow>(64);
         static int _bagScrollY;
         static float _nextRefreshAt;
@@ -74,6 +87,9 @@ namespace ZulfarakRPG
         public static void Show()
         {
             TopPopups.CloseAllExcept(TopPopups.Kind.Inventory);
+            // Seed the bag with one item of every quality per slot so the equipment
+            // visuals can be tested (idempotent — skips items already held).
+            TestItems.AddAllToBag(Inventory.Instance);
 #if UNITY_EDITOR
             Debug.Log("[InventoryPopup] aberto (editor).");
 #else
@@ -88,6 +104,7 @@ namespace ZulfarakRPG
             EnsureClassRegistered();
             EnsureGdiObjects();
             _bagScrollY = 0;
+            _popupWidth = CurrentWidth();
             (int x, int y) = ComputePosition();
 
             _hwnd = CreateWindowExW(
@@ -122,15 +139,28 @@ namespace ZulfarakRPG
         public static void Reposition()
         {
             if (_hwnd == IntPtr.Zero) return;
+            int newW = CurrentWidth();
+            bool sizeChanged = newW != _popupWidth;
+            _popupWidth = newW;
             (int x, int y) = ComputePosition();
-            SetWindowPos(_hwnd, HWND_TOPMOST, x, y, 0, 0, SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOACTIVATE);
+            if (sizeChanged)
+            {
+                SetWindowPos(_hwnd, HWND_TOPMOST, x, y, _popupWidth, PopupHeight,
+                    SWP_SHOWWINDOW | SWP_NOACTIVATE);
+                InvalidateRect(_hwnd, IntPtr.Zero, true);
+            }
+            else
+            {
+                SetWindowPos(_hwnd, HWND_TOPMOST, x, y, 0, 0,
+                    SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOACTIVATE);
+            }
         }
 
         static (int, int) ComputePosition()
         {
             int gx = OverlayWindow.WinX;
             int gy = OverlayWindow.WinY;
-            int gw = OverlayWindow.Instance != null ? OverlayWindow.Instance.windowWidth : 400;
+            int gw = CurrentWidth();
             int x = gx + (gw - PopupWidth) / 2;
             int y = gy - PopupHeight;
             int sw = Screen.currentResolution.width;
@@ -149,14 +179,13 @@ namespace ZulfarakRPG
             if (inv == null) return;
             var eq = inv.Equipment ?? new Equipment();
 
-            AddEquipRow("Arma", ItemType.Weapon, eq.weaponId);
+            // Six equipment slots, in the requested order.
             AddEquipRow("Capacete", ItemType.Helmet, eq.helmetId);
-            AddEquipRow("Peitoral", ItemType.Chest, eq.chestId);
-            AddEquipRow("Calca", ItemType.Legs, eq.legsId);
-            AddEquipRow("Botas", ItemType.Boots, eq.bootsId);
-            AddEquipRow("Luvas", ItemType.Gloves, eq.glovesId);
-            AddEquipRow("Anel", ItemType.Ring, eq.ringId);
-            AddEquipRow("Amuleto", ItemType.Amulet, eq.amuletId);
+            AddEquipRow("Peito",    ItemType.Chest,  eq.chestId);
+            AddEquipRow("Maos",     ItemType.Gloves, eq.glovesId);
+            AddEquipRow("Pes",      ItemType.Boots,  eq.bootsId);
+            AddEquipRow("Arma",     ItemType.Weapon, eq.weaponId);
+            AddEquipRow("Capa",     ItemType.Cape,   eq.capeId);
 
             var items = inv.Items;
             items.Sort((a, b) => string.Compare(a.itemId, b.itemId, StringComparison.Ordinal));
@@ -169,7 +198,9 @@ namespace ZulfarakRPG
                     itemId = it.itemId,
                     itemName = data != null && !string.IsNullOrWhiteSpace(data.itemName) ? data.itemName : it.itemId,
                     quantity = it.quantity,
-                    consumable = data != null && data.itemType == ItemType.Consumable
+                    consumable = data != null && data.itemType == ItemType.Consumable,
+                    rarity = data != null ? data.rarity : ItemRarity.Common,
+                    iconPath = data != null ? data.iconPath : null
                 });
             }
 
@@ -178,26 +209,59 @@ namespace ZulfarakRPG
 
         static void AddEquipRow(string label, ItemType slotType, string itemId)
         {
+            var data = !string.IsNullOrWhiteSpace(itemId) && ItemDatabase.Instance != null
+                       ? ItemDatabase.Instance.Get(itemId) : null;
             _equipRows.Add(new EquipRow
             {
                 label = label,
                 slotType = slotType,
-                itemId = itemId
+                itemName = data != null && !string.IsNullOrWhiteSpace(data.itemName) ? data.itemName : itemId,
+                rarity = data != null ? data.rarity : ItemRarity.Common,
+                has = !string.IsNullOrWhiteSpace(itemId),
+                itemId = itemId,
+                iconPath = data != null ? data.iconPath : null
             });
         }
 
-        static int EquipRowAtY(int y)
+        // ── Paper-doll + bag-grid layout (shared by Paint and click hit-tests) ──
+        struct DollSlotRect { public int equipIndex; public int x, y, w, h; }
+        struct BagCellRect { public int bagIndex; public int x, y, w, h; }
+        static readonly List<DollSlotRect> _dollSlots = new List<DollSlotRect>(6);
+        static readonly List<BagCellRect> _bagCells = new List<BagCellRect>(64);
+
+        // Diablo-style doll: hero in the centre, 3 slots down each side.
+        // Left column (top→bottom): Capacete, Peito, Maos. Right: Capa, Pes, Arma.
+        static readonly int[] LeftCol  = { 0, 1, 2 };   // indices into _equipRows
+        static readonly int[] RightCol = { 5, 3, 4 };
+
+        static void BuildDoll()
         {
-            if (y < EquipTop || y >= EquipBottom) return -1;
-            int idx = (y - EquipTop) / EquipRowH;
-            return idx >= 0 && idx < _equipRows.Count ? idx : -1;
+            _dollSlots.Clear();
+            if (_equipRows.Count < 6) return;
+            int top   = BodyTop + SectionHeaderH + 6;
+            int bot   = BodyBottom - 6;
+            int rowH  = (bot - top) / 3;
+            int leftX = 10;
+            int rightX = LeftPaneW - 8 - DollSlot;
+            for (int r = 0; r < 3; r++)
+            {
+                int cy = top + r * rowH + (rowH - DollSlot) / 2;
+                _dollSlots.Add(new DollSlotRect { equipIndex = LeftCol[r],  x = leftX,  y = cy, w = DollSlot, h = DollSlot });
+                _dollSlots.Add(new DollSlotRect { equipIndex = RightCol[r], x = rightX, y = cy, w = DollSlot, h = DollSlot });
+            }
         }
 
-        static int BagRowAtY(int y)
+        static void BuildBag()
         {
-            if (y < BagListTop || y >= BagListBot) return -1;
-            int idx = (y - BagListTop + _bagScrollY) / BagRowH;
-            return idx >= 0 && idx < _bagRows.Count ? idx : -1;
+            _bagCells.Clear();
+            int cols = BagCols;
+            for (int i = 0; i < _bagRows.Count; i++)
+            {
+                int col = i % cols, row = i / cols;
+                int x = GridLeft + col * (BagCell + BagGap);
+                int y = GridTop + row * (BagCell + BagGap) - _bagScrollY;
+                _bagCells.Add(new BagCellRect { bagIndex = i, x = x, y = y, w = BagCell, h = BagCell });
+            }
         }
 
         static IntPtr _hwnd = IntPtr.Zero;
@@ -205,8 +269,16 @@ namespace ZulfarakRPG
         static bool _classRegistered;
         static IntPtr _brushBorder, _brushVoid, _brushPanel;
         static IntPtr _brushOutline, _brushBevHi, _brushBevLo, _brushRuby, _brushDivider;
-        static IntPtr _brushRowA, _brushRowB, _brushTag, _brushTagUse;
+        static IntPtr _brushRowA, _brushRowB, _brushTag, _brushTagUse, _brushSlot;
         static IntPtr _fontTitle, _fontRow, _fontHint, _fontTag, _fontSection, _fontSummary;
+        // Quality border brushes (index 0..3 = Comum/Raro/Mito/Lendario).
+        static readonly IntPtr[] _qBrush = new IntPtr[4];
+        static readonly int[] QRarity = { (int)ItemRarity.Common, (int)ItemRarity.Rare, (int)ItemRarity.Epic, (int)ItemRarity.Legendary };
+        static int QIndex(ItemRarity r) => r switch
+        {
+            ItemRarity.Rare => 1, ItemRarity.Epic => 2, ItemRarity.Legendary => 3, _ => 0
+        };
+        static IntPtr QBrushOf(ItemRarity r) => _qBrush[QIndex(r)];
         const string ClassName = "ZulfarakInventoryPopup";
 
         static void EnsureClassRegistered()
@@ -243,6 +315,10 @@ namespace ZulfarakRPG
             if (_brushRowB    == IntPtr.Zero) _brushRowB    = CreateSolidBrush(Bgr(0.14f, 0.11f, 0.10f));
             if (_brushTag     == IntPtr.Zero) _brushTag     = CreateSolidBrush(Bgr(0.32f, 0.11f, 0.10f));
             if (_brushTagUse  == IntPtr.Zero) _brushTagUse  = CreateSolidBrush(Bgr(0.16f, 0.32f, 0.12f));
+            if (_brushSlot    == IntPtr.Zero) _brushSlot    = CreateSolidBrush(Bgr(0.09f, 0.08f, 0.10f));
+            if (_qBrush[0]    == IntPtr.Zero)
+                for (int i = 0; i < 4; i++)
+                    _qBrush[i] = CreateSolidBrush(BgrOf(ItemData.QualityColor((ItemRarity)QRarity[i])));
             if (_fontTitle    == IntPtr.Zero) _fontTitle    = MakeFont(15, FW_BOLD);
             if (_fontSection  == IntPtr.Zero) _fontSection  = MakeFont(12, FW_BOLD);
             if (_fontSummary  == IntPtr.Zero) _fontSummary  = MakeFont(11, FW_NORMAL);
@@ -272,6 +348,66 @@ namespace ZulfarakRPG
             return (uint)(R | (G << 8) | (B << 16));
         }
 
+        static uint BgrOf(Color c) => Bgr(c.r, c.g, c.b);
+
+        // ── Doll / grid draw helpers ──────────────────────────────────────
+        static PlayerController2D _heroRef;
+        static NativeFrameImage GetHeroImage()
+        {
+            if (_heroRef == null) _heroRef = UnityEngine.Object.FindAnyObjectByType<PlayerController2D>();
+            if (_heroRef == null) return null;
+            var sr = _heroRef.GetComponent<SpriteRenderer>();
+            var spr = sr != null ? sr.sprite : null;
+            if (spr == null || spr.texture == null) return null;
+            // Key by the frame's texture + sub-rect so each distinct frame (including the
+            // recoloured, possibly-unnamed equipment frames) builds its DIB exactly once.
+            string key = $"hero:{spr.texture.GetHashCode()}:{Mathf.RoundToInt(spr.rect.x)}:{Mathf.RoundToInt(spr.rect.y)}:{Mathf.RoundToInt(spr.rect.width)}x{Mathf.RoundToInt(spr.rect.height)}";
+            return NativeFrameImage.GetTexture(key, () => ExtractSpriteTex(spr));
+        }
+
+        static Texture2D ExtractSpriteTex(Sprite s)
+        {
+            if (s == null || s.texture == null) return null;
+            try
+            {
+                var r = s.rect;
+                var px = s.texture.GetPixels((int)r.x, (int)r.y, (int)r.width, (int)r.height);
+                var t = new Texture2D((int)r.width, (int)r.height, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point };
+                t.SetPixels(px); t.Apply();
+                return t;
+            }
+            catch { return null; }
+        }
+
+        static void DrawPaneHeader(IntPtr hdc, int left, int right, int bodyTop, string text)
+        {
+            var bar = new RECT { Left = left, Top = bodyTop + 3, Right = right, Bottom = bodyTop + SectionHeaderH };
+            FillRect(hdc, ref bar, _brushDivider);
+            SelectObject(hdc, _fontSection);
+            SetTextColor(hdc, Bgr(1f, 0.82f, 0.32f));
+            var rc = new RECT { Left = left + 4, Top = bodyTop + 1, Right = right, Bottom = bodyTop + SectionHeaderH };
+            DrawTextW(hdc, text, -1, ref rc, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+        }
+
+        // 2px frame in the item's quality colour around a slot / bag cell.
+        static void DrawQualityBorder(IntPtr hdc, int x, int y, int w, int h, ItemRarity r)
+        {
+            var b = QBrushOf(r);
+            if (b == IntPtr.Zero) return;
+            var t  = new RECT { Left = x + 1, Top = y + 1,     Right = x + w - 1, Bottom = y + 3 };
+            var bo = new RECT { Left = x + 1, Top = y + h - 3, Right = x + w - 1, Bottom = y + h - 1 };
+            var l  = new RECT { Left = x + 1, Top = y + 1,     Right = x + 3,     Bottom = y + h - 1 };
+            var rr = new RECT { Left = x + w - 3, Top = y + 1, Right = x + w - 1, Bottom = y + h - 1 };
+            FillRect(hdc, ref t, b); FillRect(hdc, ref bo, b); FillRect(hdc, ref l, b); FillRect(hdc, ref rr, b);
+        }
+
+        static string SlotShort(ItemType t) => t switch
+        {
+            ItemType.Helmet => "Elmo", ItemType.Chest  => "Peito", ItemType.Gloves => "Maos",
+            ItemType.Boots  => "Pes",  ItemType.Weapon => "Arma",  ItemType.Cape   => "Capa",
+            _ => ""
+        };
+
         static IntPtr WndProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
         {
             switch (msg)
@@ -290,7 +426,7 @@ namespace ZulfarakRPG
                 {
                     RebuildRows();
                     int delta = (short)((wParam.ToInt64() >> 16) & 0xFFFF);
-                    _bagScrollY = Mathf.Clamp(_bagScrollY - (delta / 120) * BagRowH, 0, MaxBagScroll);
+                    _bagScrollY = Mathf.Clamp(_bagScrollY - (delta / 120) * (BagCell + BagGap), 0, MaxBagScroll);
                     InvalidateRect(hWnd, IntPtr.Zero, true);
                     return IntPtr.Zero;
                 }
@@ -299,40 +435,31 @@ namespace ZulfarakRPG
                     int mx = (short)(lParam.ToInt64() & 0xFFFF);
                     int my = (short)((lParam.ToInt64() >> 16) & 0xFFFF);
                     // Close box (top-right of header)?
-                    if (my < HeaderH && mx >= PopupWidth - 26)
+                    if (my < HeaderH && mx >= PopupWidth - 26) { Hide(); return IntPtr.Zero; }
+
+                    RebuildRows();
+                    BuildDoll();
+                    BuildBag();
+
+                    // Click an equipped doll slot → unequip.
+                    foreach (var s in _dollSlots)
                     {
-                        Hide();
+                        if (mx < s.x || mx > s.x + s.w || my < s.y || my > s.y + s.h) continue;
+                        var row = _equipRows[s.equipIndex];
+                        if (row.has) { Inventory.Instance?.Unequip(row.slotType); InvalidateRect(hWnd, IntPtr.Zero, true); }
                         return IntPtr.Zero;
                     }
 
-                    RebuildRows();
-                    if (mx < LeftPaneW)
+                    // Click a bag icon (inside the grid viewport) → equip / use.
+                    foreach (var c in _bagCells)
                     {
-                        int equipRow = EquipRowAtY(my);
-                        if (equipRow >= 0)
-                        {
-                            var row = _equipRows[equipRow];
-                            if (!string.IsNullOrWhiteSpace(row.itemId))
-                            {
-                                Inventory.Instance?.Unequip(row.slotType);
-                                InvalidateRect(hWnd, IntPtr.Zero, true);
-                            }
-                            return IntPtr.Zero;
-                        }
-                    }
-                    else
-                    {
-                        int bagRow = BagRowAtY(my);
-                        if (bagRow >= 0)
-                        {
-                            var row = _bagRows[bagRow];
-                            if (row.consumable)
-                                Inventory.Instance?.UseConsumable(row.itemId);
-                            else
-                                Inventory.Instance?.Equip(row.itemId);
-                            InvalidateRect(hWnd, IntPtr.Zero, true);
-                            return IntPtr.Zero;
-                        }
+                        if (c.y + c.h <= GridTop || c.y >= GridBot) continue;
+                        if (mx < c.x || mx > c.x + c.w || my < c.y || my > c.y + c.h) continue;
+                        var row = _bagRows[c.bagIndex];
+                        if (row.consumable) Inventory.Instance?.UseConsumable(row.itemId);
+                        else                Inventory.Instance?.Equip(row.itemId);
+                        InvalidateRect(hWnd, IntPtr.Zero, true);
+                        return IntPtr.Zero;
                     }
                     return IntPtr.Zero;
                 }
@@ -411,101 +538,95 @@ namespace ZulfarakRPG
             var div = new RECT { Left = 3, Top = statTop + StatsH - 1, Right = w - 3, Bottom = statTop + StatsH };
             FillRect(hdc, ref div, _brushDivider);
 
-            // ── Body: equipment (left) + bag (right), split by a 2px divider ─
+            // ── Body: paper-doll (left) + bag icon grid (right) ──
             int bodyTop = BodyTop;
             int bodyBot = BodyBottom;
-            // Column divider
-            var colDiv = new RECT { Left = LeftPaneW, Top = bodyTop, Right = LeftPaneW + 2, Bottom = bodyBot };
-            FillRect(hdc, ref colDiv, _brushDivider);
+            BuildDoll();
+            BuildBag();
 
-            // Left column header + equipment slots
-            var equipHdr = new RECT { Left = 6, Top = bodyTop + 2, Right = LeftPaneW - 4, Bottom = bodyTop + SectionHeaderH };
-            FillRect(hdc, ref equipHdr, _brushDivider);
-            SetTextColor(hdc, Bgr(1.00f, 0.82f, 0.32f));
-            SelectObject(hdc, _fontSection);
-            var equipHdrRc = new RECT { Left = 10, Top = bodyTop, Right = LeftPaneW - 4, Bottom = bodyTop + SectionHeaderH };
-            DrawTextW(hdc, "Equipamento", -1, ref equipHdrRc,
-                DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+            // Pane frames.
+            NativeFrameImage.PixelBevel(hdc, 4, bodyTop, LeftPaneW - 6, bodyBot - bodyTop,
+                _brushOutline, _brushBevHi, _brushBevLo, _brushVoid);
+            NativeFrameImage.PixelBevel(hdc, RightPaneX, bodyTop, RightPaneW, bodyBot - bodyTop,
+                _brushOutline, _brushBevHi, _brushBevLo, _brushVoid);
+            DrawPaneHeader(hdc, 8, LeftPaneW - 8, bodyTop, "Equipamento");
+            DrawPaneHeader(hdc, RightPaneX + 4, w - 8, bodyTop, "Sacola");
 
-            SelectObject(hdc, _fontRow);
-            for (int i = 0; i < _equipRows.Count; i++)
+            // Hero in the centre of the doll (live current frame, aspect-fit).
+            int heroL = 10 + DollSlot + 8;
+            int heroR = (LeftPaneW - 8 - DollSlot) - 8;
+            int heroTop = bodyTop + SectionHeaderH + 10;
+            int heroBot = bodyBot - 12;
+            if (heroR - heroL > 20)
             {
-                int top = EquipTop + i * EquipRowH;
-                int bot = top + EquipRowH;
-                FillRow(hdc, 4, top, LeftPaneW - 2, bot, i);
+                var hero = GetHeroImage();
+                if (hero != null && hero.Ready)
+                    hero.BlitAspect(hdc, heroL, heroTop, heroR - heroL, heroBot - heroTop);
+            }
 
-                var row = _equipRows[i];
-                bool has = !string.IsNullOrWhiteSpace(row.itemId);
-                string itemLabel = has ? row.itemId : "-";
-
-                SetTextColor(hdc, has ? Bgr(0.96f, 0.94f, 0.86f) : Bgr(0.62f, 0.62f, 0.62f));
-                var txtRc = new RECT { Left = 10, Top = top, Right = LeftPaneW - 62, Bottom = bot };
-                DrawTextW(hdc, $"{row.label}: {itemLabel}", -1, ref txtRc,
-                    DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
-
-                if (has)
+            // Equipment slots around the hero.
+            for (int i = 0; i < _dollSlots.Count; i++)
+            {
+                var s = _dollSlots[i];
+                var row = _equipRows[s.equipIndex];
+                NativeFrameImage.PixelBevel(hdc, s.x, s.y, s.w, s.h, _brushOutline, _brushBevLo, _brushBevLo, _brushSlot);
+                if (row.has && !string.IsNullOrEmpty(row.iconPath))
                 {
-                    // Pixel-beveled "Desequipar" tag
-                    int tagX = LeftPaneW - 58;
-                    int tagY = top + 3;
-                    int tagW = 52;
-                    int tagH = EquipRowH - 6;
-                    NativeFrameImage.PixelBevel(hdc, tagX, tagY, tagW, tagH,
-                        _brushOutline, _brushBevHi, _brushBevLo, _brushTag);
+                    var img = IconLibrary.Gdi(row.iconPath);
+                    if (img != null && img.Ready) img.BlitAspect(hdc, s.x + 4, s.y + 4, s.w - 8, s.h - 8);
+                    DrawQualityBorder(hdc, s.x, s.y, s.w, s.h, row.rarity);
+                }
+                else
+                {
+                    // Empty slot marker = its short name.
                     SelectObject(hdc, _fontTag);
-                    SetTextColor(hdc, Bgr(1f, 0.86f, 0.42f));
-                    var tagRc = new RECT { Left = tagX, Top = tagY, Right = tagX + tagW, Bottom = tagY + tagH };
-                    DrawTextW(hdc, "Retirar", -1, ref tagRc,
-                        DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
-                    SelectObject(hdc, _fontRow);
+                    SetTextColor(hdc, Bgr(0.45f, 0.45f, 0.50f));
+                    var rc = new RECT { Left = s.x, Top = s.y, Right = s.x + s.w, Bottom = s.y + s.h };
+                    DrawTextW(hdc, SlotShort(row.slotType), -1, ref rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+                }
+                // Slot name under the cell.
+                SelectObject(hdc, _fontHint);
+                SetTextColor(hdc, Bgr(0.70f, 0.62f, 0.42f));
+                var lblRc = new RECT { Left = s.x - 6, Top = s.y + s.h, Right = s.x + s.w + 6, Bottom = s.y + s.h + 12 };
+                DrawTextW(hdc, row.label, -1, ref lblRc, DT_CENTER | DT_TOP | DT_SINGLELINE | DT_NOPREFIX);
+            }
+
+            // ── Bag icon grid (clipped to the pane viewport) ──
+            IntersectClipRect(hdc, RightPaneX + 2, GridTop, w - 4, GridBot);
+            for (int i = 0; i < _bagCells.Count; i++)
+            {
+                var c = _bagCells[i];
+                if (c.y + c.h <= GridTop || c.y >= GridBot) continue;
+                var row = _bagRows[c.bagIndex];
+                NativeFrameImage.PixelBevel(hdc, c.x, c.y, c.w, c.h, _brushOutline, _brushBevLo, _brushBevLo, _brushSlot);
+                if (!string.IsNullOrEmpty(row.iconPath))
+                {
+                    var img = IconLibrary.Gdi(row.iconPath);
+                    if (img != null && img.Ready) img.BlitAspect(hdc, c.x + 3, c.y + 3, c.w - 6, c.h - 6);
+                }
+                else
+                {
+                    SelectObject(hdc, _fontTag);
+                    SetTextColor(hdc, row.consumable ? Bgr(0.75f, 1f, 0.75f) : BgrOf(ItemData.QualityColor(row.rarity)));
+                    var rc = new RECT { Left = c.x, Top = c.y, Right = c.x + c.w, Bottom = c.y + c.h };
+                    DrawTextW(hdc, row.itemName, -1, ref rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+                }
+                DrawQualityBorder(hdc, c.x, c.y, c.w, c.h, row.consumable ? ItemRarity.Common : row.rarity);
+                if (row.quantity > 1)
+                {
+                    SelectObject(hdc, _fontHint);
+                    SetTextColor(hdc, Bgr(1f, 1f, 1f));
+                    var qRc = new RECT { Left = c.x, Top = c.y + c.h - 13, Right = c.x + c.w - 3, Bottom = c.y + c.h - 1 };
+                    DrawTextW(hdc, "x" + row.quantity, -1, ref qRc, DT_RIGHT | DT_BOTTOM | DT_SINGLELINE | DT_NOPREFIX);
                 }
             }
-
-            // Right column header + bag list (scrollable)
-            var bagHdr = new RECT { Left = RightPaneX + 4, Top = bodyTop + 2, Right = w - 6, Bottom = bodyTop + SectionHeaderH };
-            FillRect(hdc, ref bagHdr, _brushDivider);
-            SelectObject(hdc, _fontSection);
-            SetTextColor(hdc, Bgr(1.00f, 0.82f, 0.32f));
-            var bagHdrRc = new RECT { Left = RightPaneX + 8, Top = bodyTop, Right = w - 6, Bottom = bodyTop + SectionHeaderH };
-            DrawTextW(hdc, "Sacola", -1, ref bagHdrRc,
-                DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
-
-            SelectObject(hdc, _fontRow);
-            for (int i = 0; i < _bagRows.Count; i++)
-            {
-                int rowTop = BagListTop + i * BagRowH - _bagScrollY;
-                int rowBot = rowTop + BagRowH;
-                if (rowBot <= BagListTop || rowTop >= BagListBot) continue;
-                int drawTop = Mathf.Max(rowTop, BagListTop);
-                int drawBot = Mathf.Min(rowBot, BagListBot);
-                FillRow(hdc, RightPaneX + 2, drawTop, w - 4, drawBot, i);
-
-                var row = _bagRows[i];
-                SetTextColor(hdc, Bgr(0.96f, 0.94f, 0.86f));
-                var txtRc = new RECT { Left = RightPaneX + 8, Top = rowTop, Right = w - 60, Bottom = rowBot };
-                DrawTextW(hdc, $"{row.itemName} x{row.quantity}", -1, ref txtRc,
-                    DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
-
-                int tagX = w - 56;
-                int tagY = rowTop + 3;
-                int tagW = 48;
-                int tagH = BagRowH - 6;
-                NativeFrameImage.PixelBevel(hdc, tagX, tagY, tagW, tagH,
-                    _brushOutline, _brushBevHi, _brushBevLo,
-                    row.consumable ? _brushTagUse : _brushTag);
-                SelectObject(hdc, _fontTag);
-                SetTextColor(hdc, row.consumable ? Bgr(0.75f, 1f, 0.75f) : Bgr(1f, 0.86f, 0.42f));
-                var tagRc = new RECT { Left = tagX, Top = tagY, Right = tagX + tagW, Bottom = tagY + tagH };
-                DrawTextW(hdc, row.consumable ? "Usar" : "Equipar", -1, ref tagRc,
-                    DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
-                SelectObject(hdc, _fontRow);
-            }
+            SelectClipRgn(hdc, IntPtr.Zero);
 
             // ── Footer hint ───────────────────────────────────────────────
             SelectObject(hdc, _fontHint);
             SetTextColor(hdc, Bgr(0.62f, 0.62f, 0.68f));
             var hintRc = new RECT { Left = 8, Top = h - FooterH, Right = w - 8, Bottom = h - 4 };
-            DrawTextW(hdc, "Clique nos itens · roda do mouse rola a sacola · ESC fecha", -1, ref hintRc,
+            DrawTextW(hdc, "Clique na sacola p/ equipar · clique no slot p/ retirar · roda rola · ESC fecha", -1, ref hintRc,
                 DT_CENTER | DT_BOTTOM | DT_SINGLELINE | DT_NOPREFIX);
             SelectObject(hdc, prev);
         }
@@ -705,6 +826,8 @@ namespace ZulfarakRPG
         [DllImport("gdi32.dll")] static extern int SetTextColor(IntPtr hdc, uint color);
         [DllImport("gdi32.dll")] static extern int SetBkMode(IntPtr hdc, int mode);
         [DllImport("gdi32.dll", CharSet = CharSet.Unicode, EntryPoint = "CreateFontIndirectW")] static extern IntPtr CreateFontIndirectW(ref LOGFONT lf);
+        [DllImport("gdi32.dll")] static extern int IntersectClipRect(IntPtr hdc, int l, int t, int r, int b);
+        [DllImport("gdi32.dll")] static extern int SelectClipRgn(IntPtr hdc, IntPtr hrgn);
 
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode, EntryPoint = "GetModuleHandleW")]
         static extern IntPtr GetModuleHandleW(string name);

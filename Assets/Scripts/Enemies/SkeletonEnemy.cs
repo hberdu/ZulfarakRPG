@@ -299,6 +299,9 @@ namespace ZulfarakRPG
 
             var result = task.Result;
             Debug.Log($"[SkeletonEnemy] Kill remoto OK enemy={result.enemyId} exp={result.expGained} gold={result.goldGained} drops={result.drops.Length}");
+            // Floating "+N" gold reward rising from where the monster fell.
+            if (result.goldGained > 0)
+                GoldPopup.Spawn(transform.position, result.goldGained);
             if (result.character != null)
             {
                 PlayerManager.Instance?.ApplyServerCharacter(result.character, saveLocal: false, preserveCurrentHp: true);

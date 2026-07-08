@@ -15,7 +15,7 @@ namespace ZulfarakRPG
     //
     // The source Texture2D MUST be import-readable (Read/Write Enabled) so GetPixels32
     // works at runtime; the generated .meta sets isReadable: 1.
-    internal sealed class NativeFrameImage
+    public sealed class NativeFrameImage
     {
         // ── Cache: one DIB per resource path for the app lifetime ────────────────
         static readonly Dictionary<string, NativeFrameImage> _cache = new();
@@ -29,6 +29,19 @@ namespace ZulfarakRPG
             return img;
         }
 
+        // Cache a DIB built from an arbitrary Texture2D under `cacheKey`. The provider is
+        // only invoked on the first request (or after a failed load). Lets the inventory /
+        // skill windows blit pack icons + the live hero sprite loaded at runtime from disk.
+        public static NativeFrameImage GetTexture(string cacheKey, Func<Texture2D> provider)
+        {
+            if (_cache.TryGetValue(cacheKey, out var img) && img.Ready) return img;
+            img = new NativeFrameImage();
+            var tex = provider != null ? provider() : null;
+            if (tex != null) img.BuildFromTexture(tex);
+            _cache[cacheKey] = img;
+            return img;
+        }
+
         IntPtr _hbitmap = IntPtr.Zero;
         int    _w, _h;
 
@@ -38,14 +51,23 @@ namespace ZulfarakRPG
         {
             var tex = Resources.Load<Texture2D>(resourcePath);
             if (tex == null) { Debug.Log($"[NativeFrameImage] '{resourcePath}' not found — menus keep solid fill."); return; }
+            BuildFromTexture(tex);
+        }
 
+        void BuildFromTexture(Texture2D tex)
+        {
+            if (tex == null) return;
             Color32[] px;
             try { px = tex.GetPixels32(); }
-            catch (Exception e) { Debug.LogWarning($"[NativeFrameImage] '{resourcePath}' not readable ({e.Message}). Enable Read/Write on the texture."); return; }
+            catch (Exception e) { Debug.LogWarning($"[NativeFrameImage] texture not readable ({e.Message})."); return; }
+            BuildFromPixels(px, tex.width, tex.height);
+        }
 
-            _w = tex.width;
-            _h = tex.height;
-            if (_w <= 0 || _h <= 0) return;
+        // Builds the premultiplied BGRA DIB from bottom→top Color32 rows (GetPixels32 order).
+        void BuildFromPixels(Color32[] px, int w, int h)
+        {
+            _w = w; _h = h;
+            if (_w <= 0 || _h <= 0 || px == null || px.Length < _w * _h) { _w = _h = 0; return; }
 
             // Build a top-down 32bpp premultiplied BGRA DIB section for AlphaBlend.
             var bmi = new BITMAPINFOHEADER

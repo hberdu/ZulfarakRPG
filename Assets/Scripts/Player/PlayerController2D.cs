@@ -184,6 +184,16 @@ namespace ZulfarakRPG
             if (string.IsNullOrWhiteSpace(displayName))
                 displayName = SteamIntegration.Instance?.SteamName ?? "Player";
             _hpBar?.SetName(displayName);
+
+            // Composites the equipped weapon into the hero's sprite (replaces the base
+            // weapon art) and adds the legendary aura.
+            if (GetComponent<PlayerEquipmentVisual>() == null)
+                gameObject.AddComponent<PlayerEquipmentVisual>();
+
+            // Learned skills auto-cast on cooldown while in the dungeon.
+            SkillManager.Ensure();
+            if (GetComponent<SkillAutoCaster>() == null)
+                gameObject.AddComponent<SkillAutoCaster>();
         }
 
         void SyncRuntimeStatsFromPlayerData()
@@ -400,14 +410,15 @@ namespace ZulfarakRPG
                 }
                 else
                 {
-                    // Approach the nearest enemy ONLY until it enters attack range, then hold
-                    // position and fight in place — the hero must not keep stepping forward
-                    // while attacking.
-                    var target = FindNearest(attackRange * 5f);
+                    // Walk FORWARD to meet the nearest enemy — but only once it has
+                    // actually appeared on screen. During the wave transition the hero
+                    // stands free (idle) until monsters walk in, then advances and holds
+                    // at attack range instead of marching in place at them.
+                    var target = FindNearest(999f);
                     if (target != null)
                     {
                         float dist = Vector2.Distance(transform.position, target.transform.position);
-                        if (dist > attackRange)
+                        if (dist > attackRange && IsOnScreen(target.transform.position))
                         {
                             MoveTowardX(target.transform.position.x);
                             return;
@@ -585,6 +596,16 @@ namespace ZulfarakRPG
             fb.Init(target, dmg, crit, magic);
         }
 
+        // True when a world point is within the visible camera view (used to gate the
+        // hero's forward advance: he only steps toward enemies once they're on screen).
+        bool IsOnScreen(Vector3 worldPos)
+        {
+            var cam = Camera.main;
+            if (cam == null) return worldPos.x <= sceneBoundsMaxX + 3f;
+            Vector3 vp = cam.WorldToViewportPoint(worldPos);
+            return vp.z > 0f && vp.x <= 1.02f && vp.x >= -0.30f;
+        }
+
         SkeletonEnemy FindNearest(float range)
         {
             SkeletonEnemy best = null;
@@ -609,6 +630,19 @@ namespace ZulfarakRPG
                 _hasClickTarget = false;
             }
         }
+
+        // Restores HP (used by auto-cast support skills). Clamped to maxHealth.
+        public void Heal(float amount)
+        {
+            if (_phase == Phase.Dead || amount <= 0f) return;
+            _hp = Mathf.Min(maxHealth, _hp + amount);
+            SyncPlayerDataHealthFromRuntime();
+            _hpBar?.SetHealth(_hp, maxHealth);
+            DamagePopup.Spawn(transform, amount, new Color(0.4f, 1f, 0.45f, 1f));
+        }
+
+        // Nearest living enemy to the hero within `range` (used by the skill auto-caster).
+        public SkeletonEnemy NearestEnemy(float range) => FindNearest(range);
 
         // ── Combat ─────────────────────────────────────────────────────
         public void TakeDamage(float dmg)
@@ -778,6 +812,13 @@ namespace ZulfarakRPG
             }
             _rb.linearVelocity = Vector2.zero;
             PlayAnim(_idle, 8f, forceRestart: true);
+            // The return to the city lingers: the hero stands in the portal while a
+            // dense smoke cloud slowly swallows him ("demora um pouco mais"), then the
+            // screen fades to black before the city loads.
+            yield return StartCoroutine(PortalAbsorbRoutine(2.4f));
+            // Returning to the city — don't arm the Dungeon arrival bloom.
+            PortalSmoke.PendingAtWaveStart = false;
+            SceneFader.FadeToBlack(0.4f);
             yield return new WaitForSeconds(0.4f);
             SceneManager.LoadScene("Zulfarak");
         }

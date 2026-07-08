@@ -19,7 +19,8 @@ namespace ZulfarakRPG
 
         public ItemData[] items;
 
-        public ItemData Get(string id) => items?.FirstOrDefault(i => i.itemId == id);
+        public ItemData Get(string id)
+            => items?.FirstOrDefault(i => i.itemId == id) ?? TestItems.Get(id);
         public ItemData[] GetByType(ItemType type) => items?.Where(i => i.itemType == type).ToArray();
         public ItemData[] GetByRarity(ItemRarity rarity) => items?.Where(i => i.rarity == rarity).ToArray();
     }

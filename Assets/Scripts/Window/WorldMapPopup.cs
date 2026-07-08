@@ -17,8 +17,13 @@ namespace ZulfarakRPG
     public static class WorldMapPopup
     {
         // ── Public API ────────────────────────────────────────────────────
-        public const int PopupWidth  = 460;
+        // Width is pinned to the live game-strip width (like MenuPopupWindow) so the
+        // map sits flush above the game and shares its exact width.
+        public static int PopupWidth => _popupWidth;
         public const int PopupHeight = 220;
+
+        static int _popupWidth = 460;   // actual created window width; refreshed from the game strip
+        static int CurrentWidth() => OverlayWindow.Instance != null ? OverlayWindow.Instance.windowWidth : 400;
 
         public static bool IsOpen => _hwnd != IntPtr.Zero;
 
@@ -41,6 +46,7 @@ namespace ZulfarakRPG
             }
             EnsureClassRegistered();
             EnsureGdiObjects();
+            _popupWidth = CurrentWidth();
             (int x, int y) = ComputePosition();
 
             _hwnd = CreateWindowExW(
@@ -75,9 +81,21 @@ namespace ZulfarakRPG
         public static void Reposition()
         {
             if (_hwnd == IntPtr.Zero) return;
+            int newW = CurrentWidth();
+            bool sizeChanged = newW != _popupWidth;
+            _popupWidth = newW;
             (int x, int y) = ComputePosition();
-            SetWindowPos(_hwnd, HWND_TOPMOST, x, y, 0, 0,
-                SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOACTIVATE);
+            if (sizeChanged)
+            {
+                SetWindowPos(_hwnd, HWND_TOPMOST, x, y, _popupWidth, PopupHeight,
+                    SWP_SHOWWINDOW | SWP_NOACTIVATE);
+                InvalidateRect(_hwnd, IntPtr.Zero, true);
+            }
+            else
+            {
+                SetWindowPos(_hwnd, HWND_TOPMOST, x, y, 0, 0,
+                    SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOACTIVATE);
+            }
         }
 
         // Centered above the game strip — mirrors MenuPopupWindow's anchor.
@@ -85,7 +103,7 @@ namespace ZulfarakRPG
         {
             int gx = OverlayWindow.WinX;
             int gy = OverlayWindow.WinY;
-            int gw = OverlayWindow.Instance != null ? OverlayWindow.Instance.windowWidth : 400;
+            int gw = CurrentWidth();
             int x  = gx + (gw - PopupWidth) / 2;
             int y  = gy - PopupHeight;
             int sw = Screen.currentResolution.width;

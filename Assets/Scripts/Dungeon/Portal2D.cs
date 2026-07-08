@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using TMPro;
 using UnityEngine;
@@ -149,10 +150,20 @@ namespace ZulfarakRPG
             return _proceduralRing;
         }
 
+        private float _fogTimer;
+
         void Update()
         {
             if (!_open) return;
             float t = Time.time;
+
+            // Gentle mystic mist curling up out of the portal mouth ("névoa do portal").
+            _fogTimer -= Time.deltaTime;
+            if (_fogTimer <= 0f)
+            {
+                _fogTimer = 0.20f;
+                PortalSmoke.WispAt(transform.position);
+            }
 
             // Base sprite: slow, gentle pulse — stays clearly visible at all times
             if (glowSprite != null)
@@ -213,15 +224,20 @@ namespace ZulfarakRPG
             //   • In the final 0.30 s we fade the screen to black via SceneFader,
             //     so the scene swap itself happens off-screen and the new scene
             //     fades back in cleanly (no visible Unity scene-load flicker).
-            var player = Object.FindAnyObjectByType<PlayerController2D>();
-            if (player != null) player.StartPortalAbsorb(1.2f);
+            // Returning to the city lingers noticeably longer than diving into the
+            // dungeon, so the trip home reads as a slow, deliberate fade-out.
+            bool returningToCity = string.Equals(destinationScene, "Zulfarak", StringComparison.OrdinalIgnoreCase);
+            float absorb = returningToCity ? 2.4f : 1.2f;
+
+            var player = UnityEngine.Object.FindAnyObjectByType<PlayerController2D>();
+            if (player != null) player.StartPortalAbsorb(absorb);
 
             // If we're the lobby leader, tell every follower to transit too.
             var lobby = SteamLobbyManager.Instance;
             if (lobby != null && lobby.InLobby && lobby.IsLeader)
                 MultiplayerSync.Instance?.BroadcastPortalEnter(destinationScene);
 
-            yield return new WaitForSeconds(0.9f);
+            yield return new WaitForSeconds(absorb - 0.3f);
             SceneFader.FadeToBlack(0.3f);
             yield return new WaitForSeconds(0.3f);
             SceneManager.LoadScene(destinationScene);

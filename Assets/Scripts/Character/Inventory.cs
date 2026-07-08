@@ -25,6 +25,7 @@ namespace ZulfarakRPG
         public string glovesId;
         public string ringId;
         public string amuletId;
+        public string capeId;
 
         public string GetSlot(ItemType type) => type switch
         {
@@ -36,6 +37,7 @@ namespace ZulfarakRPG
             ItemType.Gloves  => glovesId,
             ItemType.Ring    => ringId,
             ItemType.Amulet  => amuletId,
+            ItemType.Cape    => capeId,
             _ => null
         };
 
@@ -51,6 +53,7 @@ namespace ZulfarakRPG
                 case ItemType.Gloves:  glovesId  = id; break;
                 case ItemType.Ring:    ringId    = id; break;
                 case ItemType.Amulet:  amuletId  = id; break;
+                case ItemType.Cape:    capeId    = id; break;
             }
         }
     }
@@ -99,7 +102,8 @@ namespace ZulfarakRPG
         // Equip an item from the bag; unequips what was in that slot
         public bool Equip(string itemId)
         {
-            if (ServerApiClient.Instance != null && ServerApiClient.Instance.IsReady)
+            // Local test items (tst_*) never touch the server catalog — equip offline.
+            if (!TestItems.IsTestItem(itemId) && ServerApiClient.Instance != null && ServerApiClient.Instance.IsReady)
             {
                 try
                 {
@@ -138,7 +142,9 @@ namespace ZulfarakRPG
 
         public bool Unequip(ItemType slot)
         {
-            if (ServerApiClient.Instance != null && ServerApiClient.Instance.IsReady)
+            // Local test items (tst_*) unequip offline, bypassing the server.
+            if (!TestItems.IsTestItem(Equipment.GetSlot(slot))
+                && ServerApiClient.Instance != null && ServerApiClient.Instance.IsReady)
             {
                 try
                 {
@@ -282,40 +288,59 @@ namespace ZulfarakRPG
 
         private void ApplyServerState(InventoryStateDto remote, bool preserveCurrentHp = false)
         {
+            // The server doesn't know the local test items (tst_*), so a server sync would
+            // wipe them (and unequip them) — e.g. on every dungeon kill. Snapshot them here
+            // and re-apply after so they survive across scenes / combat.
+            var testBag = Items.Where(i => TestItems.IsTestItem(i.itemId)).ToList();
+            var testEquip = new List<(ItemType slot, string id)>();
+            foreach (ItemType slot in Enum.GetValues(typeof(ItemType)))
+            {
+                if (slot == ItemType.Consumable) continue;
+                var eqId = Equipment.GetSlot(slot);
+                if (TestItems.IsTestItem(eqId)) testEquip.Add((slot, eqId));
+            }
+
             if (remote == null)
             {
                 Items = new List<InventoryItem>();
                 Equipment = new Equipment();
-                return;
             }
-
-            Items = new List<InventoryItem>();
-            if (remote.items != null)
+            else
             {
-                foreach (var it in remote.items)
+                Items = new List<InventoryItem>();
+                if (remote.items != null)
                 {
-                    if (string.IsNullOrWhiteSpace(it.itemId) || it.quantity <= 0) continue;
-                    Items.Add(new InventoryItem { itemId = it.itemId, quantity = it.quantity });
+                    foreach (var it in remote.items)
+                    {
+                        if (string.IsNullOrWhiteSpace(it.itemId) || it.quantity <= 0) continue;
+                        Items.Add(new InventoryItem { itemId = it.itemId, quantity = it.quantity });
+                    }
+                }
+
+                Equipment = remote.equipment != null ? remote.equipment.ToEquipment() : new Equipment();
+
+                if (remote.characterStats != null && PlayerManager.Instance != null && PlayerManager.Instance.Data != null)
+                {
+                    var stats = remote.characterStats;
+                    var p = PlayerManager.Instance.Data;
+                    var previousHp = p.hp;
+                    p.maxHp = Mathf.Max(1, Mathf.Max(stats.maxHp, stats.hp));
+                    p.hp = preserveCurrentHp
+                        ? Mathf.Clamp(previousHp, 0, p.maxHp)
+                        : Mathf.Clamp(stats.hp, 0, p.maxHp);
+                    p.attack = Mathf.Max(0, stats.attack);
+                    p.defense = Mathf.Max(0, stats.defense);
+                    p.speed = Mathf.Max(0.01f, stats.speed);
+                    p.healPower = Mathf.Max(0f, stats.healPower);
+                    PlayerManager.Instance.NormalizeCurrentData();
                 }
             }
 
-            Equipment = remote.equipment != null ? remote.equipment.ToEquipment() : new Equipment();
-
-            if (remote.characterStats != null && PlayerManager.Instance != null && PlayerManager.Instance.Data != null)
-            {
-                var stats = remote.characterStats;
-                var p = PlayerManager.Instance.Data;
-                var previousHp = p.hp;
-                p.maxHp = Mathf.Max(1, Mathf.Max(stats.maxHp, stats.hp));
-                p.hp = preserveCurrentHp
-                    ? Mathf.Clamp(previousHp, 0, p.maxHp)
-                    : Mathf.Clamp(stats.hp, 0, p.maxHp);
-                p.attack = Mathf.Max(0, stats.attack);
-                p.defense = Mathf.Max(0, stats.defense);
-                p.speed = Mathf.Max(0.01f, stats.speed);
-                p.healPower = Mathf.Max(0f, stats.healPower);
-                PlayerManager.Instance.NormalizeCurrentData();
-            }
+            // Restore the local test items (bag + equipped) the server just discarded.
+            foreach (var t in testBag)
+                if (!Items.Any(i => i.itemId == t.itemId)) Items.Add(t);
+            foreach (var (slot, id) in testEquip)
+                Equipment.SetSlot(slot, id);
         }
 
         public void ApplyServerKillResult(InventoryStateDto remote, bool notify = true)

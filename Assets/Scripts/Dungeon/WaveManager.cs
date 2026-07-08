@@ -89,16 +89,16 @@ namespace ZulfarakRPG
 
             if (_wave < _totalWaves)
             {
-                // Player runs to the next battlefield while BG layers scroll past.
+                // Transition animation: the hero marches in place while the parallax
+                // scrolls to the next battlefield (+ a mystic fog sweep between phases).
                 yield return StartCoroutine(RunToNextWave());
+                // The moment the transition animation ends, hand control straight back.
+                // The hero now stands free and only steps FORWARD once the freshly
+                // spawned enemies actually walk on-screen (see PlayerController2D
+                // .HandleMovement) — no more marching in place at the mobs.
                 _waveDone = false;
-                yield return StartCoroutine(StartNextWave());
-                // Keep marching (walk anim, input locked) until the new wave's
-                // enemies actually walk onto the screen — then release the player
-                // to move at their own speed and engage. Keeps co-op partners
-                // visually together through the whole transition.
-                yield return StartCoroutine(WaitEnemiesOnScreen());
                 _player?.SetRunning(false);
+                yield return StartCoroutine(StartNextWave());
             }
             else
             {
@@ -112,11 +112,12 @@ namespace ZulfarakRPG
         IEnumerator RunToNextWave()
         {
             // First regroup at the start (left edge) of the screen, then march in
-            // place while the parallax scrolls. SetRunning(false) is issued later,
-            // once the next wave's enemies arrive on screen (WaitEnemiesOnScreen).
+            // place while the parallax scrolls. SetRunning(false) is issued by
+            // WaveCleared the instant this transition animation finishes.
             if (_player != null)
                 yield return StartCoroutine(_player.WalkBackToStart(_player.sceneBoundsMinX + 0.1f));
             _player?.SetRunning(true);
+
             float scrolled = 0f;
             while (scrolled < runScrollDistance)
             {
@@ -127,20 +128,6 @@ namespace ZulfarakRPG
                         if (parallaxLayers[i] != null) parallaxLayers[i].Scroll(dx);
                 // Drift the far scenic backdrop too, at ~the city's parallax rate.
                 BackgroundLayers.DungeonScroll += dx * 0.40f;
-                yield return null;
-            }
-        }
-
-        // Blocks until at least one alive enemy of the current wave is inside the
-        // visible scene (enemies spawn far off-screen right and walk in).
-        IEnumerator WaitEnemiesOnScreen()
-        {
-            float timeout = Time.time + 20f;   // safety valve — never lock forever
-            while (Time.time < timeout)
-            {
-                foreach (var e in _alive)
-                    if (e != null && e.IsAlive && e.transform.position.x <= e.sceneBoundsMaxX)
-                        yield break;
                 yield return null;
             }
         }
