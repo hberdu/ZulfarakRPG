@@ -16,7 +16,7 @@ namespace ZulfarakRPG
         // Width is pinned to the live game-strip width (like MenuPopupWindow) so the
         // inventory sits flush above the game and shares its exact width. Height is fixed.
         public static int PopupWidth => _popupWidth;
-        public const int PopupHeight = 440;
+        public const int PopupHeight = 480;
 
         static int _popupWidth = 400;   // actual created window width; refreshed from the game strip
         static int CurrentWidth() => OverlayWindow.Instance != null ? OverlayWindow.Instance.windowWidth : 400;
@@ -37,7 +37,7 @@ namespace ZulfarakRPG
         static int BodyTop     => HeaderH + SummaryH + StatsH;
         static int BodyBottom  => PopupHeight - FooterH;
         // Two panes: left = Diablo-style paper doll, right = bag icon grid.
-        static int LeftPaneW   => PopupWidth * 46 / 100;
+        static int LeftPaneW   => PopupWidth * 52 / 100;
         static int RightPaneX  => LeftPaneW + 2;
         static int RightPaneW  => PopupWidth - RightPaneX - 2;
 
@@ -552,11 +552,12 @@ namespace ZulfarakRPG
             DrawPaneHeader(hdc, 8, LeftPaneW - 8, bodyTop, "Equipamento");
             DrawPaneHeader(hdc, RightPaneX + 4, w - 8, bodyTop, "Sacola");
 
-            // Hero in the centre of the doll (live current frame, aspect-fit).
-            int heroL = 10 + DollSlot + 8;
-            int heroR = (LeftPaneW - 8 - DollSlot) - 8;
-            int heroTop = bodyTop + SectionHeaderH + 10;
-            int heroBot = bodyBot - 12;
+            // Hero in the centre of the doll (live current frame, aspect-fit) — as large
+            // as the space between the slot columns allows.
+            int heroL = 10 + DollSlot + 4;
+            int heroR = (LeftPaneW - 8 - DollSlot) - 4;
+            int heroTop = bodyTop + SectionHeaderH + 6;
+            int heroBot = bodyBot - 8;
             if (heroR - heroL > 20)
             {
                 var hero = GetHeroImage();

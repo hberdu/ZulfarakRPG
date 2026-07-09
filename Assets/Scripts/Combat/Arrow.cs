@@ -33,9 +33,8 @@ namespace ZulfarakRPG
             _sr             = gameObject.AddComponent<SpriteRenderer>();
             _sr.sprite      = sprite;
             _sr.sortingOrder = 5;
-            // Pack arrows are 100×100 (mostly empty) — scale down so they read as slim
-            // projectiles at roughly the same on-screen size as the default arrow.
-            transform.localScale = Vector3.one * (customSprite != null ? 0.5f : 0.7f);
+            // Basic attack projectile — kept SMALL (skills read much bigger).
+            transform.localScale = Vector3.one * (customSprite != null ? 0.4f : 0.55f);
         }
 
         void Update()

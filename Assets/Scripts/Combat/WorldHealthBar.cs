@@ -19,9 +19,11 @@ namespace ZulfarakRPG
         private SpriteRenderer _fillSr;
         private float          _maxWidth;
 
-        // Optional small name label rendered above the bar (player + remote
-        // players + named NPCs). Created lazily by SetName.
+        // Optional small name label — rendered BELOW the character's feet (player +
+        // remote players + named NPCs). Created lazily by SetName, positioned in LateUpdate.
         private TextMeshPro    _nameLabel;
+        // Target sprite (from AttachAbove) so the name can track the visible feet.
+        private SpriteRenderer _targetSr;
 
         // Saved by AttachAbove so SetStaggerOffset() can re-apply without re-running
         // the alpha scan. Local-space (parent of this bar).
@@ -56,6 +58,7 @@ namespace ZulfarakRPG
                                 float widthMultiplier = 0.67f)
         {
             if (target == null || target.sprite == null || transform.parent == null) return;
+            _targetSr = target;
 
             var ab     = SpriteAlphaBounds.Get(target.sprite);
             Vector3 parentScale = transform.parent.lossyScale;
@@ -104,8 +107,8 @@ namespace ZulfarakRPG
             transform.localPosition = _baseLocalPos + new Vector3(0f, _staggerY, 0f);
         }
 
-        // Renders a small bold label just above the bar (player + remote players +
-        // named NPCs). Pass null/empty to hide it.
+        // Renders a small bold label BELOW the character's feet (player + remote players +
+        // named NPCs). Pass null/empty to hide it. Positioned each LateUpdate.
         public void SetName(string label)
         {
             if (string.IsNullOrEmpty(label))
@@ -116,18 +119,16 @@ namespace ZulfarakRPG
             if (_nameLabel == null)
             {
                 var go = new GameObject("Name");
-                go.transform.SetParent(transform, false);
-                go.transform.localPosition = new Vector3(0f, 0.045f, -0.1f);
+                // Parent to the CHARACTER (this bar's parent), not the bar (which sits at
+                // the head), so the name lives near the feet; final pos set in LateUpdate.
+                go.transform.SetParent(transform.parent != null ? transform.parent : transform, false);
                 _nameLabel              = go.AddComponent<TextMeshPro>();
                 _nameLabel.fontSize     = 0.32f;
                 _nameLabel.alignment    = TextAlignmentOptions.Center;
                 _nameLabel.color        = new Color(0.98f, 0.94f, 0.80f, 1f);
                 _nameLabel.fontStyle    = FontStyles.Bold;
                 _nameLabel.enableWordWrapping = false;
-                // Set the final font FIRST so GameFont's re-skin pass skips this label and
-                // doesn't reset the material (which would wipe the outline below).
                 if (GameFont.Tmp != null) _nameLabel.font = GameFont.Tmp;
-                // Solid black outline so the name reads over any background.
                 var nmat = _nameLabel.fontMaterial;
                 nmat.SetFloat(ShaderUtilities.ID_OutlineWidth, 0.3f);
                 nmat.SetColor(ShaderUtilities.ID_OutlineColor, Color.black);
@@ -139,8 +140,23 @@ namespace ZulfarakRPG
             _nameLabel.gameObject.SetActive(true);
         }
 
+        // Keeps the name label just below the character's visible feet.
+        void LateUpdate()
+        {
+            if (_nameLabel == null || !_nameLabel.gameObject.activeSelf) return;
+            if (_targetSr == null || _targetSr.sprite == null) return;
+            var b = _targetSr.bounds;
+            _nameLabel.transform.position = new Vector3(b.center.x, b.min.y - 0.10f, b.center.z - 0.1f);
+        }
+
         // Visible bounds (width + head Y) are pixel-scanned and cached by
         // SpriteAlphaBounds; AttachAbove just consumes the result.
+
+        // World-space geometry of the HP bar, so other HUD (skill cooldown bars) can
+        // align to it exactly.
+        public float BarWorldWidth  => _bgT != null ? _bgT.lossyScale.x : barWidth;
+        public float BarWorldHeight => _bgT != null ? _bgT.lossyScale.y : barHeight;
+        public Vector3 BarWorldPos  => _bgT != null ? _bgT.position : transform.position;
 
         public void SetHealth(float current, float max)
         {

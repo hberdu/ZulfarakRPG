@@ -95,14 +95,16 @@ namespace ZulfarakRPG
         static string IconFor(ItemType type, ItemRarity rarity)
         {
             int qi = QualityIndex(rarity);   // 0..3
+            // Armor sheet is 16 columns (index = row*16 + col): row0 helmets, row2 boots,
+            // row3 chest, row4 gloves(X pairs), row1 hoods/capes.
             switch (type)
             {
                 case ItemType.Weapon: return IconPaths.Weapon(1 + qi);   // weapons 1..4
-                case ItemType.Helmet: return IconPaths.Armor(0  + qi);
-                case ItemType.Chest:  return IconPaths.Armor(8  + qi);
-                case ItemType.Gloves: return IconPaths.Armor(16 + qi);
-                case ItemType.Boots:  return IconPaths.Armor(24 + qi);
-                case ItemType.Cape:   return IconPaths.Armor(32 + qi);
+                case ItemType.Helmet: return IconPaths.Armor(0  + qi);   // helmets
+                case ItemType.Chest:  return IconPaths.Armor(48 + qi);   // chest
+                case ItemType.Gloves: return IconPaths.Armor(68 + qi);   // gauntlets
+                case ItemType.Boots:  return IconPaths.Armor(32 + qi);   // boots
+                case ItemType.Cape:   return IconPaths.Armor(24 + qi);   // hoods/cloaks
                 default: return null;
             }
         }

@@ -38,9 +38,10 @@ namespace ZulfarakRPG
             _sr              = gameObject.AddComponent<SpriteRenderer>();
             _sr.sprite       = _frames[0];
             _sr.sortingOrder = 7;
-            // The imported effect frames are 100px @100PPU (1 world unit) — scale down so the
-            // bolt reads at character-projectile size; the procedural orb is already small.
-            transform.localScale = Vector3.one * (_usingArt ? 0.55f : 1f);
+            // Bigger, more menacing bolt on the taskbar-thin gameplay strip. Art frames
+            // are 100px @100PPU (1 world unit); the procedural orb is already tiny so it
+            // gets a proportionally larger multiplier.
+            transform.localScale = Vector3.one * (_usingArt ? 0.85f : 1.6f);
             if (!_usingArt) _sr.color = new Color(0.72f, 0.42f, 1f, 1f);
             // Effect art is authored facing one way — flip it toward the target.
             if (_usingArt && _targetTf != null)

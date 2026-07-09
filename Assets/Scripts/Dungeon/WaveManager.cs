@@ -63,7 +63,7 @@ namespace ZulfarakRPG
             if (defeatText)       defeatText.gameObject.SetActive(false);
             if (waveAnnounceText) waveAnnounceText.gameObject.SetActive(false);
             if (bossText)         bossText.gameObject.SetActive(false);
-            _progressBar = DungeonProgressBar.Create(clearText != null ? clearText.canvas : null, _totalWaves);
+            // Dungeon progress bar removed. (_progressBar stays null; SetWave calls are no-ops.)
             StartCoroutine(StartWavesRoutine());
         }
 

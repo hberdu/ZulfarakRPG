@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -26,6 +27,8 @@ namespace ZulfarakRPG
 
         bool InDungeon => SceneManager.GetActiveScene().name == "Dungeon";
 
+        // Only TICKS the cooldowns (for the HUD). Casting is driven by the attack cadence
+        // via TryCastReady(), so skills fire one at a time and replace the basic attack.
         void Update()
         {
             Active.Clear();
@@ -33,32 +36,30 @@ namespace ZulfarakRPG
 
             foreach (var (def, level) in SkillManager.Instance.Equipped())
             {
-                if (!_cd.TryGetValue(def.id, out var t))
-                {
-                    // Start ready (no frozen cooldown shown outside the dungeon).
-                    t = 0f;
-                    _cd[def.id] = t;
-                }
-
-                // Only tick / cast in the dungeon; elsewhere the timer holds so the HUD
-                // simply shows the current (ready) state.
-                if (InDungeon)
-                {
-                    t -= Time.deltaTime;
-                    if (t <= 0f)
-                    {
-                        bool cast = TryCast(def, level);
-                        t = cast ? def.CooldownAt(level) : 0f;   // stay ready until a target/need appears
-                    }
-                }
-                _cd[def.id] = t;
-
-                Active.Add(new ActiveSkill
-                {
-                    def = def, level = level,
-                    remaining = Mathf.Max(0f, t), total = def.CooldownAt(level)
-                });
+                if (!_cd.TryGetValue(def.id, out var t)) { t = 0f; _cd[def.id] = 0f; }
+                if (InDungeon) { t = Mathf.Max(0f, t - Time.deltaTime); _cd[def.id] = t; }
+                Active.Add(new ActiveSkill { def = def, level = level, remaining = t, total = def.CooldownAt(level) });
             }
+        }
+
+        // Called by PlayerController2D.HandleAutoAttack on each attack tick. Casts exactly
+        // ONE ready equipped skill (in slot order) and returns true; the caller then skips
+        // the basic attack for that tick. Returns false when no skill is ready/castable.
+        public bool TryCastReady(SkeletonEnemy target)
+        {
+            if (_player == null || SkillManager.Instance == null || !InDungeon) return false;
+
+            foreach (var (def, level) in SkillManager.Instance.Equipped())
+            {
+                if (!_cd.TryGetValue(def.id, out var t)) { t = 0f; _cd[def.id] = 0f; }
+                if (t > 0f) continue;                  // still on cooldown
+                if (TryCast(def, level))               // handles heal-needed / target checks
+                {
+                    _cd[def.id] = def.CooldownAt(level);
+                    return true;                       // one skill per tick
+                }
+            }
+            return false;
         }
 
         bool TryCast(SkillDef def, int level)
@@ -66,7 +67,8 @@ namespace ZulfarakRPG
             if (def.effect == SkillEffect.Heal)
             {
                 if (_player.Health >= _player.MaxHealthValue * 0.98f) return false;
-                _player.Heal(def.PowerAt(level));
+                float healAnim = _player.PlayCastAnimation(_player.transform.position);
+                StartCoroutine(ApplyHealAtCastApex(def, level, Mathf.Max(0.05f, healAnim * 0.5f)));
                 return true;
             }
 
@@ -74,32 +76,42 @@ namespace ZulfarakRPG
             var e = _player.NearestEnemy(14f);
             if (e == null || !e.IsAlive) return false;
 
+            float dmgAnim = _player.PlayCastAnimation(e.transform.position);
             float dmg = def.PowerAt(level) + _player.attackDamage * 0.5f;
-            e.TakeDamage(dmg, false);
-            MultiplayerSync.Instance?.BroadcastDamage(e.netInstanceId, dmg, false);
-            SkillCastFX.Spawn(e.transform.position, SkillFxColor(def));
+            StartCoroutine(ApplyDamageAtCastApex(e, def, dmg, Mathf.Max(0.05f, dmgAnim * 0.5f)));
             return true;
         }
 
-        // Element colour for a skill's cast VFX, inferred from its name/id
-        // (fogo=vermelho, gelo=azul, raio=amarelo, arcano=roxo, veneno=verde, cura=verde…).
-        public static Color SkillFxColor(SkillDef def)
+        // Waits until the player's raised-staff apex before landing the effect + damage,
+        // so the hit reads as "the animation caused it" instead of a silent teleport-hit.
+        // Also fires the shared fireball cast-flash at the staff tip for continuity with
+        // the basic attack.
+        IEnumerator ApplyDamageAtCastApex(SkeletonEnemy target, SkillDef def, float dmg, float delay)
         {
-            if (def.effect == SkillEffect.Heal) return new Color(0.40f, 1f, 0.50f);
-            string s = (def.id + " " + def.name).ToLowerInvariant();
-            if (Has(s, "fogo", "bola", "chama", "meteoro", "faisca", "explos"))   return new Color(1.00f, 0.42f, 0.16f); // fogo
-            if (Has(s, "gelo", "nevasca", "frag", "congel"))                       return new Color(0.42f, 0.72f, 1.00f); // gelo
-            if (Has(s, "raio", "choque", "eletr"))                                 return new Color(1.00f, 0.90f, 0.30f); // raio
-            if (Has(s, "arcan", "aniquil", "dardo", "catac"))                      return new Color(0.72f, 0.36f, 1.00f); // arcano
-            if (Has(s, "veneno", "erva"))                                          return new Color(0.55f, 0.90f, 0.30f); // veneno
-            return new Color(0.92f, 0.86f, 0.70f);                                                                        // físico (aço)
+            float dir = Mathf.Sign(target != null
+                ? target.transform.position.x - _player.transform.position.x : 1f);
+            if (dir == 0f) dir = 1f;
+            Vector3 flashPos = _player.transform.position + new Vector3(dir * 0.35f, 0.15f, 0f);
+            Fireball.SpawnCastFlash(flashPos, dir);
+
+            yield return new WaitForSeconds(delay);
+            if (target == null || !target.IsAlive) yield break;
+
+            target.TakeDamage(dmg, false);
+            MultiplayerSync.Instance?.BroadcastDamage(target.netInstanceId, dmg, false);
+            // Skills read BIG and super visible (much larger than the basic-attack projectiles).
+            SkillEffectAnim.Spawn(target.transform.position, def.fxSheet, def.fxCols, def.fxRows, def.color, 3.2f);
         }
 
-        static bool Has(string s, params string[] keys)
+        IEnumerator ApplyHealAtCastApex(SkillDef def, int level, float delay)
         {
-            foreach (var k in keys) if (s.Contains(k)) return true;
-            return false;
+            yield return new WaitForSeconds(delay);
+            _player.Heal(def.PowerAt(level));
+            SkillEffectAnim.Spawn(_player.transform.position, def.fxSheet, def.fxCols, def.fxRows, def.color, 2.4f);
         }
+
+        // Element colour for the HUD / fallback FX (carried on the skill).
+        public static Color SkillFxColor(SkillDef def) => def.color;
     }
 
     // Tiny expanding ring so an auto-cast reads as a spell hit, coloured by the skill's

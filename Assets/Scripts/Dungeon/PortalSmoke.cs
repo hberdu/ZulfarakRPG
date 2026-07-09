@@ -48,18 +48,17 @@ namespace ZulfarakRPG
             var player = Object.FindAnyObjectByType<PlayerController2D>();
             Vector3 center = player != null ? player.transform.position : new Vector3(2.5f, -0.9f, 0f);
 
-            // MASSIVE bloom: three staggered waves of large, drifting puffs so the
-            // effect reads as a dense violet explosion instead of a subtle wisp.
-            for (int wave = 0; wave < 3; wave++)
+            // Small, brief pixel-art bloom (reduced from the old dense cloud).
+            for (int wave = 0; wave < 2; wave++)
             {
-                const int puffsPerWave = 22;
+                const int puffsPerWave = 7;
                 for (int i = 0; i < puffsPerWave; i++)
-                    SpawnPuff(center + new Vector3(Random.Range(-1.4f, 1.4f),
-                                                   Random.Range(-0.35f, 1.10f), 0f));
-                yield return new WaitForSeconds(0.15f);
+                    SpawnPuff(center + new Vector3(Random.Range(-0.8f, 0.8f),
+                                                   Random.Range(-0.25f, 0.7f), 0f));
+                yield return new WaitForSeconds(0.12f);
             }
 
-            yield return new WaitForSeconds(3.6f);   // enough for the last puffs to fade out
+            yield return new WaitForSeconds(2.2f);   // let the last puffs fade out
             Destroy(gameObject);
         }
 
@@ -72,13 +71,11 @@ namespace ZulfarakRPG
         // absorb routine in Zulfarak) can burst violet smoke around any world point.
         public static void BurstAt(Vector3 center, int count)
         {
-            for (int i = 0; i < count; i++)
-                SpawnPuffStatic(center + new Vector3(Random.Range(-0.6f, 0.6f),
-                                                     Random.Range(-0.2f, 0.7f), 0f));
-            // A couple of bright glow cores per burst give the cloud a magical shimmer.
-            for (int i = 0; i < Mathf.Max(1, count / 6); i++)
-                SpawnGlowCore(center + new Vector3(Random.Range(-0.4f, 0.4f), Random.Range(-0.1f, 0.5f), 0f),
-                              Random.Range(0.5f, 0.9f));
+            // Fewer puffs, pixel-art outlined (no soft glow cores).
+            int reduced = Mathf.Max(1, count / 2);
+            for (int i = 0; i < reduced; i++)
+                SpawnPuffStatic(center + new Vector3(Random.Range(-0.5f, 0.5f),
+                                                     Random.Range(-0.2f, 0.6f), 0f));
         }
 
         // Mystic fog sweep rolling across the whole battlefield to punctuate a phase
@@ -95,22 +92,21 @@ namespace ZulfarakRPG
         // swirling puff (occasionally a faint glow) — cheap enough to emit continuously.
         public static void WispAt(Vector3 center)
         {
-            var pos = center + new Vector3(Random.Range(-0.35f, 0.35f), Random.Range(-0.25f, 0.15f), -0.5f);
+            var pos = center + new Vector3(Random.Range(-0.22f, 0.22f), Random.Range(-0.18f, 0.12f), -0.5f);
             var go = new GameObject("PortalWisp");
             go.transform.position      = pos;
-            go.transform.localScale    = Vector3.one * Random.Range(0.35f, 0.65f);
-            go.transform.localRotation = Quaternion.Euler(0f, 0f, Random.Range(0f, 360f));
+            go.transform.localScale    = Vector3.one * Random.Range(0.16f, 0.30f);   // small
             var sr = go.AddComponent<SpriteRenderer>();
             sr.sprite       = PuffSprite();
             var tint        = MysticTint();
-            sr.color        = new Color(tint.r, tint.g, tint.b, Random.Range(0.35f, 0.55f));
+            sr.color        = new Color(tint.r, tint.g, tint.b, Random.Range(0.30f, 0.45f));
             sr.sortingOrder = 6;   // above the portal rings, below gameplay sprites
             go.AddComponent<SmokePuff>().Init(
-                drift: new Vector3(Random.Range(-0.15f, 0.15f), Random.Range(0.35f, 0.70f), 0f),
-                life:  Random.Range(1.1f, 1.8f),
-                grow:  Random.Range(1.6f, 2.4f),
-                spin:  Random.Range(-50f, 50f),
-                curl:  Random.Range(0.15f, 0.40f));
+                drift: new Vector3(Random.Range(-0.10f, 0.10f), Random.Range(0.30f, 0.55f), 0f),
+                life:  Random.Range(0.9f, 1.4f),
+                grow:  Random.Range(1.3f, 1.8f),
+                spin:  0f,                              // no spin → fluid rise
+                curl:  Random.Range(0.06f, 0.18f));
         }
 
         // Small pale-white puff burst — for UI hovers (map icon / friends invite).
@@ -137,21 +133,19 @@ namespace ZulfarakRPG
         {
             var go = new GameObject("SmokePuff");
             go.transform.position       = pos + new Vector3(0f, 0f, -0.5f);
-            go.transform.localScale     = Vector3.one * Random.Range(0.9f, 1.7f);
-            go.transform.localRotation  = Quaternion.Euler(0f, 0f, Random.Range(0f, 360f));
+            go.transform.localScale     = Vector3.one * Random.Range(0.35f, 0.6f);   // smaller
             var sr = go.AddComponent<SpriteRenderer>();
             sr.sprite       = PuffSprite();
             var tint        = MysticTint();
-            sr.color        = new Color(tint.r, tint.g, tint.b, Random.Range(0.75f, 0.95f));
+            sr.color        = new Color(tint.r, tint.g, tint.b, Random.Range(0.55f, 0.8f));
             sr.sortingOrder = 40;
-            // Swirl: each puff slowly spins and curls sideways as it rises, so the
-            // cloud churns like living fog instead of drifting straight up.
+            // Gentle fluid rise — soft drift + slight curl, no spin.
             go.AddComponent<SmokePuff>().Init(
-                drift: new Vector3(Random.Range(-0.55f, 0.55f), Random.Range(0.45f, 1.10f), 0f),
-                life:  Random.Range(2.4f, 3.4f),
-                grow:  Random.Range(2.4f, 3.6f),
-                spin:  Random.Range(-70f, 70f),
-                curl:  Random.Range(0.25f, 0.75f));
+                drift: new Vector3(Random.Range(-0.30f, 0.30f), Random.Range(0.4f, 0.85f), 0f),
+                life:  Random.Range(1.6f, 2.4f),
+                grow:  Random.Range(1.5f, 2.1f),
+                spin:  0f,
+                curl:  Random.Range(0.1f, 0.3f));
         }
 
         // Bright, fast-fading glow core that reads as a magical spark inside the fog.
@@ -172,26 +166,26 @@ namespace ZulfarakRPG
                 curl:  Random.Range(0.15f, 0.45f));
         }
 
-        // Soft smoke puff: 32×32 bilinear with a smooth radial alpha falloff, at
-        // 64 PPU (same ~0.5 world-unit footprint as the old 8×8 @ 16 PPU sprite).
+        // Soft, small puff: a smooth radial blob (dense core → feathered edge, no hard
+        // outline) so the portal smoke reads as fluid wisps rather than chunky rings.
         static Sprite _puff;
         static Sprite PuffSprite()
         {
             if (_puff != null) return _puff;
-            const int N = 32;
+            const int N = 24;
             var t = new Texture2D(N, N, TextureFormat.RGBA32, false) { filterMode = FilterMode.Bilinear };
             float c = (N - 1) * 0.5f;
             for (int y = 0; y < N; y++)
                 for (int x = 0; x < N; x++)
                 {
                     float dx = (x - c) / c, dy = (y - c) / c;
-                    float d  = Mathf.Sqrt(dx * dx + dy * dy);
-                    float a  = Mathf.Clamp01(1f - d);
-                    a = a * a * (3f - 2f * a);   // smoothstep — dense core, feathered edge
+                    float d = Mathf.Sqrt(dx * dx + dy * dy);
+                    float a = Mathf.Clamp01(1f - d);
+                    a = a * a * (3f - 2f * a);   // smoothstep — soft feathered edge
                     t.SetPixel(x, y, new Color(1f, 1f, 1f, a));
                 }
             t.Apply();
-            _puff = Sprite.Create(t, new Rect(0, 0, N, N), new Vector2(0.5f, 0.5f), 64f);
+            _puff = Sprite.Create(t, new Rect(0, 0, N, N), new Vector2(0.5f, 0.5f), 48f);
             return _puff;
         }
     }

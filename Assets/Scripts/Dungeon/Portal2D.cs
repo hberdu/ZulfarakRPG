@@ -161,7 +161,7 @@ namespace ZulfarakRPG
             _fogTimer -= Time.deltaTime;
             if (_fogTimer <= 0f)
             {
-                _fogTimer = 0.20f;
+                _fogTimer = 0.38f;   // gentler, less frequent wisps
                 PortalSmoke.WispAt(transform.position);
             }
 
@@ -250,6 +250,35 @@ namespace ZulfarakRPG
             if (_rings != null)
                 foreach (var r in _rings)
                     if (r) r.gameObject.SetActive(true);
+        }
+
+        // Programmatic entry point used by the HUD "return to city" button so the
+        // click reuses the same fade/absorb/lobby-broadcast pipeline as walking into
+        // the portal collider.
+        public void ForceEnter()
+        {
+            if (!_open || _transitioning) return;
+            var lobby = SteamLobbyManager.Instance;
+            if (lobby != null && lobby.InLobby && !lobby.IsLeader) return;
+            _transitioning = true;
+            StartCoroutine(Transition());
+        }
+
+        // Finds a Portal2D in the currently loaded scenes that leads to Zulfarak and
+        // triggers it. Returns false if none exists (caller then decides its fallback).
+        public static bool TriggerReturnToCity()
+        {
+            var portals = UnityEngine.Object.FindObjectsByType<Portal2D>(FindObjectsSortMode.None);
+            foreach (var p in portals)
+            {
+                if (p == null) continue;
+                if (string.Equals(p.destinationScene, "Zulfarak", StringComparison.OrdinalIgnoreCase))
+                {
+                    p.ForceEnter();
+                    return true;
+                }
+            }
+            return false;
         }
     }
 }

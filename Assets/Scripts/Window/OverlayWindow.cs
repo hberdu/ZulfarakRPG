@@ -60,7 +60,16 @@ namespace ZulfarakRPG
 
         // ── Public settings ───────────────────────────────────────────────────
         public int windowWidth  = 600;
-        public int windowHeight = 180;
+        public int windowHeight = 120;
+
+        // Orthographic half-height applied to Camera.main during gameplay. Tuned to
+        // preserve the character pixel size after we shrank the gameplay strip from
+        // 180 → 120 px (TaskbarHero-style thin band): ortho = 0.75 * 120/180 = 0.50.
+        // Combined with GameplayCamY, this crops most of the empty sky above the
+        // character while leaving the full body + HP bar on screen and only a sliver
+        // of ground below the feet.
+        public const float GameplayCamOrtho = 0.50f;
+        public const float GameplayCamY     = 0.10f;
 
         public static OverlayWindow Instance { get; private set; }
         public static int WinX { get; private set; } = 40;
@@ -122,9 +131,28 @@ namespace ZulfarakRPG
             // the game share the exact same window size (no resize on scene swap).
             bool gameplay = sceneName == "Zulfarak" || sceneName == "Dungeon" || sceneName == "Bootstrap";
             int newW = gameplay ? 600 : 380;
-            int newH = gameplay ? 180 : 640;
+            int newH = gameplay ? 120 : 640;
             windowWidth = newW;
             windowHeight = newH;
+            if (gameplay && Camera.main != null)
+            {
+                // Shrink the visible world vertically so the ground reads as a thin
+                // taskbar-style strip. Scene assets store 0.75 as their baked ortho;
+                // we override it every scene load so any Camera.main lands here.
+                Camera.main.orthographic     = true;
+                Camera.main.orthographicSize = GameplayCamOrtho;
+                // Nudge the view up so the crop lands mostly on empty sky above the
+                // character — CameraFollow2D owns the runtime Y, so route through it
+                // when present; otherwise write the position directly.
+                var follow = Camera.main.GetComponent<CameraFollow2D>();
+                if (follow != null) follow.fixedY = GameplayCamY;
+                else
+                {
+                    var p = Camera.main.transform.position;
+                    p.y = GameplayCamY;
+                    Camera.main.transform.position = p;
+                }
+            }
 #if !UNITY_EDITOR
             if (gameplay && Camera.main != null)
             {

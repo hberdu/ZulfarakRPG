@@ -16,12 +16,19 @@ namespace ZulfarakRPG
             @"C:\Users\henri\Downloads\FREE RPG Icon Pack - 100+ Accessories and Armor - Clockwork Raven Studios\FREE RPG Icon Pack - 100+ Accessories and Armor - Clockwork Raven Studios\16x16";
         public static string SkillsDir =
             @"C:\Users\henri\Downloads\RPG Icon Pack - 400+ Skills and Spells - Clockwork Raven Studios\RPG Icon Pack - 400+ Skills and Spells - Clockwork Raven Studios\16x16";
+        public static string SkillFxDir =
+            @"C:\Users\henri\Downloads\PixelEffect_Skill\PixelEffect_Skill";
+        // Pixel RPG UI Pack sheet (buttons, panels…).
+        public static string UiSheet =
+            @"C:\Users\henri\Downloads\Pixel RPG UI Pack\Ui.png";
 
         // Weapons pack uses numbered files (1.png, 2.png, …).
         public static string Weapon(int n) => Path.Combine(WeaponsDir, n + ".png");
         // Armor + skills packs use tileNNN.png (zero-padded to 3 digits).
         public static string Armor(int tile) => Path.Combine(ArmorDir, "tile" + tile.ToString("000") + ".png");
         public static string Skill(int tile) => Path.Combine(SkillsDir, "tile" + tile.ToString("000") + ".png");
+        // PixelEffect skill animation sheets: Skill_Effect_01.png .. _10.png.
+        public static string SkillFx(int n) => Path.Combine(SkillFxDir, "Skill_Effect_" + n.ToString("00") + ".png");
     }
 
     // Runtime loader/cache for icon PNGs. Provides Unity Sprites (for in-world use like the

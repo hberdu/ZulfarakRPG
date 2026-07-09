@@ -45,9 +45,9 @@ namespace ZulfarakRPG
             _sr              = gameObject.AddComponent<SpriteRenderer>();
             _sr.sprite       = _frames[0];
             _sr.sortingOrder = 6;   // above the arrow (5) so a mixed party still reads clearly
-            // Effect art is 100px @100PPU (1 world unit) — scale down to projectile size;
-            // the procedural orb is already small.
-            transform.localScale = Vector3.one * (_usingArt ? 0.55f : 1f);
+            // Basic attack projectile — kept SMALL so skills (big PixelEffect casts) clearly
+            // out-read the basic attack.
+            transform.localScale = Vector3.one * (_usingArt ? 0.5f : 0.95f);
             if (_usingArt && _target != null)
                 _sr.flipX = _target.transform.position.x < transform.position.x;
         }

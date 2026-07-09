@@ -185,16 +185,14 @@ namespace ZulfarakRPG
                 displayName = SteamIntegration.Instance?.SteamName ?? "Player";
             _hpBar?.SetName(displayName);
 
-            // Composites the equipped weapon into the hero's sprite (replaces the base
-            // weapon art) and adds the legendary aura.
-            if (GetComponent<PlayerEquipmentVisual>() == null)
-                gameObject.AddComponent<PlayerEquipmentVisual>();
-
-            // Learned skills auto-cast on cooldown while in the dungeon.
+            // Learned skills fire on the attack cadence (one per tick, replacing the basic
+            // attack) — see HandleAutoAttack.
             SkillManager.Ensure();
-            if (GetComponent<SkillAutoCaster>() == null)
-                gameObject.AddComponent<SkillAutoCaster>();
+            _skillCaster = GetComponent<SkillAutoCaster>();
+            if (_skillCaster == null) _skillCaster = gameObject.AddComponent<SkillAutoCaster>();
         }
+
+        private SkillAutoCaster _skillCaster;
 
         void SyncRuntimeStatsFromPlayerData()
         {
@@ -262,20 +260,17 @@ namespace ZulfarakRPG
             _atkVariantIndex = 0;
             _arrowShotIndex  = 0;
 
+            // Single basic attack per class (no combo alternation).
             switch (_classType)
             {
                 case ClassType.Mage:
                     AddVariant(wizardAttack1Frames, wizardMagic1Frames);
-                    AddVariant(wizardAttack2Frames, wizardMagic2Frames);
                     break;
                 case ClassType.Archer:
                     AddVariant(archerAttack1Frames, null);
-                    AddVariant(archerAttack2Frames, null);
                     break;
                 default:
                     AddVariant(soldierAttack1Frames, null);
-                    AddVariant(soldierAttack2Frames, null);
-                    AddVariant(soldierAttack3Frames, null);
                     break;
             }
 
@@ -474,6 +469,17 @@ namespace ZulfarakRPG
             var target = FindNearest(attackRange);
             if (target == null) return;
 
+            // Skills ALWAYS replace the basic attack: on each attack tick, if an equipped
+            // skill is off cooldown, cast exactly ONE (the caster picks one) and consume the
+            // tick — so the two skills never fire at the same time and both respect the base
+            // attack cadence. Only when no skill is ready does the basic attack happen.
+            if (_skillCaster != null && _skillCaster.TryCastReady(target))
+            {
+                _atkTimer   = AttackInterval;
+                _attackLock = Mathf.Max(_attackLock, Mathf.Min(AttackInterval * 0.6f, 0.6f));
+                return;
+            }
+
             _sr.flipX = target.transform.position.x < transform.position.x;
 
             // Roll crit once per attack — 2× damage, yellow "*" popup.
@@ -583,8 +589,7 @@ namespace ZulfarakRPG
             // Launch from the raised staff tip: a little forward and up from the body center.
             spawnPos += new Vector3(dir * 0.35f, 0.15f, 0f);
 
-            // Big fiery burst on the staff tip the instant the spell is released.
-            Fireball.SpawnCastFlash(spawnPos, dir);
+            // Basic attack: no big cast flash (that's reserved for skills). Just the orb.
 
             // The magic sheet paired with this cast variant (null → procedural orb).
             Sprite[] magic = (_magicVariants != null && variant < _magicVariants.Count)
@@ -594,6 +599,29 @@ namespace ZulfarakRPG
             fbGO.transform.position = spawnPos;
             var fb = fbGO.AddComponent<Fireball>();
             fb.Init(target, dmg, crit, magic);
+        }
+
+        // Public cast trigger used by SkillAutoCaster so learned skills visually cast
+        // (flip + attack animation + brief movement lock) even though they don't go
+        // through HandleAutoAttack. Cycles the class's attack rotation like the basic
+        // attack does, so successive skill casts alternate variants when available.
+        // Returns the cast animation duration so callers can align damage / VFX / the
+        // projectile spawn to the cast APEX instead of the very first frame.
+        public float PlayCastAnimation(Vector3 targetWorldPos)
+        {
+            if (_atkVariants == null || _atkVariants.Count == 0) BuildAttackVariants();
+            if (_atkVariants == null || _atkVariants.Count == 0) return 0f;
+            if (_sr != null) _sr.flipX = targetWorldPos.x < transform.position.x;
+
+            int      variant   = _atkVariantIndex;
+            Sprite[] atkFrames = _atkVariants[variant];
+            _atkVariantIndex   = (_atkVariantIndex + 1) % _atkVariants.Count;
+
+            float animDur = Mathf.Min(AttackInterval * 0.6f, 0.6f);
+            float atkFps  = (atkFrames != null && atkFrames.Length > 0) ? atkFrames.Length / animDur : 12f;
+            _attackLock   = Mathf.Max(_attackLock, animDur);
+            PlayAnim(atkFrames, atkFps, forceRestart: true, loop: false);
+            return animDur;
         }
 
         // True when a world point is within the visible camera view (used to gate the
@@ -731,21 +759,19 @@ namespace ZulfarakRPG
             Vector3 basePos  = transform.position;
             float t = 0f;
             float nextPuff = 0f;
-            PortalSmoke.BurstAt(basePos, 14);   // opening burst
+            PortalSmoke.BurstAt(basePos, 5);   // small opening burst
             while (t < duration)
             {
-                float p = t / duration;                       // 0 → 1
-                // Continuous smoke stream so the character disappears into a dense cloud.
+                // Light, occasional puffs (reduced) — a wisp of pixel smoke, not a cloud.
                 if (t >= nextPuff)
                 {
-                    PortalSmoke.BurstAt(basePos, 3 + Mathf.RoundToInt(p * p * 6f));
-                    nextPuff = t + 0.06f;
+                    PortalSmoke.BurstAt(basePos, 3);
+                    nextPuff = t + 0.18f;
                 }
                 t += Time.deltaTime;
                 yield return null;
             }
-            // Final explosive burst as the character vanishes into the portal.
-            PortalSmoke.BurstAt(basePos, 22);
+            PortalSmoke.BurstAt(basePos, 6);
             // Tell the next (Dungeon) scene to bloom purple smoke that dissipates as the wave begins.
             PortalSmoke.PendingAtWaveStart = true;
         }

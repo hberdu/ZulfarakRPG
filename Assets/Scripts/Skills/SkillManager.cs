@@ -77,7 +77,12 @@ namespace ZulfarakRPG
         public bool Learn(string id)
         {
             if (!CanLearn(id)) return false;
+            bool wasNew = GetLevel(id) == 0;
             _levels[id] = GetLevel(id) + 1;
+            // Auto-equip a newly-learned skill while a slot is free, so its cooldown bar
+            // shows immediately in the dungeon.
+            if (wasNew && !_equipped.Contains(id) && _equipped.Count < MaxEquipped)
+                _equipped.Add(id);
             Save();
             OnSkillsChanged?.Invoke();
             return true;
@@ -142,6 +147,15 @@ namespace ZulfarakRPG
                             _equipped.Add(id);
             }
             catch (Exception ex) { Debug.LogWarning($"[SkillManager] Load falhou: {ex.Message}"); }
+
+            // If skills were learned but none equipped (older saves), auto-equip up to the
+            // cap so the cooldown bars appear.
+            if (_equipped.Count == 0)
+                foreach (var kv in _levels)
+                {
+                    if (_equipped.Count >= MaxEquipped) break;
+                    if (kv.Value > 0 && SkillDefs.Get(kv.Key) != null) _equipped.Add(kv.Key);
+                }
         }
 
         void Save()
