@@ -75,10 +75,19 @@ namespace ZulfarakRPG
         public static int WinX { get; private set; } = 40;
         public static int WinY { get; private set; } = 40;
 
+        // True while a left-drag is actively moving the overlay window (past the click
+        // threshold). Lets gameplay ignore the press so a drag never doubles as a click.
+        public static bool IsDraggingWindow { get; private set; }
+
+        // Pixels the cursor must travel while the button is held before the press counts
+        // as a window drag (below this, it stays a normal gameplay/HUD click).
+        const int DragThreshold = 5;
+
         static IntPtr _hwnd = IntPtr.Zero;
 #if !UNITY_EDITOR
         Coroutine _resizeCo;
         bool _overlayActive;
+        bool _pressActive;
         bool _draggingAnywhere;
         int _dragStartWinX;
         int _dragStartWinY;
@@ -286,29 +295,39 @@ namespace ZulfarakRPG
             if (_hwnd == IntPtr.Zero) return;
             if (!_overlayActive) return;
 
-            // In character creation, dragging with the left mouse button anywhere in the
-            // window should move the borderless game window.
-            bool canDragAnywhere = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name == "CharacterCreation";
-            if (canDragAnywhere)
+            // Left-drag anywhere in the window moves the borderless overlay — in every
+            // scene. A small movement threshold separates a genuine drag from a gameplay
+            // click (walk-to / HUD button), so pure clicks still reach the game unchanged.
+            if (Input.GetMouseButtonDown(0) && GetCursorPos(out var start))
             {
-                if (Input.GetMouseButtonDown(0) && GetCursorPos(out var start))
+                _pressActive = true;
+                _draggingAnywhere = false;
+                _dragStartCursorX = start.X;
+                _dragStartCursorY = start.Y;
+                _dragStartWinX = WinX;
+                _dragStartWinY = WinY;
+            }
+            else if (_pressActive && Input.GetMouseButton(0) && GetCursorPos(out var now))
+            {
+                int dx = now.X - _dragStartCursorX;
+                int dy = now.Y - _dragStartCursorY;
+                if (!_draggingAnywhere && (Mathf.Abs(dx) > DragThreshold || Mathf.Abs(dy) > DragThreshold))
                 {
                     _draggingAnywhere = true;
-                    _dragStartCursorX = start.X;
-                    _dragStartCursorY = start.Y;
-                    _dragStartWinX = WinX;
-                    _dragStartWinY = WinY;
+                    IsDraggingWindow = true;
+                    // The mouse-down may have queued a click-to-move; undo it now that we
+                    // know the press is a window drag.
+                    var pc = UnityEngine.Object.FindAnyObjectByType<PlayerController2D>();
+                    if (pc != null) pc.CancelClickTarget();
                 }
-                else if (_draggingAnywhere && Input.GetMouseButton(0) && GetCursorPos(out var now))
-                {
-                    int dx = now.X - _dragStartCursorX;
-                    int dy = now.Y - _dragStartCursorY;
+                if (_draggingAnywhere)
                     MoveWindowTo(_dragStartWinX + dx, _dragStartWinY + dy);
-                }
-                else if (Input.GetMouseButtonUp(0))
-                {
-                    _draggingAnywhere = false;
-                }
+            }
+            else if (Input.GetMouseButtonUp(0))
+            {
+                _pressActive = false;
+                _draggingAnywhere = false;
+                IsDraggingWindow = false;
             }
 
             int ex = GetWindowLong(_hwnd, GWL_EXSTYLE);

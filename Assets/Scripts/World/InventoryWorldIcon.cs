@@ -103,7 +103,9 @@ namespace ZulfarakRPG
         static Sprite LoadInventoryIconSprite()
         {
             if (_loadedInventoryIcon != null) return _loadedInventoryIcon;
-            var path = Path.Combine(Application.dataPath, "Itens", "ItemMall-Icon(Static).png");
+            // StreamingAssets (bundled with the build) so the icon loads on any machine —
+            // Application.dataPath/Itens only exists in the Editor, not in a player build.
+            var path = Path.Combine(Application.streamingAssetsPath, "Icons", "ItemMall-Icon(Static).png");
             if (!File.Exists(path))
             {
                 return null;

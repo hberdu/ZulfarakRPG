@@ -5,22 +5,20 @@ using UnityEngine;
 
 namespace ZulfarakRPG
 {
-    // Absolute paths to the downloaded icon packs. Centralised so they can be repointed
-    // (or later moved into the project / StreamingAssets) in one place. Loaded at runtime
-    // as raw PNGs, so no Unity import step is needed.
+    // Icon packs bundled with the project under Assets/StreamingAssets/Icons, so the game
+    // loads them from the repository (not from a developer's PC) on any machine. Loaded at
+    // runtime as raw PNGs, so no Unity import step is needed. StreamingAssets is copied
+    // verbatim into the build and resolves to a real directory on desktop.
     public static class IconPaths
     {
-        public static string WeaponsDir =
-            @"C:\Users\henri\Downloads\Raven Fantasy - Pixel Art RPG Icons - Epic Weapons 3\Original\16";
-        public static string ArmorDir =
-            @"C:\Users\henri\Downloads\FREE RPG Icon Pack - 100+ Accessories and Armor - Clockwork Raven Studios\FREE RPG Icon Pack - 100+ Accessories and Armor - Clockwork Raven Studios\16x16";
-        public static string SkillsDir =
-            @"C:\Users\henri\Downloads\RPG Icon Pack - 400+ Skills and Spells - Clockwork Raven Studios\RPG Icon Pack - 400+ Skills and Spells - Clockwork Raven Studios\16x16";
-        public static string SkillFxDir =
-            @"C:\Users\henri\Downloads\PixelEffect_Skill\PixelEffect_Skill";
+        static string IconsRoot => Path.Combine(Application.streamingAssetsPath, "Icons");
+
+        public static string WeaponsDir => Path.Combine(IconsRoot, "Weapons");
+        public static string ArmorDir   => Path.Combine(IconsRoot, "Armor");
+        public static string SkillsDir  => Path.Combine(IconsRoot, "Skills");
+        public static string SkillFxDir => Path.Combine(IconsRoot, "SkillFx");
         // Pixel RPG UI Pack sheet (buttons, panels…).
-        public static string UiSheet =
-            @"C:\Users\henri\Downloads\Pixel RPG UI Pack\Ui.png";
+        public static string UiSheet    => Path.Combine(IconsRoot, "Ui.png");
 
         // Weapons pack uses numbered files (1.png, 2.png, …).
         public static string Weapon(int n) => Path.Combine(WeaponsDir, n + ".png");

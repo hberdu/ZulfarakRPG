@@ -412,6 +412,13 @@ namespace ZulfarakRPG
             _clickTargetX   = x;
         }
 
+        // Cancels a pending click-to-move — called when OverlayWindow detects the press was
+        // actually a window drag, so the hero doesn't walk to where the drag began.
+        public void CancelClickTarget()
+        {
+            _hasClickTarget = false;
+        }
+
         // Public auto-walk (used by the city "repeat" toggle): walk to X exactly like a
         // ground/portal click, so reaching the dungeon portal re-triggers its transition.
         public void AutoWalkToX(float x)
