@@ -384,6 +384,14 @@ namespace ZulfarakRPG
             _clickTargetX   = x;
         }
 
+        // Public auto-walk (used by the city "repeat" toggle): walk to X exactly like a
+        // ground/portal click, so reaching the dungeon portal re-triggers its transition.
+        public void AutoWalkToX(float x)
+        {
+            if (_phase != Phase.Playing) return;
+            SetClickTarget(x);
+        }
+
         // ── Movement ──────────────────────────────────────────────────────
         void HandleMovement()
         {

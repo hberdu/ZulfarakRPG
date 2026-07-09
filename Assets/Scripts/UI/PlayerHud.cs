@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -25,10 +26,17 @@ namespace ZulfarakRPG
         GameObject _cityOnlyMap;       // hidden inside the dungeon per HUD spec
         GameObject _cityOnlyFriends;   // hidden inside the dungeon per HUD spec
 
+        // When ON, returning to the city auto-walks the hero straight back into the
+        // dungeon portal, looping the challenge. Persisted so it survives restarts.
+        static bool _repeatOn;
+
         // Bottom-left button-column metrics (public so the dungeon progress bar can
         // align itself relative to the button rail).
         public const float ButtonSize          = 24f;   // small square — about the on-screen size of the map icon
-        public const float ButtonGap           = 2f;    // spacing between stacked HUD buttons
+        // Buttons touch (1 px overlap on their shared 9-slice border) so the whole
+        // column of five HUD buttons fits inside the 120 px taskbar window without
+        // pushing the topmost button off the top edge.
+        public const float ButtonGap           = -1f;
         public const float ButtonColumnX       = 4f;    // x offset of the column from the left edge
         public const float ButtonColumnBottomY = 2f;    // y offset of the bottom-most button in the column
         public const int   ButtonCount         = 3;     // Menu / Map / Friends
@@ -61,10 +69,33 @@ namespace ZulfarakRPG
                 if (_instance._dungeonOnlyRoot != null)
                     _instance._dungeonOnlyRoot.SetActive(inDungeon);
                 // Symmetrically, the map + friends buttons only make sense in the city;
-                // the dungeon HUD keeps just the inventory button + the progress rail.
+                // the dungeon HUD keeps the inventory, skills, repeat and progress rail.
+                // (Repeat is always visible — the player may toggle it mid-run.)
                 if (_instance._cityOnlyMap     != null) _instance._cityOnlyMap.SetActive(!inDungeon);
                 if (_instance._cityOnlyFriends != null) _instance._cityOnlyFriends.SetActive(!inDungeon);
+
+                // Repeat-challenge loop: back in the city with the toggle ON, auto-walk
+                // the hero straight into the dungeon portal again.
+                if (!inDungeon && _repeatOn)
+                    _instance.StartCoroutine(_instance.AutoRepeatToDungeon());
             }
+        }
+
+        // Waits for the city to settle, then walks the hero into the open Dungeon portal.
+        IEnumerator AutoRepeatToDungeon()
+        {
+            yield return new WaitForSecondsRealtime(0.9f);
+            if (!_repeatOn || SceneManager.GetActiveScene().name != "Zulfarak") yield break;
+
+            Portal2D dungeonPortal = null;
+            foreach (var p in FindObjectsByType<Portal2D>(FindObjectsSortMode.None))
+                if (p != null && p.IsOpen &&
+                    string.Equals(p.destinationScene, "Dungeon", System.StringComparison.OrdinalIgnoreCase))
+                { dungeonPortal = p; break; }
+            if (dungeonPortal == null) yield break;
+
+            var player = FindAnyObjectByType<PlayerController2D>();
+            if (player != null) player.AutoWalkToX(dungeonPortal.transform.position.x);
         }
 
         static void Build()
@@ -87,19 +118,99 @@ namespace ZulfarakRPG
             // Friends — the frequently used inventory sits closest to the thumb. Map
             // and Friends only appear inside the city; the dungeon collapses down to
             // just the inventory button (see OnSceneLoaded).
+            // Bottom-left button column. Slots stacked bottom → top:
+            //   0: Menu (inventory) — always
+            //   1: Magias (skill tree) — always (available in the city AND the
+            //      dungeon so the mage can retune spells mid-run).
+            //   2: Map        — city only
+            //   3: Friends    — city only
+            //   4: Repeat run — city only
             BuildHudButton(canvas.transform, slot: 0, name: "MenuButton",   glyph: UpArrowSprite(),
                 onClick: () => InventoryPopupWindow.Toggle());
-            _instance._cityOnlyMap = BuildHudButton(canvas.transform, slot: 1, name: "MapButton",    glyph: MapGlyphSprite(),
+            BuildHudButton(canvas.transform, slot: 1, name: "SkillsButton", glyph: WizardHatSprite(),
+                onClick: () => SkillTreePopup.Show());
+            _instance._cityOnlyMap = BuildHudButton(canvas.transform, slot: 2, name: "MapButton",    glyph: MapGlyphSprite(),
                 onClick: () => WorldMapPopup.Show());
-            _instance._cityOnlyFriends = BuildHudButton(canvas.transform, slot: 2, name: "FriendsButton", glyph: FriendsGlyphSprite(),
+            _instance._cityOnlyFriends = BuildHudButton(canvas.transform, slot: 3, name: "FriendsButton", glyph: FriendsGlyphSprite(),
                 onClick: () =>
                 {
                     SteamLobbyManager.Instance?.EnsureLobby();
                     FriendsListPopup.Show();
                 });
 
+            // "Repeat challenge" toggle (slot 4 = above Friends). Available in both
+            // scenes so the player can flip it on/off mid-run without stopping at the
+            // city. When ON in the city it auto-walks back into the dungeon portal.
+            _repeatOn = PlayerPrefs.GetInt("dungeon_repeat", 0) == 1;
+            BuildRepeatButton(canvas.transform, slot: 4);
+
             BuildWindowButtons(canvas.transform);
             _instance.BuildDungeonButtons(canvas.transform);
+        }
+
+        // Repeat-challenge toggle button (left column). Toggles _repeatOn; when ON it turns
+        // purple. While ON, returning to the city loops the hero straight back into the
+        // dungeon portal (see OnSceneLoaded / AutoRepeatToDungeon).
+        static GameObject BuildRepeatButton(Transform parent, int slot)
+        {
+            var go = new GameObject("RepeatButton", typeof(RectTransform));
+            go.transform.SetParent(parent, false);
+            var rt = (RectTransform)go.transform;
+            rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0f, 0f);
+            rt.anchoredPosition = new Vector2(ButtonColumnX, ButtonColumnBottomY + slot * (SIZE + GAP));
+            rt.sizeDelta        = new Vector2(SIZE, SIZE);
+
+            var chassis = go.AddComponent<Image>();
+            chassis.sprite        = RpgUiSprites.ButtonBlankLight();
+            chassis.type          = Image.Type.Sliced;
+            chassis.raycastTarget = true;
+
+            var coverGO = new GameObject("Cover", typeof(RectTransform));
+            coverGO.transform.SetParent(go.transform, false);
+            var crt = (RectTransform)coverGO.transform;
+            crt.anchorMin = Vector2.zero; crt.anchorMax = Vector2.one;
+            crt.offsetMin = new Vector2( 4f,  4f); crt.offsetMax = new Vector2(-4f, -4f);
+            var cover = coverGO.AddComponent<Image>();
+            cover.sprite        = SolidPixel();
+            cover.raycastTarget = false;
+
+            var glyphGO = new GameObject("Glyph", typeof(RectTransform));
+            glyphGO.transform.SetParent(coverGO.transform, false);
+            var grt = (RectTransform)glyphGO.transform;
+            grt.anchorMin = Vector2.zero; grt.anchorMax = Vector2.one;
+            grt.offsetMin = new Vector2( 1f,  1f); grt.offsetMax = new Vector2(-1f, -1f);
+            var gi = glyphGO.AddComponent<Image>();
+            gi.sprite         = RepeatSprite();
+            gi.preserveAspect = true;
+            gi.raycastTarget  = false;
+
+            var btn = go.AddComponent<Button>();
+            btn.targetGraphic = chassis;
+            btn.onClick.AddListener(() =>
+            {
+                _repeatOn = !_repeatOn;
+                PlayerPrefs.SetInt("dungeon_repeat", _repeatOn ? 1 : 0);
+                ApplyRepeatVisual(cover, gi);
+                // Turning it on from the city starts the loop right away.
+                if (_repeatOn && _instance != null) _instance.StartCoroutine(_instance.AutoRepeatToDungeon());
+            });
+            ApplyRepeatVisual(cover, gi);
+            AttachTooltip(go, "Repetir desafio (loop)");
+            return go;
+        }
+
+        static void ApplyRepeatVisual(Image cover, Image glyph)
+        {
+            if (_repeatOn)
+            {
+                cover.color = new Color(0.44f, 0.16f, 0.66f, 1f);   // purple = ON
+                glyph.color = new Color(1f, 0.92f, 1f, 1f);
+            }
+            else
+            {
+                cover.color = new Color(0.17f, 0.13f, 0.17f, 1f);   // dark = OFF
+                glyph.color = new Color(1f, 0.94f, 0.78f, 1f);
+            }
         }
 
         // HUD button chassis is now the shield sprite from the RPG UI Pack (see
@@ -283,6 +394,50 @@ namespace ZulfarakRPG
             return _upArrow;
         }
 
+        // Repeat/loop glyph: a circular ring (two arcs) with a down-arrow on the right and
+        // an up-arrow on the left, so the two arrows chase each other clockwise.
+        static Sprite _repeat;
+        static Sprite RepeatSprite()
+        {
+            if (_repeat != null) return _repeat;
+            const int N = 32;
+            var t = new Texture2D(N, N, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point };
+            for (int y = 0; y < N; y++) for (int x = 0; x < N; x++) t.SetPixel(x, y, Color.clear);
+
+            float cx = 15.5f, cy = 15.5f, R = 10f, thick = 2.4f;
+            for (int y = 0; y < N; y++)
+                for (int x = 0; x < N; x++)
+                {
+                    float dx = x - cx, dy = y - cy, d = Mathf.Sqrt(dx * dx + dy * dy);
+                    if (Mathf.Abs(d - R) > thick) continue;
+                    float ang = Mathf.Atan2(dy, dx) * Mathf.Rad2Deg; if (ang < 0f) ang += 360f;
+                    // Two arcs with gaps on the right (~340..20) and left (~160..200).
+                    if ((ang >= 22f && ang <= 158f) || (ang >= 202f && ang <= 338f))
+                        t.SetPixel(x, y, Color.white);
+                }
+
+            // Down-arrow on the right (apex at bottom, widening up).
+            ArrowTriV(t, 24, 11, +1, 4);
+            // Up-arrow on the left (apex at top, widening down).
+            ArrowTriV(t, 7, 20, -1, 4);
+
+            t.Apply();
+            _repeat = Sprite.Create(t, new Rect(0, 0, N, N), new Vector2(0.5f, 0.5f), 100f);
+            return _repeat;
+        }
+
+        // Vertical filled arrowhead. up=+1 → points DOWN (apex low, widen upward);
+        // up=-1 → points UP (apex high, widen downward).
+        static void ArrowTriV(Texture2D t, int ax, int apexY, int up, int size)
+        {
+            for (int s = 0; s <= size; s++)
+                for (int w = -s; w <= s; w++)
+                {
+                    int px = ax + w, py = apexY + up * s;
+                    if (px >= 0 && px < t.width && py >= 0 && py < t.height) t.SetPixel(px, py, Color.white);
+                }
+        }
+
         // Full-white 1×1 sprite so Unity's Image can tint solid-colour rectangles for the
         // pixel bevel/shoulder layers (Point filter keeps corners crisp at any scale).
         static Sprite _solid;
@@ -294,6 +449,63 @@ namespace ZulfarakRPG
             t.Apply();
             _solid = Sprite.Create(t, new Rect(0, 0, 1, 1), new Vector2(0.5f, 0.5f), 1f);
             return _solid;
+        }
+
+        // Chunky pixel-art wizard hat glyph for the Skills button (Magias). A pointed
+        // triangle hat with a yellow star on the band and a wide brim below — reads
+        // instantly as "spells / magic" at the 24×24 HUD size (Point filter keeps the
+        // pixel corners crisp). The glyph is white so the button code can tint it.
+        static Sprite _wizardHat;
+        static Sprite WizardHatSprite()
+        {
+            if (_wizardHat != null) return _wizardHat;
+            const int N = 16;
+            var t = new Texture2D(N, N, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point };
+            for (int y = 0; y < N; y++)
+                for (int x = 0; x < N; x++)
+                    t.SetPixel(x, y, Color.clear);
+
+            var hat  = Color.white;
+            var star = new Color(1f, 0.86f, 0.28f, 1f);
+
+            // Legend: H = hat cloth, S = yellow star, . = transparent.
+            // Art rows are top → bottom; texture Y is flipped when writing.
+            string[] rows = {
+                ".......HH.......",   //  0 — tip of the hat
+                "......HHHH......",   //  1
+                "......HHHH......",   //  2
+                ".....HHHHHH.....",   //  3
+                ".....HHHHHH.....",   //  4
+                "....HHHHHHHH....",   //  5
+                "....HHHHHHHH....",   //  6
+                "...HHHHSSHHHH...",   //  7 — star on the band
+                "...HHHSSSSHHH...",   //  8
+                "..HHHSSSSSSHHH..",   //  9
+                "..HHHHSSSSHHHH..",   // 10
+                ".HHHHHHSSHHHHHH.",   // 11
+                "HHHHHHHHHHHHHHHH",   // 12 — brim
+                "HHHHHHHHHHHHHHHH",   // 13 — brim (double-tall)
+                "................",  // 14
+                "................",  // 15
+            };
+
+            for (int row = 0; row < rows.Length && row < N; row++)
+            {
+                string s = rows[row];
+                int texY = N - 1 - row;
+                for (int col = 0; col < s.Length && col < N; col++)
+                {
+                    switch (s[col])
+                    {
+                        case 'H': t.SetPixel(col, texY, hat);  break;
+                        case 'S': t.SetPixel(col, texY, star); break;
+                    }
+                }
+            }
+
+            t.Apply();
+            _wizardHat = Sprite.Create(t, new Rect(0, 0, N, N), new Vector2(0.5f, 0.5f), 100f);
+            return _wizardHat;
         }
 
         // Chunky pixel-art map glyph: rolled parchment with a dashed route and a red

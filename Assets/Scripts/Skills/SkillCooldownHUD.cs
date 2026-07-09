@@ -70,7 +70,7 @@ namespace ZulfarakRPG
             // and TALLER than wide so the cooldown reads as it rises.
             float barW   = W * BarFrac;
             float gap    = W * GapFrac;
-            float barH   = barW * 1.5f;                     // taller than wide → vertical fill
+            float barH   = barW * 0.5f;                     // 1/3 of the previous height
             float y      = c.y + hpH * 0.5f + 0.03f + barH * 0.5f;   // just above the HP bar
             float totalW = 2f * barW + gap;
             float left   = c.x - totalW * 0.5f;
