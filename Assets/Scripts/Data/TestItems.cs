@@ -5,7 +5,13 @@ namespace ZulfarakRPG
 {
     // Built-in, code-defined equipment used to test the inventory + on-character visuals
     // without needing the server catalog: one item of every quality (Comum / Raro / Mito /
-    // Lendário) for each equippable slot (Arma, Capacete, Peito, Mãos, Pés, Capa).
+    // Lendário) for each equippable slot (Arma, Capacete, Peito, Mãos, Pés, Capa) plus a
+    // set of staves.
+    //
+    // Each item has a UNIQUE name and a hand-tuned set of attributes that scale with its
+    // quality: weapons carry flat Dano, defense pieces carry Armadura (which feeds the
+    // character's physical resistance), boots add Defesa + movement speed, and every piece
+    // rolls a mix of the percent combat stats surfaced in the hover tooltip.
     //
     // Ids are prefixed "tst_" so the rest of the game can recognise them as local test
     // items (they equip through the offline path, bypassing the server).
@@ -14,24 +20,36 @@ namespace ZulfarakRPG
         public const string Prefix = "tst_";
         public static bool IsTestItem(string id) => !string.IsNullOrEmpty(id) && id.StartsWith(Prefix);
 
-        // Slots that get a full quality set, with their Portuguese labels.
-        static readonly (ItemType type, string label)[] Slots =
+        // Slots that get a full quality set.
+        static readonly ItemType[] Slots =
         {
-            (ItemType.Weapon, "Arma"),
-            (ItemType.Helmet, "Capacete"),
-            (ItemType.Chest,  "Peito"),
-            (ItemType.Gloves, "Maos"),
-            (ItemType.Boots,  "Pes"),
-            (ItemType.Cape,   "Capa"),
+            ItemType.Weapon,
+            ItemType.Helmet,
+            ItemType.Chest,
+            ItemType.Gloves,
+            ItemType.Boots,
+            ItemType.Cape,
         };
 
-        static readonly (ItemRarity rarity, int power)[] Qualities =
+        static readonly ItemRarity[] Qualities =
         {
-            (ItemRarity.Common,    1),
-            (ItemRarity.Rare,      2),
-            (ItemRarity.Epic,      3),
-            (ItemRarity.Legendary, 5),
+            ItemRarity.Common,
+            ItemRarity.Rare,
+            ItemRarity.Epic,
+            ItemRarity.Legendary,
         };
+
+        // Distinct, quality-ordered names per slot (index 0..3 = Comum/Raro/Mito/Lendário).
+        static readonly Dictionary<ItemType, string[]> Names = new()
+        {
+            [ItemType.Weapon] = new[] { "Adaga Enferrujada", "Espada do Guardiao", "Lamina das Sombras", "Devoradora de Dragoes" },
+            [ItemType.Helmet] = new[] { "Elmo de Couro",     "Elmo de Aco",        "Coroa Runica",        "Coroa do Rei Dragao" },
+            [ItemType.Chest]  = new[] { "Tunica Puida",      "Peitoral de Aco",    "Armadura Runica",     "Egide do Dragao Negro" },
+            [ItemType.Gloves] = new[] { "Manoplas Gastas",   "Manoplas de Placas", "Garras Runicas",      "Punhos do Cataclismo" },
+            [ItemType.Boots]  = new[] { "Botas de Couro",    "Grevas de Aco",      "Passos do Vento",     "Botas do Andarilho Astral" },
+            [ItemType.Cape]   = new[] { "Manto Esfarrapado", "Capa do Viajante",   "Manto Runico",        "Asa do Dragao Anciao" },
+        };
+        static readonly string[] StaffNames = { "Galho Rachado", "Cajado do Aprendiz", "Cajado Runico", "Cajado do Arquimago" };
 
         static Dictionary<string, ItemData> _byId;
 
@@ -39,43 +57,101 @@ namespace ZulfarakRPG
         {
             if (_byId != null) return;
             _byId = new Dictionary<string, ItemData>();
-            foreach (var (type, label) in Slots)
-                foreach (var (rarity, power) in Qualities)
+            foreach (var type in Slots)
+                for (int qi = 0; qi < Qualities.Length; qi++)
                 {
+                    var rarity = Qualities[qi];
                     var item = ScriptableObject.CreateInstance<ItemData>();
                     item.itemId      = Id(type, rarity);
-                    item.itemName    = $"{label} {ItemData.QualityLabel(rarity)}";
-                    item.description = $"Item de teste — {label} de qualidade {ItemData.QualityLabel(rarity)}.";
+                    item.itemName    = Names[type][qi];
+                    item.description = $"{Names[type][qi]} — qualidade {ItemData.QualityLabel(rarity)}.";
                     item.itemType    = type;
                     item.rarity      = rarity;
                     item.iconPath    = IconFor(type, rarity);
                     item.requiredLevel = 1;
-                    item.goldValue   = 10 * power;
-                    // Simple quality-scaled bonuses so equipping visibly changes stats.
-                    item.bonusHp      = 5  * power;
-                    item.bonusAttack  = 2  * power;
-                    item.bonusDefense = 2  * power;
+                    item.goldValue   = 25 * (qi + 1) * (qi + 1);
+                    ApplyStats(item, type, qi);
                     _byId[item.itemId] = item;
                 }
 
-            // Extra weapon variety: staves (cajados), one per quality.
-            foreach (var (rarity, power) in Qualities)
+            // Extra weapon variety: magic staves, one per quality.
+            for (int qi = 0; qi < Qualities.Length; qi++)
             {
+                var rarity = Qualities[qi];
                 var item = ScriptableObject.CreateInstance<ItemData>();
                 item.itemId      = $"{Prefix}staff_{rarity}".ToLowerInvariant();
-                item.itemName    = $"Cajado {ItemData.QualityLabel(rarity)}";
-                item.description = $"Item de teste — Cajado de qualidade {ItemData.QualityLabel(rarity)}.";
+                item.itemName    = StaffNames[qi];
+                item.description = $"{StaffNames[qi]} — qualidade {ItemData.QualityLabel(rarity)}.";
                 item.itemType    = ItemType.Weapon;
                 item.rarity      = rarity;
-                item.iconPath    = IconPaths.Weapon(40 + QualityIndex(rarity));   // staff-ish weapon icons
+                item.iconPath    = IconPaths.Weapon(40 + qi);   // staff-ish weapon icons
                 item.requiredLevel = 1;
-                item.goldValue   = 10 * power;
-                item.bonusHp      = 5  * power;
-                item.bonusAttack  = 3  * power;
-                item.bonusDefense = 1  * power;
+                item.goldValue   = 25 * (qi + 1) * (qi + 1);
+                ApplyStaffStats(item, qi);
                 _byId[item.itemId] = item;
             }
         }
+
+        // Per-slot attribute profiles, indexed by quality tier qi (0..3). Everything grows
+        // with quality; each slot leans into a fantasy of its own so the tooltips differ.
+        static void ApplyStats(ItemData item, ItemType type, int qi)
+        {
+            switch (type)
+            {
+                case ItemType.Weapon:   // sword: flat Dano + crit
+                    item.flatDamage    = Pick(qi, 6, 12, 20, 32);
+                    item.pctDamage     = Pick(qi, 0.03f, 0.06f, 0.10f, 0.16f);
+                    item.pctCritChance = Pick(qi, 0.02f, 0.04f, 0.06f, 0.10f);
+                    item.pctCritDamage = Pick(qi, 0.05f, 0.10f, 0.18f, 0.30f);
+                    if (qi >= 3) item.pctAttackSpeed = 0.06f;
+                    break;
+
+                case ItemType.Helmet:   // armor + vitality, a touch of magic resist
+                    item.armor             = Pick(qi, 5, 10, 16, 26);
+                    item.bonusHp           = Pick(qi, 10, 20, 35, 60);
+                    item.pctPhysicalResist = Pick(qi, 0.02f, 0.04f, 0.06f, 0.10f);
+                    item.pctMagicResist    = Pick(qi, 0.00f, 0.01f, 0.03f, 0.05f);
+                    break;
+
+                case ItemType.Chest:    // the tank piece: most armor + HP
+                    item.armor             = Pick(qi, 10, 18, 28, 44);
+                    item.bonusHp           = Pick(qi, 20, 40, 70, 120);
+                    item.pctPhysicalResist = Pick(qi, 0.03f, 0.06f, 0.10f, 0.16f);
+                    break;
+
+                case ItemType.Gloves:   // dexterity: attack speed + crit chance
+                    item.armor             = Pick(qi, 3, 6, 10, 16);
+                    item.pctAttackSpeed    = Pick(qi, 0.03f, 0.06f, 0.10f, 0.15f);
+                    item.pctCritChance     = Pick(qi, 0.02f, 0.03f, 0.05f, 0.08f);
+                    break;
+
+                case ItemType.Boots:    // Defesa + movement speed (as requested)
+                    item.armor             = Pick(qi, 3, 6, 10, 16);
+                    item.bonusDefense      = Pick(qi, 3, 6, 10, 16);
+                    item.bonusMoveSpeed    = Pick(qi, 0.15f, 0.25f, 0.40f, 0.60f);
+                    item.pctPhysicalResist = Pick(qi, 0.01f, 0.02f, 0.03f, 0.05f);
+                    break;
+
+                case ItemType.Cape:     // arcane: magic resist + life regen + late CDR
+                    item.armor              = Pick(qi, 2, 4, 7, 12);
+                    item.pctMagicResist     = Pick(qi, 0.03f, 0.06f, 0.10f, 0.16f);
+                    item.pctLifeRegen       = Pick(qi, 0.005f, 0.010f, 0.020f, 0.035f);
+                    if (qi >= 3) item.pctCooldownReduction = 0.08f;
+                    break;
+            }
+        }
+
+        // Staves are the caster weapon: flat Dano, % Dano, cooldown reduction and crit damage.
+        static void ApplyStaffStats(ItemData item, int qi)
+        {
+            item.flatDamage           = Pick(qi, 5, 10, 17, 28);
+            item.pctDamage            = Pick(qi, 0.04f, 0.08f, 0.13f, 0.20f);
+            item.pctCooldownReduction = Pick(qi, 0.02f, 0.04f, 0.07f, 0.12f);
+            item.pctCritDamage        = Pick(qi, 0.04f, 0.08f, 0.14f, 0.22f);
+        }
+
+        static int Pick(int qi, int a, int b, int c, int d) => qi switch { 1 => b, 2 => c, 3 => d, _ => a };
+        static float Pick(int qi, float a, float b, float c, float d) => qi switch { 1 => b, 2 => c, 3 => d, _ => a };
 
         public static string Id(ItemType type, ItemRarity rarity)
             => $"{Prefix}{type}_{rarity}".ToLowerInvariant();

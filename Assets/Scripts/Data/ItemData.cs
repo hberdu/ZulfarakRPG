@@ -32,6 +32,23 @@ namespace ZulfarakRPG
         public float bonusSpeed;
         public float bonusHealPower;
 
+        // ── Extended combat stats ────────────────────────────────────────────
+        // Flat stats.
+        public int flatDamage;        // weapons: added directly to the character's attack
+        public int armor;             // defense pieces: raises Defesa AND feeds Resist. Física
+        public float bonusMoveSpeed;  // boots: world movement speed
+
+        // Percent stats (stored as fractions, e.g. 0.15f = +15%). Summed across equipped
+        // gear by Inventory.RecalculateStats and applied to the live character.
+        public float pctDamage;             // + % damage (multiplies attack)
+        public float pctCritChance;         // + % critical chance
+        public float pctCritDamage;         // + % critical damage
+        public float pctAttackSpeed;        // + % attack speed
+        public float pctLifeRegen;          // + % of max HP regenerated per second
+        public float pctPhysicalResist;     // + % physical resistance
+        public float pctMagicResist;        // + % magic resistance
+        public float pctCooldownReduction;  // + % skill cooldown reduction
+
         // Class restrictions (empty = all classes can use)
         public ClassType[] allowedClasses;
 
@@ -57,6 +74,29 @@ namespace ZulfarakRPG
             ItemRarity.Legendary => new Color(1.00f, 0.80f, 0.16f),  // dourado
             _ => Color.white
         };
+
+        // Human-readable list of this item's non-zero stats (label, value), in a fixed
+        // priority order — consumed by the inventory hover tooltip (TaskbarHero style).
+        public System.Collections.Generic.List<(string label, string value)> StatLines()
+        {
+            var lines = new System.Collections.Generic.List<(string, string)>(10);
+            if (flatDamage > 0)          lines.Add(("Dano",              "+" + flatDamage));
+            if (armor > 0)               lines.Add(("Armadura",          "+" + armor));
+            if (bonusHp > 0)             lines.Add(("Vida",              "+" + bonusHp));
+            if (bonusDefense > 0)        lines.Add(("Defesa",            "+" + bonusDefense));
+            if (bonusMoveSpeed > 0f)     lines.Add(("Vel. Movimento",    "+" + bonusMoveSpeed.ToString("0.00")));
+            if (pctDamage > 0f)          lines.Add(("Dano",              Pct(pctDamage)));
+            if (pctCritChance > 0f)      lines.Add(("Chance de Critico", Pct(pctCritChance)));
+            if (pctCritDamage > 0f)      lines.Add(("Dano Critico",      Pct(pctCritDamage)));
+            if (pctAttackSpeed > 0f)     lines.Add(("Vel. de Ataque",    Pct(pctAttackSpeed)));
+            if (pctLifeRegen > 0f)       lines.Add(("Regen. de Vida",    Pct(pctLifeRegen) + "/s"));
+            if (pctPhysicalResist > 0f)  lines.Add(("Resist. Fisica",    Pct(pctPhysicalResist)));
+            if (pctMagicResist > 0f)     lines.Add(("Resist. Magica",    Pct(pctMagicResist)));
+            if (pctCooldownReduction > 0f) lines.Add(("Red. de Recarga",  Pct(pctCooldownReduction)));
+            return lines;
+        }
+
+        static string Pct(float fraction) => "+" + Mathf.RoundToInt(fraction * 100f) + "%";
 
         // Short Portuguese quality label for the inventory tags.
         public static string QualityLabel(ItemRarity r) => r switch

@@ -133,7 +133,17 @@ namespace ZulfarakRPG
             var col = GetComponent<BoxCollider2D>();
             if (col != null) { col.size = new Vector2(0.15f, 0.2f); col.offset = new Vector2(0f, 0.5f); }
             _hp = maxHealth;
+
+            // Snapshot the authored combat stats so equipment modifiers (which are additive
+            // fractions) always compose against a stable baseline instead of compounding.
+            _baseCritChance    = critChance;
+            _baseCritMultiplier = critMultiplier;
+            _baseAttackSpeed   = attackSpeed;
+            _baseMoveSpeed     = moveSpeed;
         }
+
+        // Authored bases for stats that equipment modifies multiplicatively/additively.
+        float _baseCritChance, _baseCritMultiplier, _baseAttackSpeed, _baseMoveSpeed;
 
         void Start()
         {
@@ -203,6 +213,20 @@ namespace ZulfarakRPG
             if (data.attack > 0) attackDamage = data.attack;
 
             _hp = Mathf.Clamp(data.hp, 0f, maxHealth);
+            ApplyEquipmentModifiers(data);
+        }
+
+        // Folds the equipment-derived combat modifiers (crit, attack speed, movement speed)
+        // into the live combat fields, always composing against the authored baselines so
+        // equipping/unequipping is fully reversible. Called every frame so gear changes made
+        // while playing take effect immediately.
+        void ApplyEquipmentModifiers(PlayerData data)
+        {
+            if (data == null) return;
+            critChance     = Mathf.Clamp01(_baseCritChance + data.critChanceBonus);
+            critMultiplier = _baseCritMultiplier + data.critDamageBonus;
+            attackSpeed    = _baseAttackSpeed * (1f + Mathf.Max(-0.9f, data.attackSpeedBonus));
+            moveSpeed      = Mathf.Max(0.1f, _baseMoveSpeed + data.moveSpeedBonus);
         }
 
         void SyncPlayerDataHealthFromRuntime()
@@ -322,6 +346,10 @@ namespace ZulfarakRPG
         {
             var data = PlayerManager.Instance != null ? PlayerManager.Instance.Data : null;
             if (data == null) return;
+
+            // Keep the equipment-derived combat fields (crit / attack & move speed) live so
+            // gear equipped mid-play takes effect right away.
+            ApplyEquipmentModifiers(data);
 
             if (data.attack > 0 && Mathf.Abs(attackDamage - data.attack) > 0.001f)
             {
@@ -681,9 +709,19 @@ namespace ZulfarakRPG
         public SkeletonEnemy NearestEnemy(float range) => FindNearest(range);
 
         // ── Combat ─────────────────────────────────────────────────────
-        public void TakeDamage(float dmg)
+        public void TakeDamage(float dmg, bool isMagic = false)
         {
             if (_phase == Phase.Dead) return;
+
+            // Equipped gear reduces incoming damage by the matching resistance (physical for
+            // melee, magic for spells). Resistances are capped in Inventory.RecalculateStats.
+            var data = PlayerManager.Instance != null ? PlayerManager.Instance.Data : null;
+            if (data != null)
+            {
+                float resist = Mathf.Clamp(isMagic ? data.magicResistPct : data.physicalResistPct, 0f, 0.9f);
+                dmg *= (1f - resist);
+            }
+
             // Red popup — damage received by the player.
             DamagePopup.Spawn(transform, dmg, new Color(1f, 0.25f, 0.25f, 1f));
             HurtFlash.Flash(_sr);

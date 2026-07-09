@@ -34,11 +34,12 @@ namespace ZulfarakRPG
             Active.Clear();
             if (_player == null || SkillManager.Instance == null) return;
 
+            float cdr = Mathf.Clamp(PlayerManager.Instance?.Data?.cooldownReductionPct ?? 0f, 0f, 0.9f);
             foreach (var (def, level) in SkillManager.Instance.Equipped())
             {
                 if (!_cd.TryGetValue(def.id, out var t)) { t = 0f; _cd[def.id] = 0f; }
                 if (InDungeon) { t = Mathf.Max(0f, t - Time.deltaTime); _cd[def.id] = t; }
-                Active.Add(new ActiveSkill { def = def, level = level, remaining = t, total = def.CooldownAt(level) });
+                Active.Add(new ActiveSkill { def = def, level = level, remaining = t, total = def.CooldownAt(level) * (1f - cdr) });
             }
         }
 
@@ -55,7 +56,10 @@ namespace ZulfarakRPG
                 if (t > 0f) continue;                  // still on cooldown
                 if (TryCast(def, level))               // handles heal-needed / target checks
                 {
-                    _cd[def.id] = def.CooldownAt(level);
+                    // Equipped gear's cooldown reduction shortens the recharge (capped in
+                    // Inventory.RecalculateStats).
+                    float cdr = PlayerManager.Instance?.Data?.cooldownReductionPct ?? 0f;
+                    _cd[def.id] = def.CooldownAt(level) * (1f - Mathf.Clamp(cdr, 0f, 0.9f));
                     return true;                       // one skill per tick
                 }
             }

@@ -209,11 +209,25 @@ namespace ZulfarakRPG
             // Reset to base stats (scaled by level)
             float lvlScale = 1f + (player.level - 1) * 0.08f;
             player.maxHp   = Mathf.RoundToInt(cls.baseHp      * (sub?.hpMultiplier ?? 1f)  * lvlScale);
-            player.attack  = Mathf.RoundToInt(cls.baseAttack  * (sub?.attackMultiplier ?? 1f) * lvlScale);
+            int baseAttack = Mathf.RoundToInt(cls.baseAttack  * (sub?.attackMultiplier ?? 1f) * lvlScale);
             player.defense = Mathf.RoundToInt(cls.baseDefense * (sub?.defenseMultiplier ?? 1f) * lvlScale);
             player.speed   = cls.baseSpeed * (sub?.speedMultiplier ?? 1f);
+            player.healPower = cls.baseHealPower * (sub?.healPowerMultiplier ?? 1f);
+
+            // Reset the equipment-derived combat modifiers before re-summing them.
+            player.armor                = 0;
+            player.critChanceBonus      = 0f;
+            player.critDamageBonus      = 0f;
+            player.attackSpeedBonus     = 0f;
+            player.lifeRegenPctBonus    = 0f;
+            player.physicalResistPct    = 0f;
+            player.magicResistPct       = 0f;
+            player.cooldownReductionPct = 0f;
+            player.moveSpeedBonus       = 0f;
 
             // Add equipment bonuses
+            int   flatAttack = 0;   // bonusAttack + weapon flatDamage
+            float dmgPct     = 0f;  // % damage, applied multiplicatively at the end
             foreach (ItemType slot in Enum.GetValues(typeof(ItemType)))
             {
                 if (slot == ItemType.Consumable) continue;
@@ -221,12 +235,33 @@ namespace ZulfarakRPG
                 if (string.IsNullOrEmpty(id)) continue;
                 var item = ItemDatabase.Instance.Get(id);
                 if (item == null) continue;
+
                 player.maxHp    += item.bonusHp;
-                player.attack   += item.bonusAttack;
-                player.defense  += item.bonusDefense;
+                flatAttack      += item.bonusAttack + item.flatDamage;
+                player.defense  += item.bonusDefense + item.armor;
                 player.speed    += item.bonusSpeed;
                 player.healPower += item.bonusHealPower;
+
+                player.armor                += item.armor;
+                dmgPct                      += item.pctDamage;
+                player.critChanceBonus      += item.pctCritChance;
+                player.critDamageBonus      += item.pctCritDamage;
+                player.attackSpeedBonus     += item.pctAttackSpeed;
+                player.lifeRegenPctBonus    += item.pctLifeRegen;
+                player.physicalResistPct    += item.pctPhysicalResist;
+                player.magicResistPct       += item.pctMagicResist;
+                player.cooldownReductionPct += item.pctCooldownReduction;
+                player.moveSpeedBonus       += item.bonusMoveSpeed;
             }
+
+            // Attack = (base + flat) boosted by % damage; resistances/CDR are capped so
+            // stacked gear can never make the hero fully immune or zero-cooldown.
+            player.attack = Mathf.RoundToInt((baseAttack + flatAttack) * (1f + dmgPct));
+            player.physicalResistPct    = Mathf.Clamp(player.physicalResistPct, 0f, 0.75f);
+            player.magicResistPct       = Mathf.Clamp(player.magicResistPct, 0f, 0.75f);
+            player.cooldownReductionPct = Mathf.Clamp(player.cooldownReductionPct, 0f, 0.60f);
+            // Percent life-regen resolves against the final max HP and adds to flat heal.
+            player.healPower += player.lifeRegenPctBonus * player.maxHp;
 
             player.hp = Mathf.Min(player.hp, player.maxHp);
             PlayerManager.Instance.Save();

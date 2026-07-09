@@ -35,6 +35,20 @@ namespace ZulfarakRPG
         public float speed;
         public float healPower;
 
+        // ── Equipment-derived combat modifiers ───────────────────────────────
+        // Recomputed by Inventory.RecalculateStats from the currently equipped gear and
+        // read by PlayerController2D / SkillAutoCaster so equipping actually changes how
+        // the hero fights. All percent values are fractions (0.15f = +15%).
+        public int armor;                   // total armor (also folded into physicalResistPct)
+        public float critChanceBonus;       // added to base crit chance
+        public float critDamageBonus;       // added to base crit multiplier
+        public float attackSpeedBonus;      // multiplies base attack speed
+        public float lifeRegenPctBonus;     // % of max HP regenerated per second
+        public float physicalResistPct;     // incoming physical damage reduction
+        public float magicResistPct;        // incoming magic damage reduction
+        public float cooldownReductionPct;  // skill cooldown reduction
+        public float moveSpeedBonus;        // added to world movement speed
+
         // Guild
         public string guildId;
         public bool isGuildLeader;

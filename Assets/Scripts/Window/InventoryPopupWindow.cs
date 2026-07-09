@@ -30,8 +30,8 @@ namespace ZulfarakRPG
         const int StatsH    = 44;              // 2 rows × 3 stats compact strip
         const int SectionHeaderH = 18;         // "Equipamento" / "Sacola" bar
         const int FooterH   = 16;
-        const int DollSlot  = 44;              // equipment slot cell (paper-doll)
-        const int BagCell   = 46;              // bag icon cell
+        const int DollSlot  = 34;              // equipment slot cell (paper-doll) — smaller icons
+        const int BagCell   = 38;              // bag icon cell — smaller icons
         const int BagGap    = 4;
 
         static int BodyTop     => HeaderH + SummaryH + StatsH;
@@ -76,6 +76,15 @@ namespace ZulfarakRPG
         static int _bagScrollY;
         static float _nextRefreshAt;
 
+        // Sort mode for the bag: false = by id (stable), true = by quality (best first).
+        static bool _sortByQuality;
+
+        // Hover state for the item tooltip. Kind: 0 = none, 1 = bag cell, 2 = doll slot.
+        static int _hoverKind;
+        static int _hoverIndex = -1;
+        static int _hoverX, _hoverY;
+        static bool _mouseTracking;
+
         public static bool IsOpen => _hwnd != IntPtr.Zero;
 
         public static void Toggle()
@@ -87,6 +96,7 @@ namespace ZulfarakRPG
         public static void Show()
         {
             TopPopups.CloseAllExcept(TopPopups.Kind.Inventory);
+            _hoverKind = 0; _hoverIndex = -1; _mouseTracking = false;
             // Seed the bag with one item of every quality per slot so the equipment
             // visuals can be tested (idempotent — skips items already held).
             TestItems.AddAllToBag(Inventory.Instance);
@@ -188,7 +198,6 @@ namespace ZulfarakRPG
             AddEquipRow("Capa",     ItemType.Cape,   eq.capeId);
 
             var items = inv.Items;
-            items.Sort((a, b) => string.Compare(a.itemId, b.itemId, StringComparison.Ordinal));
             var db = ItemDatabase.Instance;
             foreach (var it in items)
             {
@@ -203,6 +212,17 @@ namespace ZulfarakRPG
                     iconPath = data != null ? data.iconPath : null
                 });
             }
+
+            // Sort by quality (best first) when the "Qualid." toggle is on; otherwise a
+            // stable alphabetical order by id keeps cells from jumping around.
+            if (_sortByQuality)
+                _bagRows.Sort((a, b) =>
+                {
+                    int c = QIndex(b.rarity).CompareTo(QIndex(a.rarity));   // Lendario → Comum
+                    return c != 0 ? c : string.Compare(a.itemName, b.itemName, StringComparison.Ordinal);
+                });
+            else
+                _bagRows.Sort((a, b) => string.Compare(a.itemId, b.itemId, StringComparison.Ordinal));
 
             _bagScrollY = Mathf.Clamp(_bagScrollY, 0, MaxBagScroll);
         }
@@ -408,6 +428,15 @@ namespace ZulfarakRPG
             _ => ""
         };
 
+        // "Qualid." sort toggle, tucked into the right end of the Sacola pane header.
+        static void SortButtonRect(out int x, out int y, out int w, out int h)
+        {
+            w = 54;
+            h = SectionHeaderH - 6;
+            x = PopupWidth - 8 - w;
+            y = BodyTop + 4;
+        }
+
         static IntPtr WndProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
         {
             switch (msg)
@@ -430,12 +459,70 @@ namespace ZulfarakRPG
                     InvalidateRect(hWnd, IntPtr.Zero, true);
                     return IntPtr.Zero;
                 }
+                case WM_MOUSEMOVE:
+                {
+                    int mx = (short)(lParam.ToInt64() & 0xFFFF);
+                    int my = (short)((lParam.ToInt64() >> 16) & 0xFFFF);
+                    _hoverX = mx; _hoverY = my;
+
+                    // Ask Windows to post WM_MOUSELEAVE once the cursor exits, so the tooltip
+                    // clears when the mouse drops back down to the game window.
+                    if (!_mouseTracking)
+                    {
+                        var tme = new TRACKMOUSEEVENT
+                        {
+                            cbSize = (uint)Marshal.SizeOf(typeof(TRACKMOUSEEVENT)),
+                            dwFlags = TME_LEAVE, hwndTrack = hWnd, dwHoverTime = 0
+                        };
+                        TrackMouseEvent(ref tme);
+                        _mouseTracking = true;
+                    }
+
+                    int prevKind = _hoverKind, prevIndex = _hoverIndex;
+                    _hoverKind = 0; _hoverIndex = -1;
+
+                    // Prefer an equipped doll slot, then a visible bag cell.
+                    foreach (var s in _dollSlots)
+                    {
+                        if (mx < s.x || mx > s.x + s.w || my < s.y || my > s.y + s.h) continue;
+                        if (s.equipIndex >= 0 && s.equipIndex < _equipRows.Count && _equipRows[s.equipIndex].has)
+                        { _hoverKind = 2; _hoverIndex = s.equipIndex; }
+                        break;
+                    }
+                    if (_hoverKind == 0)
+                        foreach (var c in _bagCells)
+                        {
+                            if (c.y + c.h <= GridTop || c.y >= GridBot) continue;
+                            if (mx < c.x || mx > c.x + c.w || my < c.y || my > c.y + c.h) continue;
+                            _hoverKind = 1; _hoverIndex = c.bagIndex; break;
+                        }
+
+                    if (_hoverKind != prevKind || _hoverIndex != prevIndex)
+                        InvalidateRect(hWnd, IntPtr.Zero, false);
+                    return IntPtr.Zero;
+                }
+                case WM_MOUSELEAVE:
+                {
+                    _mouseTracking = false;
+                    if (_hoverKind != 0) { _hoverKind = 0; _hoverIndex = -1; InvalidateRect(hWnd, IntPtr.Zero, false); }
+                    return IntPtr.Zero;
+                }
                 case WM_LBUTTONDOWN:
                 {
                     int mx = (short)(lParam.ToInt64() & 0xFFFF);
                     int my = (short)((lParam.ToInt64() >> 16) & 0xFFFF);
                     // Close box (top-right of header)?
                     if (my < HeaderH && mx >= PopupWidth - 26) { Hide(); return IntPtr.Zero; }
+
+                    // Sort-by-quality toggle?
+                    SortButtonRect(out int sbx, out int sby, out int sbw, out int sbh);
+                    if (mx >= sbx && mx <= sbx + sbw && my >= sby && my <= sby + sbh)
+                    {
+                        _sortByQuality = !_sortByQuality;
+                        RebuildRows();
+                        InvalidateRect(hWnd, IntPtr.Zero, true);
+                        return IntPtr.Zero;
+                    }
 
                     RebuildRows();
                     BuildDoll();
@@ -552,6 +639,15 @@ namespace ZulfarakRPG
             DrawPaneHeader(hdc, 8, LeftPaneW - 8, bodyTop, "Equipamento");
             DrawPaneHeader(hdc, RightPaneX + 4, w - 8, bodyTop, "Sacola");
 
+            // Sort-by-quality toggle at the right of the Sacola header (gold when active).
+            SortButtonRect(out int sbx, out int sby, out int sbw, out int sbh);
+            NativeFrameImage.PixelBevel(hdc, sbx, sby, sbw, sbh,
+                _brushOutline, _brushBevHi, _brushBevLo, _sortByQuality ? _brushTagUse : _brushTag);
+            SelectObject(hdc, _fontTag);
+            SetTextColor(hdc, _sortByQuality ? Bgr(1f, 0.96f, 0.62f) : Bgr(0.82f, 0.82f, 0.88f));
+            var sbRc = new RECT { Left = sbx, Top = sby, Right = sbx + sbw, Bottom = sby + sbh };
+            DrawTextW(hdc, "Qualid.", -1, ref sbRc, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+
             // Hero in the centre of the doll (live current frame, aspect-fit) — as large
             // as the space between the slot columns allows.
             int heroL = 10 + DollSlot + 4;
@@ -630,7 +726,89 @@ namespace ZulfarakRPG
             DrawTextW(hdc, "Clique na sacola p/ equipar · clique no slot p/ retirar · roda rola · ESC fecha", -1, ref hintRc,
                 DT_CENTER | DT_BOTTOM | DT_SINGLELINE | DT_NOPREFIX);
             SelectObject(hdc, prev);
+
+            // Hover tooltip drawn last so it floats above everything (no clip active here).
+            DrawTooltip(hdc, w, h);
         }
+
+        // Resolves the ItemData for whatever the cursor is hovering (bag cell or equipped
+        // doll slot), or null when nothing hoverable is under the cursor.
+        static ItemData HoveredItem()
+        {
+            string id = null;
+            if (_hoverKind == 1 && _hoverIndex >= 0 && _hoverIndex < _bagRows.Count)
+                id = _bagRows[_hoverIndex].itemId;
+            else if (_hoverKind == 2 && _hoverIndex >= 0 && _hoverIndex < _equipRows.Count && _equipRows[_hoverIndex].has)
+                id = _equipRows[_hoverIndex].itemId;
+            if (string.IsNullOrEmpty(id)) return null;
+            return ItemDatabase.Instance != null ? ItemDatabase.Instance.Get(id) : TestItems.Get(id);
+        }
+
+        // TaskbarHero-style floating card: item icon + name (quality-tinted) + type/quality
+        // line, then one row per non-zero attribute (label left, value right).
+        static void DrawTooltip(IntPtr hdc, int w, int h)
+        {
+            var item = HoveredItem();
+            if (item == null) return;
+
+            var lines = item.StatLines();
+            const int pad = 8, iconBox = 40, headH = 46, lineH = 15;
+            int tw = 182;
+            int th = pad + headH + (lines.Count > 0 ? lines.Count * lineH + 6 : 0) + pad;
+            int tx = Mathf.Clamp(_hoverX + 16, 4, w - tw - 4);
+            int ty = Mathf.Clamp(_hoverY + 16, HeaderH, h - th - 4);
+
+            NativeFrameImage.PixelBevel(hdc, tx, ty, tw, th, _brushOutline, _brushBevHi, _brushBevLo, _brushVoid);
+
+            // Icon.
+            int ix = tx + pad, iy = ty + pad;
+            NativeFrameImage.PixelBevel(hdc, ix, iy, iconBox, iconBox, _brushOutline, _brushBevLo, _brushBevLo, _brushSlot);
+            if (!string.IsNullOrEmpty(item.iconPath))
+            {
+                var img = IconLibrary.Gdi(item.iconPath);
+                if (img != null && img.Ready) img.BlitAspect(hdc, ix + 3, iy + 3, iconBox - 6, iconBox - 6);
+            }
+            DrawQualityBorder(hdc, ix, iy, iconBox, iconBox, item.rarity);
+
+            // Name (quality colour) + type · quality line, to the right of the icon.
+            int tex = ix + iconBox + 8;
+            SelectObject(hdc, _fontSection);
+            SetTextColor(hdc, BgrOf(ItemData.QualityColor(item.rarity)));
+            var nameRc = new RECT { Left = tex, Top = ty + pad, Right = tx + tw - pad, Bottom = ty + pad + 28 };
+            DrawTextW(hdc, item.itemName, -1, ref nameRc, DT_LEFT | DT_TOP | DT_WORDBREAK | DT_NOPREFIX);
+
+            SelectObject(hdc, _fontHint);
+            SetTextColor(hdc, Bgr(0.72f, 0.70f, 0.60f));
+            var typeRc = new RECT { Left = tex, Top = ty + pad + 28, Right = tx + tw - pad, Bottom = ty + pad + iconBox + 2 };
+            DrawTextW(hdc, $"{TypeLabel(item.itemType)} · {ItemData.QualityLabel(item.rarity)}", -1, ref typeRc,
+                DT_LEFT | DT_BOTTOM | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+
+            if (lines.Count == 0) return;
+
+            // Divider under the header, then the attribute rows.
+            var div = new RECT { Left = tx + pad, Top = ty + pad + headH - 4, Right = tx + tw - pad, Bottom = ty + pad + headH - 3 };
+            FillRect(hdc, ref div, _brushDivider);
+
+            SelectObject(hdc, _fontSummary);
+            int ry = ty + pad + headH + 2;
+            for (int i = 0; i < lines.Count; i++)
+            {
+                var lblRc = new RECT { Left = tx + pad, Top = ry, Right = tx + tw - pad, Bottom = ry + lineH };
+                SetTextColor(hdc, Bgr(0.80f, 0.78f, 0.66f));
+                DrawTextW(hdc, lines[i].label, -1, ref lblRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+                var valRc = new RECT { Left = tx + pad, Top = ry, Right = tx + tw - pad, Bottom = ry + lineH };
+                SetTextColor(hdc, Bgr(0.55f, 1f, 0.62f));
+                DrawTextW(hdc, lines[i].value, -1, ref valRc, DT_RIGHT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+                ry += lineH;
+            }
+        }
+
+        static string TypeLabel(ItemType t) => t switch
+        {
+            ItemType.Weapon => "Arma", ItemType.Helmet => "Capacete", ItemType.Chest => "Peito",
+            ItemType.Gloves => "Maos", ItemType.Boots  => "Pes",      ItemType.Cape  => "Capa",
+            ItemType.Consumable => "Consumivel", _ => "Item"
+        };
 
         // Compact identity line to the right of the dragon emblem: name, class, level.
         static void DrawSummaryText(IntPtr hdc, int x, int y, int w, int h)
@@ -754,6 +932,8 @@ namespace ZulfarakRPG
         [StructLayout(LayoutKind.Sequential)]
         struct MSG { public IntPtr hwnd; public uint message; public IntPtr wParam; public IntPtr lParam; public uint time; public int pt_x; public int pt_y; }
         [StructLayout(LayoutKind.Sequential)]
+        struct TRACKMOUSEEVENT { public uint cbSize; public uint dwFlags; public IntPtr hwndTrack; public uint dwHoverTime; }
+        [StructLayout(LayoutKind.Sequential)]
         struct RECT { public int Left, Top, Right, Bottom; }
         [StructLayout(LayoutKind.Sequential)]
         struct PAINTSTRUCT { public IntPtr hdc; public bool fErase; public RECT rcPaint; public bool fRestore; public bool fIncUpdate; [MarshalAs(UnmanagedType.ByValArray, SizeConst = 32)] public byte[] rgbReserved; }
@@ -771,10 +951,13 @@ namespace ZulfarakRPG
         const int WM_PAINT = 0x000F;
         const int WM_KEYDOWN = 0x0100;
         const int WM_LBUTTONDOWN = 0x0201;
+        const int WM_MOUSEMOVE = 0x0200;
+        const int WM_MOUSELEAVE = 0x02A3;
         const int WM_MOUSEWHEEL = 0x020A;
         const int WM_DESTROY = 0x0002;
         const int WM_CLOSE = 0x0010;
         const int WM_ERASEBKGND = 0x0014;
+        const uint TME_LEAVE = 0x00000002;
         const int WS_POPUP = unchecked((int)0x80000000);
         const int WS_VISIBLE = 0x10000000;
         const int WS_EX_TOPMOST = 0x00000008;
@@ -790,6 +973,7 @@ namespace ZulfarakRPG
         const uint DT_VCENTER = 0x00000004;
         const uint DT_BOTTOM = 0x00000008;
         const uint DT_SINGLELINE = 0x00000020;
+        const uint DT_WORDBREAK = 0x00000010;
         const uint DT_NOPREFIX = 0x00000800;
         const uint DT_END_ELLIPSIS = 0x00008000;
         const uint CS_OWNDC = 0x0020;
@@ -821,6 +1005,7 @@ namespace ZulfarakRPG
         [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "DrawTextW")] static extern int DrawTextW(IntPtr hdc, string s, int n, ref RECT rc, uint fmt);
         [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr hWnd);
         [DllImport("user32.dll", EntryPoint = "LoadCursorW")] static extern IntPtr LoadCursorW(IntPtr hInst, IntPtr name);
+        [DllImport("user32.dll")] static extern bool TrackMouseEvent(ref TRACKMOUSEEVENT lpEventTrack);
 
         [DllImport("gdi32.dll")] static extern IntPtr CreateSolidBrush(uint color);
         [DllImport("gdi32.dll")] static extern IntPtr SelectObject(IntPtr hdc, IntPtr h);

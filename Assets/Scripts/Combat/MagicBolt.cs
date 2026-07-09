@@ -69,7 +69,7 @@ namespace ZulfarakRPG
                 if (_targetIsLocal)
                 {
                     var player = _targetTf.GetComponent<PlayerController2D>();
-                    if (player != null) player.TakeDamage(damage);
+                    if (player != null) player.TakeDamage(damage, isMagic: true);
                 }
                 SpawnImpact(targetPos);
                 Destroy(gameObject);
