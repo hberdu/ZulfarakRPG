@@ -172,18 +172,24 @@ namespace ZulfarakRPG
         {
             int qi = QualityIndex(rarity);   // 0..3
             // Armor sheet is 16 columns (index = row*16 + col): row0 helmets, row2 boots,
-            // row3 chest, row4 gloves(X pairs), row1 hoods/capes.
+            // row3 chest, row1 hoods/capes. The armor pack has NO gloves, so gauntlets come
+            // from the "400+ Accessories" pack (glove tiles picked to match each quality's
+            // colour: marrom / azul / roxo / dourado).
             switch (type)
             {
                 case ItemType.Weapon: return IconPaths.Weapon(1 + qi);   // weapons 1..4
                 case ItemType.Helmet: return IconPaths.Armor(0  + qi);   // helmets
                 case ItemType.Chest:  return IconPaths.Armor(48 + qi);   // chest
-                case ItemType.Gloves: return IconPaths.Armor(68 + qi);   // gauntlets
+                case ItemType.Gloves: return IconPaths.Accessory(GloveTiles[qi]);   // gauntlets
                 case ItemType.Boots:  return IconPaths.Armor(32 + qi);   // boots
                 case ItemType.Cape:   return IconPaths.Armor(24 + qi);   // hoods/cloaks
                 default: return null;
             }
         }
+
+        // Glove tiles from the Accessories pack, one per quality (Comum/Raro/Mito/Lendario):
+        // brown, blue, purple, gold — matching the quality colours.
+        static readonly int[] GloveTiles = { 296, 299, 293, 301 };
 
         // Resolves a test item by id (or null). ItemDatabase.Get falls back to this.
         public static ItemData Get(string id)

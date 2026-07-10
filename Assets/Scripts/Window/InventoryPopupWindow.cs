@@ -325,12 +325,13 @@ namespace ZulfarakRPG
             // shoulder, near-black panel base, ruby corner studs, alternating row bands.
             if (_brushVoid    == IntPtr.Zero) _brushVoid    = CreateSolidBrush(Bgr(0.02f, 0.02f, 0.03f));
             if (_brushPanel   == IntPtr.Zero) _brushPanel   = CreateSolidBrush(Bgr(0.06f, 0.05f, 0.05f));
-            if (_brushBorder  == IntPtr.Zero) _brushBorder  = CreateSolidBrush(Bgr(0.52f, 0.40f, 0.15f));
+            // Dark-gray trim (was tarnished gold) — outline stays pitch black.
+            if (_brushBorder  == IntPtr.Zero) _brushBorder  = CreateSolidBrush(Bgr(0.30f, 0.30f, 0.34f));
             if (_brushOutline == IntPtr.Zero) _brushOutline = CreateSolidBrush(Bgr(0.00f, 0.00f, 0.00f));
-            if (_brushBevHi   == IntPtr.Zero) _brushBevHi   = CreateSolidBrush(Bgr(0.95f, 0.75f, 0.30f));
-            if (_brushBevLo   == IntPtr.Zero) _brushBevLo   = CreateSolidBrush(Bgr(0.35f, 0.24f, 0.08f));
+            if (_brushBevHi   == IntPtr.Zero) _brushBevHi   = CreateSolidBrush(Bgr(0.42f, 0.42f, 0.46f));
+            if (_brushBevLo   == IntPtr.Zero) _brushBevLo   = CreateSolidBrush(Bgr(0.15f, 0.15f, 0.17f));
             if (_brushRuby    == IntPtr.Zero) _brushRuby    = CreateSolidBrush(Bgr(0.85f, 0.15f, 0.15f));
-            if (_brushDivider == IntPtr.Zero) _brushDivider = CreateSolidBrush(Bgr(0.20f, 0.15f, 0.06f));
+            if (_brushDivider == IntPtr.Zero) _brushDivider = CreateSolidBrush(Bgr(0.16f, 0.16f, 0.18f));
             if (_brushRowA    == IntPtr.Zero) _brushRowA    = CreateSolidBrush(Bgr(0.10f, 0.08f, 0.08f));
             if (_brushRowB    == IntPtr.Zero) _brushRowB    = CreateSolidBrush(Bgr(0.14f, 0.11f, 0.10f));
             if (_brushTag     == IntPtr.Zero) _brushTag     = CreateSolidBrush(Bgr(0.32f, 0.11f, 0.10f));

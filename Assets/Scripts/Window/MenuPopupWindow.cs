@@ -143,10 +143,11 @@ namespace ZulfarakRPG
             // Dark dragon palette: near-black window base, tarnished-gold trim with a
             // classic pixel-art bevel (dark outline + light/dark gold shoulders + panel).
             if (_brushBg      == IntPtr.Zero) _brushBg      = CreateSolidBrush(Bgr(0.03f, 0.02f, 0.03f));
-            if (_brushBorder  == IntPtr.Zero) _brushBorder  = CreateSolidBrush(Bgr(0.52f, 0.40f, 0.15f));
+            // Dark-gray trim (was tarnished gold) — outline stays pitch black.
+            if (_brushBorder  == IntPtr.Zero) _brushBorder  = CreateSolidBrush(Bgr(0.30f, 0.30f, 0.34f));
             if (_brushOutline == IntPtr.Zero) _brushOutline = CreateSolidBrush(Bgr(0.00f, 0.00f, 0.00f));
-            if (_brushBevHi   == IntPtr.Zero) _brushBevHi   = CreateSolidBrush(Bgr(0.95f, 0.75f, 0.30f));
-            if (_brushBevLo   == IntPtr.Zero) _brushBevLo   = CreateSolidBrush(Bgr(0.35f, 0.24f, 0.08f));
+            if (_brushBevHi   == IntPtr.Zero) _brushBevHi   = CreateSolidBrush(Bgr(0.42f, 0.42f, 0.46f));
+            if (_brushBevLo   == IntPtr.Zero) _brushBevLo   = CreateSolidBrush(Bgr(0.15f, 0.15f, 0.17f));
             if (_brushRuby    == IntPtr.Zero) _brushRuby    = CreateSolidBrush(Bgr(0.85f, 0.15f, 0.15f));
             if (_fontTitle    == IntPtr.Zero) _fontTitle    = MakeFont(20, FW_BOLD);
             if (_fontBody     == IntPtr.Zero) _fontBody     = MakeFont(14, FW_NORMAL);
@@ -390,7 +391,9 @@ namespace ZulfarakRPG
         const int  VK_ESCAPE      = 0x1B;
         const uint DT_TOP         = 0x00000000;
         const uint DT_LEFT        = 0x00000000;
+        const uint DT_CENTER      = 0x00000001;
         const uint DT_RIGHT       = 0x00000002;
+        const uint DT_VCENTER     = 0x00000004;
         const uint DT_BOTTOM      = 0x00000008;
         const uint DT_WORDBREAK   = 0x00000010;
         const uint DT_SINGLELINE  = 0x00000020;

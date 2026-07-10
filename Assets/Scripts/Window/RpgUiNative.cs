@@ -18,9 +18,17 @@ namespace ZulfarakRPG
 
         static NativeFrameImage Atlas => NativeFrameImage.Get(AtlasRes);
 
-        public static bool Ready
+        // Master switch for the atlas reskin. Disabled per the user's request — they
+        // preferred the classic dark-bevel menus (now with a dark-gray trim instead of
+        // gold). Flip to true to re-enable the RPG UI Pack skin across every native popup.
+        public static bool Enabled = false;
+
+        public static bool Ready => Enabled && AtlasReady();
+
+        static bool AtlasReady()
         {
-            get { var a = Atlas; return a != null && a.Ready; }
+            var a = Atlas;
+            return a != null && a.Ready;
         }
 
         // Dark speckled bulletin board with a wood trim — the outer "frame" of a menu.

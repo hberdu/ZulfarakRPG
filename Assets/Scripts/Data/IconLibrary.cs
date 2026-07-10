@@ -15,6 +15,7 @@ namespace ZulfarakRPG
 
         public static string WeaponsDir => Path.Combine(IconsRoot, "Weapons");
         public static string ArmorDir   => Path.Combine(IconsRoot, "Armor");
+        public static string AccessoryDir => Path.Combine(IconsRoot, "Accessories");
         public static string SkillsDir  => Path.Combine(IconsRoot, "Skills");
         public static string SkillFxDir => Path.Combine(IconsRoot, "SkillFx");
         // Pixel RPG UI Pack sheet (buttons, panels…).
@@ -24,6 +25,8 @@ namespace ZulfarakRPG
         public static string Weapon(int n) => Path.Combine(WeaponsDir, n + ".png");
         // Armor + skills packs use tileNNN.png (zero-padded to 3 digits).
         public static string Armor(int tile) => Path.Combine(ArmorDir, "tile" + tile.ToString("000") + ".png");
+        // Accessories pack (400+ Accessories) — gloves/gauntlets live here.
+        public static string Accessory(int tile) => Path.Combine(AccessoryDir, "tile" + tile.ToString("000") + ".png");
         public static string Skill(int tile) => Path.Combine(SkillsDir, "tile" + tile.ToString("000") + ".png");
         // PixelEffect skill animation sheets: Skill_Effect_01.png .. _10.png.
         public static string SkillFx(int n) => Path.Combine(SkillFxDir, "Skill_Effect_" + n.ToString("00") + ".png");
