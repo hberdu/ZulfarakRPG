@@ -225,6 +225,11 @@ namespace ZulfarakRPG
             return DefWindowProcW(hWnd, msg, wParam, lParam);
         }
 
+        // True when the RPG UI Pack atlas is available — swaps the dark bevel frame/header
+        // for the wood-trim board + ribbon skin (the interactive skill grid stays dark,
+        // sitting on the board, so its learned/equipped colour semantics stay readable).
+        static bool Rpg => RpgUiNative.Ready;
+
         static void Paint(IntPtr hdc)
         {
             BuildLayout();
@@ -233,17 +238,35 @@ namespace ZulfarakRPG
 
             var full = new RECT { Left = 0, Top = 0, Right = w, Bottom = h };
             FillRect(hdc, ref full, _brushPanel);
-            NativeFrameImage.PixelBevel(hdc, 0, 0, w, h, _brushOutline, _brushBevHi, _brushBevLo, _brushPanel);
-            NativeFrameImage.PixelCornerStuds(hdc, 0, 0, w, h, _brushRuby, inset: 5, size: 3);
+            if (Rpg)
+            {
+                RpgUiNative.DarkBoard(hdc, 0, 0, w, h);
+            }
+            else
+            {
+                NativeFrameImage.PixelBevel(hdc, 0, 0, w, h, _brushOutline, _brushBevHi, _brushBevLo, _brushPanel);
+                NativeFrameImage.PixelCornerStuds(hdc, 0, 0, w, h, _brushRuby, inset: 5, size: 3);
+            }
             SetBkMode(hdc, TRANSPARENT);
 
-            // Header
-            var headerBar = new RECT { Left = 3, Top = 3, Right = w - 3, Bottom = HeaderH };
-            FillRect(hdc, ref headerBar, _brushDivider);
-            SetTextColor(hdc, Bgr(1.00f, 0.82f, 0.32f));
+            // Header (wood ribbon title when skinned).
             var prev = SelectObject(hdc, _fontTitle);
-            var titleRc = new RECT { Left = 12, Top = 6, Right = w - 190, Bottom = HeaderH };
-            DrawTextW(hdc, "Arvore de Habilidades", -1, ref titleRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+            if (Rpg)
+            {
+                int rbW = Mathf.Min(w - 200, 230);
+                RpgUiNative.WoodRibbon(hdc, 6, 3, rbW, HeaderH - 2);
+                SetTextColor(hdc, RpgUiNative.InkTitle);
+                var t = new RECT { Left = 16, Top = 3, Right = rbW - 6, Bottom = HeaderH };
+                DrawTextW(hdc, "Arvore de Habilidades", -1, ref t, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+            }
+            else
+            {
+                var headerBar = new RECT { Left = 3, Top = 3, Right = w - 3, Bottom = HeaderH };
+                FillRect(hdc, ref headerBar, _brushDivider);
+                SetTextColor(hdc, Bgr(1.00f, 0.82f, 0.32f));
+                var titleRc = new RECT { Left = 12, Top = 6, Right = w - 190, Bottom = HeaderH };
+                DrawTextW(hdc, "Arvore de Habilidades", -1, ref titleRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+            }
 
             // Points available + equipped count (top-right, before the close box)
             SelectObject(hdc, _fontRow);
@@ -253,7 +276,8 @@ namespace ZulfarakRPG
             var ptsRc = new RECT { Left = w - 186, Top = 6, Right = w - 30, Bottom = HeaderH };
             DrawTextW(hdc, $"Pontos: {pts}   Equip: {eq}/{SkillManager.MaxEquipped}", -1, ref ptsRc, DT_RIGHT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
 
-            NativeFrameImage.PixelBevel(hdc, w - 26, 7, 20, HeaderH - 11, _brushOutline, _brushBevHi, _brushBevLo, _brushTag);
+            if (Rpg) RpgUiNative.DarkButton(hdc, w - 26, 7, 20, HeaderH - 11);
+            else NativeFrameImage.PixelBevel(hdc, w - 26, 7, 20, HeaderH - 11, _brushOutline, _brushBevHi, _brushBevLo, _brushTag);
             var closeRc = new RECT { Left = w - 26, Top = 7, Right = w - 6, Bottom = HeaderH - 4 };
             SetTextColor(hdc, Bgr(1f, 0.92f, 0.85f));
             DrawTextW(hdc, "X", -1, ref closeRc, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);

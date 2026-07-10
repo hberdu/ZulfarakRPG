@@ -19,8 +19,8 @@ namespace ZulfarakRPG
         public ItemType itemType;
         public ItemRarity rarity;
         public Sprite icon;
-        // Absolute path to the icon PNG in a downloaded pack (used by the native windows
-        // and the weapon-in-hand). Empty → fall back to a generated/placeholder look.
+        // Path to the icon PNG in a bundled pack (used by the native inventory/skill
+        // windows). Empty → fall back to a generated/placeholder look.
         public string iconPath;
         public int requiredLevel = 1;
         public int goldValue = 10;

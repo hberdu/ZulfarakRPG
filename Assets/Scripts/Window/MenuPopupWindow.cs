@@ -209,7 +209,11 @@ namespace ZulfarakRPG
             int w = _popupWidth;
             int h = PopupHeight;
             var full = new RECT { Left = 0, Top = 0, Right = w, Bottom = h };
-            FillRect(hdc, ref full, _brushBg);   // near-black base
+            FillRect(hdc, ref full, _brushBg);   // near-black base (shows in any atlas gaps)
+
+            // RPG UI Pack skin: dark wood-trim board outer frame + parchment content panel +
+            // a wood ribbon title. Falls back to the old pixel bevel if the atlas is missing.
+            if (RpgUiNative.Ready) { PaintRpg(hdc, w, h); return; }
 
             // Chunky pixel-art bevel across the whole window (outline + gold shoulders +
             // dark panel). This is the "menu frame" the dragon sits inside — no more
@@ -255,6 +259,40 @@ namespace ZulfarakRPG
             // Footer hint
             var hintRc = new RECT { Left = textLeft, Top = h - 22, Right = w - 12, Bottom = h - 6 };
             SetTextColor(hdc, Bgr(0.62f, 0.62f, 0.68f));
+            DrawTextW(hdc, "Clique ou ESC para fechar", -1, ref hintRc, DT_RIGHT | DT_BOTTOM | DT_SINGLELINE | DT_NOPREFIX);
+            SelectObject(hdc, prev);
+        }
+
+        // RPG UI Pack skin: wood-trim board frame, parchment body page, wood ribbon title.
+        static void PaintRpg(IntPtr hdc, int w, int h)
+        {
+            RpgUiNative.DarkBoard(hdc, 0, 0, w, h);
+
+            SetBkMode(hdc, TRANSPARENT);
+
+            // Wood ribbon title tag near the top.
+            int ribbonW = Mathf.Min(w - 28, 260);
+            int ribbonX = (w - ribbonW) / 2;
+            RpgUiNative.WoodRibbon(hdc, ribbonX, 8, ribbonW, 30);
+            var titleRc = new RECT { Left = ribbonX + 10, Top = 8, Right = ribbonX + ribbonW - 10, Bottom = 38 };
+            SetTextColor(hdc, RpgUiNative.InkTitle);
+            var prev = SelectObject(hdc, _fontTitle);
+            DrawTextW(hdc, _title, -1, ref titleRc, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+            SelectObject(hdc, prev);
+
+            // Parchment body page inside the wood frame.
+            int px = 16, py = 44, pw = w - 32, ph = h - 44 - 14;
+            RpgUiNative.Parchment(hdc, px, py, pw, ph);
+
+            // Body text in dark ink on the parchment.
+            var bodyRc = new RECT { Left = px + 16, Top = py + 14, Right = px + pw - 16, Bottom = py + ph - 24 };
+            SetTextColor(hdc, RpgUiNative.InkDark);
+            prev = SelectObject(hdc, _fontBody);
+            DrawTextW(hdc, _body, -1, ref bodyRc, DT_LEFT | DT_TOP | DT_WORDBREAK | DT_NOPREFIX);
+
+            // Footer hint in muted ink.
+            var hintRc = new RECT { Left = px + 16, Top = py + ph - 22, Right = px + pw - 16, Bottom = py + ph - 6 };
+            SetTextColor(hdc, RpgUiNative.InkMuted);
             DrawTextW(hdc, "Clique ou ESC para fechar", -1, ref hintRc, DT_RIGHT | DT_BOTTOM | DT_SINGLELINE | DT_NOPREFIX);
             SelectObject(hdc, prev);
         }

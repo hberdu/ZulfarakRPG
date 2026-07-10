@@ -401,9 +401,17 @@ namespace ZulfarakRPG
 
         static void DrawPaneHeader(IntPtr hdc, int left, int right, int bodyTop, string text)
         {
+            SelectObject(hdc, _fontSection);
+            if (Rpg)
+            {
+                // Dark ink directly on the parchment (no divider bar).
+                SetTextColor(hdc, RpgUiNative.InkDark);
+                var rcp = new RECT { Left = left + 2, Top = bodyTop + 1, Right = right, Bottom = bodyTop + SectionHeaderH };
+                DrawTextW(hdc, text, -1, ref rcp, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+                return;
+            }
             var bar = new RECT { Left = left, Top = bodyTop + 3, Right = right, Bottom = bodyTop + SectionHeaderH };
             FillRect(hdc, ref bar, _brushDivider);
-            SelectObject(hdc, _fontSection);
             SetTextColor(hdc, Bgr(1f, 0.82f, 0.32f));
             var rc = new RECT { Left = left + 4, Top = bodyTop + 1, Right = right, Bottom = bodyTop + SectionHeaderH };
             DrawTextW(hdc, text, -1, ref rc, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
@@ -443,7 +451,27 @@ namespace ZulfarakRPG
             {
                 case WM_PAINT:
                     BeginPaint(hWnd, out var ps);
-                    Paint(ps.hdc);
+                    // Double-buffer: compose the whole frame on an off-screen DC and blit it
+                    // in one shot. The periodic refresh (live hero + hover tooltip) otherwise
+                    // repaints straight to the window DC, which the eye catches as a flicker.
+                    {
+                        int bw = PopupWidth, bh = PopupHeight;
+                        IntPtr mem = CreateCompatibleDC(ps.hdc);
+                        IntPtr bmp = CreateCompatibleBitmap(ps.hdc, bw, bh);
+                        if (mem != IntPtr.Zero && bmp != IntPtr.Zero)
+                        {
+                            IntPtr oldBmp = SelectObject(mem, bmp);
+                            Paint(mem);
+                            BitBlt(ps.hdc, 0, 0, bw, bh, mem, 0, 0, SRCCOPY);
+                            SelectObject(mem, oldBmp);
+                        }
+                        else
+                        {
+                            Paint(ps.hdc);   // fallback if the buffer couldn't be created
+                        }
+                        if (bmp != IntPtr.Zero) DeleteObject(bmp);
+                        if (mem != IntPtr.Zero) DeleteDC(mem);
+                    }
                     EndPaint(hWnd, ref ps);
                     return IntPtr.Zero;
                 case WM_ERASEBKGND:
@@ -566,6 +594,10 @@ namespace ZulfarakRPG
             FillRect(hdc, ref rc, (i & 1) == 0 ? _brushRowA : _brushRowB);
         }
 
+        // True when the RPG UI Pack atlas is available — switches the whole window from the
+        // old dark pixel-bevel theme to the wood-frame + parchment RPG UI skin.
+        static bool Rpg => RpgUiNative.Ready;
+
         static void Paint(IntPtr hdc)
         {
             RebuildRows();
@@ -573,49 +605,75 @@ namespace ZulfarakRPG
             int w = PopupWidth;
             int h = PopupHeight;
 
-            // Solid near-black base, then chunky pixel-art bevel + corner studs.
+            // Outer frame: RPG UI wood-trim board (falls back to the pixel bevel + studs).
             var full = new RECT { Left = 0, Top = 0, Right = w, Bottom = h };
             FillRect(hdc, ref full, _brushPanel);
-            NativeFrameImage.PixelBevel(hdc, 0, 0, w, h, _brushOutline, _brushBevHi, _brushBevLo, _brushPanel);
-            NativeFrameImage.PixelCornerStuds(hdc, 0, 0, w, h, _brushRuby, inset: 5, size: 3);
+            if (Rpg)
+            {
+                RpgUiNative.DarkBoard(hdc, 0, 0, w, h);
+            }
+            else
+            {
+                NativeFrameImage.PixelBevel(hdc, 0, 0, w, h, _brushOutline, _brushBevHi, _brushBevLo, _brushPanel);
+                NativeFrameImage.PixelCornerStuds(hdc, 0, 0, w, h, _brushRuby, inset: 5, size: 3);
+            }
 
             SetBkMode(hdc, TRANSPARENT);
 
-            // ── Header bar ────────────────────────────────────────────────
-            var headerBar = new RECT { Left = 3, Top = 3, Right = w - 3, Bottom = HeaderH };
-            FillRect(hdc, ref headerBar, _brushDivider);
-            var titleRc = new RECT { Left = 10, Top = 6, Right = w - 30, Bottom = HeaderH };
-            SetTextColor(hdc, Bgr(1.00f, 0.82f, 0.32f));
+            // ── Header bar (wood ribbon title) ────────────────────────────
             var prev = SelectObject(hdc, _fontTitle);
-            DrawTextW(hdc, "Inventario", -1, ref titleRc,
-                DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
-            // Pixel-beveled close button (X)
+            if (Rpg)
+            {
+                int rbW = Mathf.Min(w - 40, 210);
+                RpgUiNative.WoodRibbon(hdc, 6, 3, rbW, HeaderH - 2);
+                var t = new RECT { Left = 16, Top = 3, Right = rbW - 6, Bottom = HeaderH };
+                SetTextColor(hdc, RpgUiNative.InkTitle);
+                DrawTextW(hdc, "Inventario", -1, ref t, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+            }
+            else
+            {
+                var headerBar = new RECT { Left = 3, Top = 3, Right = w - 3, Bottom = HeaderH };
+                FillRect(hdc, ref headerBar, _brushDivider);
+                var titleRc = new RECT { Left = 10, Top = 6, Right = w - 30, Bottom = HeaderH };
+                SetTextColor(hdc, Bgr(1.00f, 0.82f, 0.32f));
+                DrawTextW(hdc, "Inventario", -1, ref titleRc,
+                    DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+            }
+            // Close button (X) — dark atlas button when skinned.
             var closeX = w - 24;
             var closeY = 6;
-            NativeFrameImage.PixelBevel(hdc, closeX, closeY, 18, HeaderH - 10,
-                _brushOutline, _brushBevHi, _brushBevLo, _brushTag);
+            if (Rpg) RpgUiNative.DarkButton(hdc, closeX, closeY, 18, HeaderH - 10);
+            else NativeFrameImage.PixelBevel(hdc, closeX, closeY, 18, HeaderH - 10,
+                     _brushOutline, _brushBevHi, _brushBevLo, _brushTag);
             SetTextColor(hdc, Bgr(1f, 1f, 1f));
             SelectObject(hdc, _fontTag);
             var xRc = new RECT { Left = closeX, Top = closeY, Right = closeX + 18, Bottom = closeY + HeaderH - 10 };
             DrawTextW(hdc, "X", -1, ref xRc, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
             SelectObject(hdc, prev);
 
-            // ── Character summary card (dragon emblem + name/class/level) ─
+            // ── Character summary card (name/class/level) ─
             int sumTop = HeaderH;
             var sumBar = new RECT { Left = 3, Top = sumTop, Right = w - 3, Bottom = sumTop + SummaryH };
             FillRect(hdc, ref sumBar, _brushPanel);
-            // Dragon emblem on the left — square, framed with its own tiny pixel bevel.
-            int emblemSize = SummaryH - 6;
-            int emblemX = 8;
-            int emblemY = sumTop + 3;
-            NativeFrameImage.PixelBevel(hdc, emblemX, emblemY, emblemSize, emblemSize,
-                _brushOutline, _brushBevHi, _brushBevLo, _brushVoid);
-            var dragon = NativeFrameImage.Get(DragonRes);
-            if (dragon.Ready)
-                dragon.BlitAspect(hdc, emblemX + 4, emblemY + 4, emblemSize - 8, emblemSize - 8);
+            if (Rpg)
+            {
+                // No dragon emblem in the RPG UI skin — the identity line uses the full width.
+                DrawSummaryText(hdc, 12, sumTop + 4, w - 24, SummaryH - 8);
+            }
+            else
+            {
+                int emblemSize = SummaryH - 6;
+                int emblemX = 8;
+                int emblemY = sumTop + 3;
+                NativeFrameImage.PixelBevel(hdc, emblemX, emblemY, emblemSize, emblemSize,
+                    _brushOutline, _brushBevHi, _brushBevLo, _brushVoid);
+                var dragon = NativeFrameImage.Get(DragonRes);
+                if (dragon.Ready)
+                    dragon.BlitAspect(hdc, emblemX + 4, emblemY + 4, emblemSize - 8, emblemSize - 8);
 
-            DrawSummaryText(hdc, emblemX + emblemSize + 8, sumTop + 4,
-                            w - (emblemX + emblemSize + 12), SummaryH - 8);
+                DrawSummaryText(hdc, emblemX + emblemSize + 8, sumTop + 4,
+                                w - (emblemX + emblemSize + 12), SummaryH - 8);
+            }
 
             // ── Compact stats strip (2 rows × 3 cols) ─────────────────────
             int statTop = sumTop + SummaryH;
@@ -631,20 +689,29 @@ namespace ZulfarakRPG
             BuildDoll();
             BuildBag();
 
-            // Pane frames.
-            NativeFrameImage.PixelBevel(hdc, 4, bodyTop, LeftPaneW - 6, bodyBot - bodyTop,
-                _brushOutline, _brushBevHi, _brushBevLo, _brushVoid);
-            NativeFrameImage.PixelBevel(hdc, RightPaneX, bodyTop, RightPaneW, bodyBot - bodyTop,
-                _brushOutline, _brushBevHi, _brushBevLo, _brushVoid);
+            // Pane frames: parchment panels (RPG UI) or the old dark bevels.
+            if (Rpg)
+            {
+                RpgUiNative.Parchment(hdc, 4, bodyTop, LeftPaneW - 6, bodyBot - bodyTop);
+                RpgUiNative.Parchment(hdc, RightPaneX, bodyTop, RightPaneW, bodyBot - bodyTop);
+            }
+            else
+            {
+                NativeFrameImage.PixelBevel(hdc, 4, bodyTop, LeftPaneW - 6, bodyBot - bodyTop,
+                    _brushOutline, _brushBevHi, _brushBevLo, _brushVoid);
+                NativeFrameImage.PixelBevel(hdc, RightPaneX, bodyTop, RightPaneW, bodyBot - bodyTop,
+                    _brushOutline, _brushBevHi, _brushBevLo, _brushVoid);
+            }
             DrawPaneHeader(hdc, 8, LeftPaneW - 8, bodyTop, "Equipamento");
             DrawPaneHeader(hdc, RightPaneX + 4, w - 8, bodyTop, "Sacola");
 
-            // Sort-by-quality toggle at the right of the Sacola header (gold when active).
+            // Sort-by-quality toggle at the right of the Sacola header.
             SortButtonRect(out int sbx, out int sby, out int sbw, out int sbh);
-            NativeFrameImage.PixelBevel(hdc, sbx, sby, sbw, sbh,
-                _brushOutline, _brushBevHi, _brushBevLo, _sortByQuality ? _brushTagUse : _brushTag);
+            if (Rpg) RpgUiNative.DarkButton(hdc, sbx, sby, sbw, sbh, _sortByQuality);
+            else NativeFrameImage.PixelBevel(hdc, sbx, sby, sbw, sbh,
+                     _brushOutline, _brushBevHi, _brushBevLo, _sortByQuality ? _brushTagUse : _brushTag);
             SelectObject(hdc, _fontTag);
-            SetTextColor(hdc, _sortByQuality ? Bgr(1f, 0.96f, 0.62f) : Bgr(0.82f, 0.82f, 0.88f));
+            SetTextColor(hdc, _sortByQuality ? Bgr(1f, 0.96f, 0.62f) : Bgr(0.90f, 0.88f, 0.80f));
             var sbRc = new RECT { Left = sbx, Top = sby, Right = sbx + sbw, Bottom = sby + sbh };
             DrawTextW(hdc, "Qualid.", -1, ref sbRc, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
 
@@ -681,9 +748,9 @@ namespace ZulfarakRPG
                     var rc = new RECT { Left = s.x, Top = s.y, Right = s.x + s.w, Bottom = s.y + s.h };
                     DrawTextW(hdc, SlotShort(row.slotType), -1, ref rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
                 }
-                // Slot name under the cell.
+                // Slot name under the cell (dark ink on parchment when skinned).
                 SelectObject(hdc, _fontHint);
-                SetTextColor(hdc, Bgr(0.70f, 0.62f, 0.42f));
+                SetTextColor(hdc, Rpg ? RpgUiNative.InkMuted : Bgr(0.70f, 0.62f, 0.42f));
                 var lblRc = new RECT { Left = s.x - 6, Top = s.y + s.h, Right = s.x + s.w + 6, Bottom = s.y + s.h + 12 };
                 DrawTextW(hdc, row.label, -1, ref lblRc, DT_CENTER | DT_TOP | DT_SINGLELINE | DT_NOPREFIX);
             }
@@ -721,7 +788,7 @@ namespace ZulfarakRPG
 
             // ── Footer hint ───────────────────────────────────────────────
             SelectObject(hdc, _fontHint);
-            SetTextColor(hdc, Bgr(0.62f, 0.62f, 0.68f));
+            SetTextColor(hdc, Rpg ? RpgUiNative.InkOnDark : Bgr(0.62f, 0.62f, 0.68f));
             var hintRc = new RECT { Left = 8, Top = h - FooterH, Right = w - 8, Bottom = h - 4 };
             DrawTextW(hdc, "Clique na sacola p/ equipar · clique no slot p/ retirar · roda rola · ESC fecha", -1, ref hintRc,
                 DT_CENTER | DT_BOTTOM | DT_SINGLELINE | DT_NOPREFIX);
@@ -758,7 +825,8 @@ namespace ZulfarakRPG
             int tx = Mathf.Clamp(_hoverX + 16, 4, w - tw - 4);
             int ty = Mathf.Clamp(_hoverY + 16, HeaderH, h - th - 4);
 
-            NativeFrameImage.PixelBevel(hdc, tx, ty, tw, th, _brushOutline, _brushBevHi, _brushBevLo, _brushVoid);
+            if (Rpg) RpgUiNative.DarkBoard(hdc, tx, ty, tw, th);
+            else NativeFrameImage.PixelBevel(hdc, tx, ty, tw, th, _brushOutline, _brushBevHi, _brushBevLo, _brushVoid);
 
             // Icon.
             int ix = tx + pad, iy = ty + pad;
@@ -958,6 +1026,7 @@ namespace ZulfarakRPG
         const int WM_CLOSE = 0x0010;
         const int WM_ERASEBKGND = 0x0014;
         const uint TME_LEAVE = 0x00000002;
+        const uint SRCCOPY = 0x00CC0020;
         const int WS_POPUP = unchecked((int)0x80000000);
         const int WS_VISIBLE = 0x10000000;
         const int WS_EX_TOPMOST = 0x00000008;
@@ -1009,6 +1078,11 @@ namespace ZulfarakRPG
 
         [DllImport("gdi32.dll")] static extern IntPtr CreateSolidBrush(uint color);
         [DllImport("gdi32.dll")] static extern IntPtr SelectObject(IntPtr hdc, IntPtr h);
+        [DllImport("gdi32.dll")] static extern IntPtr CreateCompatibleDC(IntPtr hdc);
+        [DllImport("gdi32.dll")] static extern IntPtr CreateCompatibleBitmap(IntPtr hdc, int w, int h);
+        [DllImport("gdi32.dll")] static extern bool   BitBlt(IntPtr hDest, int x, int y, int w, int h, IntPtr hSrc, int sx, int sy, uint rop);
+        [DllImport("gdi32.dll")] static extern bool   DeleteDC(IntPtr hdc);
+        [DllImport("gdi32.dll")] static extern bool   DeleteObject(IntPtr h);
         [DllImport("gdi32.dll")] static extern int SetTextColor(IntPtr hdc, uint color);
         [DllImport("gdi32.dll")] static extern int SetBkMode(IntPtr hdc, int mode);
         [DllImport("gdi32.dll", CharSet = CharSet.Unicode, EntryPoint = "CreateFontIndirectW")] static extern IntPtr CreateFontIndirectW(ref LOGFONT lf);

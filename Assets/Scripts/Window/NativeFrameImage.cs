@@ -141,6 +141,70 @@ namespace ZulfarakRPG
             Blit(hdc, fx, fy, fw, fh);
         }
 
+        // Blit an arbitrary sub-rect of this DIB (atlas slice) into the destination rect,
+        // stretched, with per-pixel alpha. Source coords are top-left origin (the DIB is
+        // built top-down), matching how the RPG UI atlas was sampled.
+        public void BlitRegion(IntPtr hdc, int dstX, int dstY, int dstW, int dstH,
+                               int srcX, int srcY, int srcW, int srcH)
+        {
+            if (_hbitmap == IntPtr.Zero || dstW <= 0 || dstH <= 0 || srcW <= 0 || srcH <= 0) return;
+            IntPtr mem = CreateCompatibleDC(hdc);
+            if (mem == IntPtr.Zero) return;
+            IntPtr old = SelectObject(mem, _hbitmap);
+            var bf = new BLENDFUNCTION
+            {
+                BlendOp = AC_SRC_OVER, BlendFlags = 0, SourceConstantAlpha = 255, AlphaFormat = AC_SRC_ALPHA,
+            };
+            AlphaBlend(hdc, dstX, dstY, dstW, dstH, mem, srcX, srcY, srcW, srcH, bf);
+            SelectObject(mem, old);
+            DeleteDC(mem);
+        }
+
+        // 9-slice blit: keeps the (bl,bt,br,bb) borders at native size while stretching the
+        // edges and centre — so an atlas panel/button scales to any window rect without the
+        // corners distorting. Source rect is (srcX,srcY,srcW,srcH); borders are in source px.
+        public void BlitNineSlice(IntPtr hdc, int dstX, int dstY, int dstW, int dstH,
+                                  int srcX, int srcY, int srcW, int srcH,
+                                  int bl, int bt, int br, int bb)
+        {
+            if (_hbitmap == IntPtr.Zero || dstW <= 0 || dstH <= 0 || srcW <= 0 || srcH <= 0) return;
+            // Clamp borders so opposite pairs never exceed the source/dest extent.
+            bl = Mathf.Clamp(bl, 0, srcW); br = Mathf.Clamp(br, 0, srcW - bl);
+            bt = Mathf.Clamp(bt, 0, srcH); bb = Mathf.Clamp(bb, 0, srcH - bt);
+            int dl = Mathf.Min(bl, dstW), dr = Mathf.Min(br, dstW - dl);
+            int dtp = Mathf.Min(bt, dstH), dbt = Mathf.Min(bb, dstH - dtp);
+
+            int smx = srcW - bl - br;   // source middle width
+            int smy = srcH - bt - bb;   // source middle height
+            int dmx = dstW - dl - dr;   // dest   middle width
+            int dmy = dstH - dtp - dbt; // dest   middle height
+
+            // Rows: top, middle, bottom. Cols: left, middle, right.
+            // Top row
+            if (dtp > 0)
+            {
+                if (dl  > 0) BlitRegion(hdc, dstX,           dstY, dl,  dtp, srcX,           srcY, bl,  bt);
+                if (dmx > 0) BlitRegion(hdc, dstX + dl,      dstY, dmx, dtp, srcX + bl,      srcY, smx, bt);
+                if (dr  > 0) BlitRegion(hdc, dstX + dl + dmx, dstY, dr,  dtp, srcX + bl + smx, srcY, br,  bt);
+            }
+            // Middle row
+            if (dmy > 0)
+            {
+                int yy = dstY + dtp, sy = srcY + bt;
+                if (dl  > 0) BlitRegion(hdc, dstX,           yy, dl,  dmy, srcX,           sy, bl,  smy);
+                if (dmx > 0) BlitRegion(hdc, dstX + dl,      yy, dmx, dmy, srcX + bl,      sy, smx, smy);
+                if (dr  > 0) BlitRegion(hdc, dstX + dl + dmx, yy, dr,  dmy, srcX + bl + smx, sy, br,  smy);
+            }
+            // Bottom row
+            if (dbt > 0)
+            {
+                int yy = dstY + dtp + dmy, sy = srcY + bt + smy;
+                if (dl  > 0) BlitRegion(hdc, dstX,           yy, dl,  dbt, srcX,           sy, bl,  bb);
+                if (dmx > 0) BlitRegion(hdc, dstX + dl,      yy, dmx, dbt, srcX + bl,      sy, smx, bb);
+                if (dr  > 0) BlitRegion(hdc, dstX + dl + dmx, yy, dr,  dbt, srcX + bl + smx, sy, br,  bb);
+            }
+        }
+
         // Chunky pixel-art bevel painted with plain solid FillRect calls (no alpha), so it
         // reads as blocky pixel art at any window size. Colours arranged in the classic
         // beveled-button pattern (bright top-left / dark bottom-right) with a black outline.

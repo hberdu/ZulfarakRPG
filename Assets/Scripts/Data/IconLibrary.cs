@@ -29,13 +29,11 @@ namespace ZulfarakRPG
         public static string SkillFx(int n) => Path.Combine(SkillFxDir, "Skill_Effect_" + n.ToString("00") + ".png");
     }
 
-    // Runtime loader/cache for icon PNGs. Provides Unity Sprites (for in-world use like the
-    // weapon-in-hand) and native GDI images (for the inventory / skill windows), plus a
-    // helper to snapshot the live hero sprite for the inventory paper-doll.
+    // Runtime loader/cache for icon PNGs. Provides native GDI images (for the inventory /
+    // skill windows) built from PNGs loaded at runtime from StreamingAssets.
     public static class IconLibrary
     {
         static readonly Dictionary<string, Texture2D> _tex = new();
-        static readonly Dictionary<string, Sprite> _spr = new();
 
         public static Texture2D Tex(string absPath)
         {
@@ -58,47 +56,11 @@ namespace ZulfarakRPG
             return t;
         }
 
-        public static Sprite Spr(string absPath)
-        {
-            if (string.IsNullOrEmpty(absPath)) return null;
-            if (_spr.TryGetValue(absPath, out var s)) return s;
-            var t = Tex(absPath);
-            s = t != null ? Sprite.Create(t, new Rect(0, 0, t.width, t.height), new Vector2(0.5f, 0.5f), 16f) : null;
-            _spr[absPath] = s;
-            return s;
-        }
-
         // Native GDI image for a pack icon (cached for the app lifetime).
         public static NativeFrameImage Gdi(string absPath)
         {
             if (string.IsNullOrEmpty(absPath)) return null;
             return NativeFrameImage.GetTexture("iconfile:" + absPath, () => Tex(absPath));
-        }
-
-        // Snapshots a sprite's sub-rect into a standalone readable texture (cached by name)
-        // so the native inventory can blit the hero's current frame in its doll.
-        public static Texture2D TexFromSprite(Sprite s)
-        {
-            if (s == null || s.texture == null) return null;
-            string key = "sprite:" + s.name;
-            if (_tex.TryGetValue(key, out var cached) && cached != null) return cached;
-            Texture2D tx = null;
-            try
-            {
-                var r = s.rect;
-                var px = s.texture.GetPixels((int)r.x, (int)r.y, (int)r.width, (int)r.height);
-                tx = new Texture2D((int)r.width, (int)r.height, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point };
-                tx.SetPixels(px); tx.Apply();
-            }
-            catch (Exception e) { Debug.LogWarning($"[IconLibrary] sprite '{s.name}' nao legivel: {e.Message}"); }
-            _tex[key] = tx;
-            return tx;
-        }
-
-        public static NativeFrameImage GdiFromSprite(Sprite s)
-        {
-            if (s == null) return null;
-            return NativeFrameImage.GetTexture("spr:" + s.name, () => TexFromSprite(s));
         }
     }
 }
