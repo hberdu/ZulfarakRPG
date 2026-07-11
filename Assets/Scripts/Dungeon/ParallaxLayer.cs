@@ -77,7 +77,8 @@ namespace ZulfarakRPG
 
         void SpawnNext()
         {
-            if (sprites == null || sprites.Length == 0) return;
+            // _rng guard: Scroll() could fire before Start() seeds the RNG (scene-load ordering).
+            if (sprites == null || sprites.Length == 0 || _rng == null) return;
             float spacing = Mathf.Lerp(minSpacing, maxSpacing, (float)_rng.NextDouble());
             _rightmostX += spacing;
 
