@@ -1,11 +1,11 @@
 using System;
-using System.Collections.Generic;
+using System.Collections;
 using UnityEngine;
-using Newtonsoft.Json;
-using System.IO;
 
 namespace ZulfarakRPG
 {
+    // Guilds live on the server now. This manager is a thin REST client: it mirrors the
+    // authoritative guild into CurrentGuild (for the UI) and never persists guilds locally.
     public class GuildManager : MonoBehaviour
     {
         public static GuildManager Instance { get; private set; }
@@ -15,8 +15,7 @@ namespace ZulfarakRPG
         public event Action<Guild> OnGuildCreated;
         public event Action<Guild> OnGuildJoined;
         public event Action OnGuildLeft;
-
-        private string SavePath => Path.Combine(Application.persistentDataPath, "guild.json");
+        public event Action<string> OnGuildError;
 
         private void Awake()
         {
@@ -25,57 +24,147 @@ namespace ZulfarakRPG
             DontDestroyOnLoad(gameObject);
         }
 
+        private static bool ServerReady =>
+            ServerApiClient.Instance != null && ServerApiClient.Instance.IsReady;
+
+        // Kicks off guild creation. Returns false only for a local pre-check failure; server
+        // errors (e.g. name taken) arrive asynchronously via OnGuildError.
         public bool CreateGuild(string guildName)
         {
-            var player = PlayerManager.Instance.Data;
-            if (!string.IsNullOrEmpty(player.guildId)) return false;
+            var player = PlayerManager.Instance?.Data;
+            if (player != null && !string.IsNullOrEmpty(player.guildId)) return false;
+            if (!ServerReady) { OnGuildError?.Invoke("Servidor indisponível."); return false; }
 
-            CurrentGuild = new Guild
-            {
-                guildId = Guid.NewGuid().ToString(),
-                guildName = guildName,
-                leaderSteamId = player.steamId
-            };
-            CurrentGuild.AddMember(player.steamId);
-            player.guildId = CurrentGuild.guildId;
-            player.isGuildLeader = true;
-
-            Save();
-            PlayerManager.Instance.Save();
-            OnGuildCreated?.Invoke(CurrentGuild);
+            StartCoroutine(CreateRoutine(guildName));
             return true;
         }
 
-        // Called by network layer when server sends guild data
-        public void ReceiveGuildData(Guild guild)
+        private IEnumerator CreateRoutine(string guildName)
         {
-            CurrentGuild = guild;
-            PlayerManager.Instance.Data.guildId = guild.guildId;
-            PlayerManager.Instance.Save();
-            OnGuildJoined?.Invoke(guild);
+            yield return AwaitTask(
+                ServerApiClient.Instance.CreateGuildAsync(guildName),
+                dto =>
+                {
+                    ApplyGuild(dto);
+                    if (CurrentGuild != null) OnGuildCreated?.Invoke(CurrentGuild);
+                },
+                err => OnGuildError?.Invoke(err));
+        }
+
+        public void JoinGuild(string guildId)
+        {
+            if (!ServerReady) { OnGuildError?.Invoke("Servidor indisponível."); return; }
+            StartCoroutine(JoinRoutine(guildId));
+        }
+
+        private IEnumerator JoinRoutine(string guildId)
+        {
+            yield return AwaitTask(
+                ServerApiClient.Instance.JoinGuildAsync(guildId),
+                dto =>
+                {
+                    ApplyGuild(dto);
+                    if (CurrentGuild != null) OnGuildJoined?.Invoke(CurrentGuild);
+                },
+                err => OnGuildError?.Invoke(err));
         }
 
         public void LeaveGuild()
         {
-            if (CurrentGuild == null) return;
-            var player = PlayerManager.Instance.Data;
-            CurrentGuild.RemoveMember(player.steamId);
-            player.guildId = null;
-            player.isGuildLeader = false;
-            CurrentGuild = null;
-            PlayerManager.Instance.Save();
-            OnGuildLeft?.Invoke();
+            if (!ServerReady)
+            {
+                // Best-effort local clear so the UI updates even offline.
+                ClearGuild();
+                OnGuildLeft?.Invoke();
+                return;
+            }
+            StartCoroutine(LeaveRoutine());
         }
 
-        private void Save()
+        private IEnumerator LeaveRoutine()
         {
-            File.WriteAllText(SavePath, JsonConvert.SerializeObject(CurrentGuild, Formatting.Indented));
+            yield return AwaitTask(
+                ServerApiClient.Instance.LeaveGuildAsync(),
+                () => { ClearGuild(); OnGuildLeft?.Invoke(); },
+                err => OnGuildError?.Invoke(err));
         }
 
+        // Fetches the authoritative guild for the logged-in player.
         public void Load()
         {
-            if (!File.Exists(SavePath)) return;
-            CurrentGuild = JsonConvert.DeserializeObject<Guild>(File.ReadAllText(SavePath));
+            if (!ServerReady) return;
+            StartCoroutine(LoadRoutine());
+        }
+
+        private IEnumerator LoadRoutine()
+        {
+            yield return AwaitTask(
+                ServerApiClient.Instance.GetMyGuildAsync(),
+                dto =>
+                {
+                    ApplyGuild(dto);
+                    if (CurrentGuild != null) OnGuildJoined?.Invoke(CurrentGuild);
+                    else OnGuildLeft?.Invoke();
+                },
+                err => Debug.LogWarning($"[GuildManager] Load falhou: {err}"));
+        }
+
+        // Kept for source compatibility with the (retired) WebSocket path.
+        public void ReceiveGuildData(Guild guild)
+        {
+            CurrentGuild = guild;
+            if (guild != null && PlayerManager.Instance?.Data != null)
+                PlayerManager.Instance.Data.guildId = guild.guildId;
+            OnGuildJoined?.Invoke(guild);
+        }
+
+        private void ApplyGuild(GuildDto dto)
+        {
+            CurrentGuild = FromDto(dto);
+            var player = PlayerManager.Instance?.Data;
+            if (player != null)
+            {
+                player.guildId = CurrentGuild?.guildId;
+                player.isGuildLeader = CurrentGuild != null && CurrentGuild.IsLeader(player.steamId);
+            }
+        }
+
+        private void ClearGuild()
+        {
+            CurrentGuild = null;
+            var player = PlayerManager.Instance?.Data;
+            if (player != null) { player.guildId = null; player.isGuildLeader = false; }
+        }
+
+        private static Guild FromDto(GuildDto dto)
+        {
+            if (dto == null || string.IsNullOrEmpty(dto.id)) return null;
+            var g = new Guild
+            {
+                guildId = dto.id,
+                guildName = dto.name,
+                leaderSteamId = dto.leaderSteamId,
+                maxMembers = dto.maxMembers > 0 ? dto.maxMembers : 5
+            };
+            if (dto.members != null)
+                foreach (var m in dto.members)
+                    if (m != null && !string.IsNullOrEmpty(m.steamId)) g.memberSteamIds.Add(m.steamId);
+            return g;
+        }
+
+        // ── Task→coroutine helpers (never block the main thread) ─────────────
+        private static IEnumerator AwaitTask<T>(System.Threading.Tasks.Task<T> task, Action<T> onOk, Action<string> onErr)
+        {
+            while (!task.IsCompleted) yield return null;
+            if (task.IsFaulted || task.IsCanceled) { onErr?.Invoke(task.Exception?.GetBaseException()?.Message ?? "Falha na requisição."); yield break; }
+            onOk?.Invoke(task.Result);
+        }
+
+        private static IEnumerator AwaitTask(System.Threading.Tasks.Task task, Action onOk, Action<string> onErr)
+        {
+            while (!task.IsCompleted) yield return null;
+            if (task.IsFaulted || task.IsCanceled) { onErr?.Invoke(task.Exception?.GetBaseException()?.Message ?? "Falha na requisição."); yield break; }
+            onOk?.Invoke();
         }
     }
 }

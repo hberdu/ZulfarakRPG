@@ -90,52 +90,52 @@ namespace ZulfarakRPG
         }
 
         // --- Guild Mission ---
-        // Called by NetworkManager when server confirms all 5 players are ready.
+        // Guild missions are resolved AUTHORITATIVELY by the server: it computes success
+        // from the persisted guild roster and grants exp/gold to every member. The client
+        // only triggers it (leader) and reloads the resulting state.
         public void StartGuildMission(MissionData mission, List<PlayerData> partyMembers)
         {
             OnMissionStarted?.Invoke(mission);
-            StartCoroutine(ResolveGuildMission(mission, partyMembers));
+            StartCoroutine(ResolveGuildMission(mission));
         }
 
-        private IEnumerator ResolveGuildMission(MissionData mission, List<PlayerData> party)
+        public void StartGuildMission(MissionData mission)
         {
+            OnMissionStarted?.Invoke(mission);
+            StartCoroutine(ResolveGuildMission(mission));
+        }
+
+        private IEnumerator ResolveGuildMission(MissionData mission)
+        {
+            // Keep the flavour delay so the UI can show "em andamento".
             yield return new WaitForSeconds(mission.durationSeconds);
 
-            float successChance = CalculateGuildSuccessChance(mission, party);
-            bool victory = UnityEngine.Random.value <= successChance;
-
-            if (victory)
+            if (ServerApiClient.Instance == null || !ServerApiClient.Instance.IsReady)
             {
-                foreach (var member in party)
-                {
-                    member.AddExp(mission.expReward);
-                    member.gold += mission.goldReward;
-                }
-                PlayerManager.Instance.Save();
+                Debug.LogWarning("[MissionManager] Servidor indisponível — missão de guilda não pôde ser resolvida.");
+                OnGuildMissionCompleted?.Invoke(mission, false);
+                yield break;
             }
 
-            OnGuildMissionCompleted?.Invoke(mission, victory);
-        }
+            var task = ServerApiClient.Instance.ResolveGuildMissionAsync(mission.missionId);
+            while (!task.IsCompleted) yield return null;
 
-        private float CalculateGuildSuccessChance(MissionData mission, List<PlayerData> party)
-        {
-            float chance = 0.5f; // base 50%
-            int avgLevel = 0;
-
-            foreach (var p in party)
+            if (task.IsFaulted || task.IsCanceled || task.Result == null)
             {
-                avgLevel += p.level;
-                var sub = ClassDatabase.Instance.GetSubclass(p.subclassType);
-                if (sub == null) continue;
-                if (sub.role == Role.Tank)        chance += mission.tankSuccessBonus;
-                else if (sub.role == Role.Healer) chance += mission.healerSuccessBonus;
-                else                              chance += mission.dpsSuccessBonus;
+                var err = task.Exception?.GetBaseException()?.Message;
+                Debug.LogWarning($"[MissionManager] Missão de guilda falhou no servidor: {err}");
+                OnGuildMissionCompleted?.Invoke(mission, false);
+                yield break;
             }
 
-            avgLevel /= Mathf.Max(1, party.Count);
-            chance += (avgLevel - mission.requiredLevel) * 0.02f;
+            var result = task.Result;
+            // Server granted the rewards to all members — refresh our own authoritative state.
+            PlayerManager.Instance.Load();
+            Inventory.Instance.Load();
+            GuildManager.Instance?.Load();
 
-            return Mathf.Clamp01(chance);
+            Debug.Log($"[MissionManager] Missão de guilda '{result.missionId}' victory={result.victory} chance={result.successChance:0.00} exp/membro={result.expPerMember} ouro/membro={result.goldPerMember}");
+            OnGuildMissionCompleted?.Invoke(mission, result.victory);
         }
 
         private IEnumerator SyncEnemyCatalog()
@@ -180,6 +180,45 @@ namespace ZulfarakRPG
 
             _enemyCatalogSynced = true;
             Debug.Log($"[MissionManager] Catálogo de inimigos sincronizado ({payload.Length} registros).");
+
+            // Dev-only: push guild-mission definitions so the server can resolve them.
+            // No-op for players (SyncGuildMissionsAsync requires the admin key).
+            if (ServerApiClient.Instance.HasAdminKey)
+            {
+                var guildPayload = BuildGuildMissionPayload();
+                if (guildPayload.Length > 0)
+                {
+                    var gtask = ServerApiClient.Instance.SyncGuildMissionsAsync(guildPayload);
+                    while (!gtask.IsCompleted) yield return null;
+                    if (gtask.IsFaulted)
+                        Debug.LogWarning($"[MissionManager] Sync de missões de guilda falhou: {gtask.Exception?.GetBaseException()?.Message}");
+                    else
+                        Debug.Log($"[MissionManager] Missões de guilda sincronizadas ({guildPayload.Length}).");
+                }
+            }
+        }
+
+        private GuildMissionDefinitionDto[] BuildGuildMissionPayload()
+        {
+            if (allMissions == null) return System.Array.Empty<GuildMissionDefinitionDto>();
+            return allMissions
+                .Where(m => m != null && m.missionType == MissionType.Guild && !string.IsNullOrWhiteSpace(m.missionId))
+                .GroupBy(m => m.missionId.Trim())
+                .Select(g => g.First())
+                .Select(m => new GuildMissionDefinitionDto
+                {
+                    missionId = m.missionId.Trim(),
+                    name = string.IsNullOrWhiteSpace(m.missionName) ? m.missionId : m.missionName,
+                    requiredLevel = Mathf.Max(1, m.requiredLevel),
+                    requiredPlayers = Mathf.Max(1, m.requiredPlayers),
+                    expReward = m.expReward,
+                    goldReward = m.goldReward,
+                    baseSuccessChance = 0.5,
+                    tankBonus = m.tankSuccessBonus,
+                    healerBonus = m.healerSuccessBonus,
+                    dpsBonus = m.dpsSuccessBonus
+                })
+                .ToArray();
         }
 
         private bool TrySyncEnemyCatalogNow()

@@ -1,4 +1,5 @@
 using UnityEngine;
+using System.Collections;
 using System.IO;
 using Newtonsoft.Json;
 using System;
@@ -12,6 +13,11 @@ namespace ZulfarakRPG
         public PlayerData Data { get; private set; }
 
         private string SavePath => Path.Combine(Application.persistentDataPath, "player.json");
+
+        // Async server-save state: Save() writes locally (instant) then queues a background
+        // push so a slow/failed network never freezes the main thread (was a blocking call).
+        private bool _serverSaveDirty;
+        private bool _serverSaveRunning;
 
         private void Awake()
         {
@@ -104,23 +110,61 @@ namespace ZulfarakRPG
             if (string.IsNullOrWhiteSpace(Data.steamId) && SteamIntegration.Instance != null)
                 Data.steamId = SteamIntegration.Instance.SteamId;
 
-            if (ServerApiClient.Instance != null && ServerApiClient.Instance.IsReady)
-            {
-                try
-                {
-                    ServerApiClient.Instance.SaveCharacterAsync(Data).GetAwaiter().GetResult();
-                }
-                catch (Exception e)
-                {
-                    Debug.LogWarning($"[PlayerManager] Remote save failed: {e.Message}");
-                }
-            }
-
+            // Local first — instant and never fails on network. Nothing is ever lost.
             try
             {
                 SaveLocalOnly();
             }
             catch (System.Exception e) { Debug.LogError($"[PlayerManager] Save failed ({SavePath}): {e}"); }
+
+            // Server push runs off the main thread with retry (offline queue).
+            QueueServerSave();
+        }
+
+        private void QueueServerSave()
+        {
+            if (Data == null || ServerApiClient.Instance == null || !ServerApiClient.Instance.IsReady) return;
+            _serverSaveDirty = true;
+            if (!_serverSaveRunning) StartCoroutine(ServerSaveLoop());
+        }
+
+        private IEnumerator ServerSaveLoop()
+        {
+            _serverSaveRunning = true;
+            float backoff = 1f;
+            while (_serverSaveDirty)
+            {
+                _serverSaveDirty = false;
+                if (Data == null || ServerApiClient.Instance == null || !ServerApiClient.Instance.IsReady) break;
+
+                // FromPlayerData snapshots the current values synchronously before the await,
+                // so later mutations to Data don't race this in-flight save.
+                var task = ServerApiClient.Instance.SaveCharacterAsync(Data);
+                while (!task.IsCompleted) yield return null;
+
+                if (task.IsFaulted)
+                {
+                    var msg = task.Exception?.GetBaseException()?.Message ?? string.Empty;
+                    if (msg.Contains("409"))
+                    {
+                        // Version conflict: another write won (other device / combat reward).
+                        // Server is authoritative — stop clobbering; next Load picks it up.
+                        Debug.LogWarning("[PlayerManager] Conflito de versão no save — servidor tem prioridade.");
+                        break;
+                    }
+
+                    // Transient failure — requeue with backoff (stays pending until it lands).
+                    _serverSaveDirty = true;
+                    Debug.LogWarning($"[PlayerManager] Save remoto falhou (retry em {backoff:0}s): {msg}");
+                    yield return new WaitForSeconds(backoff);
+                    backoff = Mathf.Min(backoff * 2f, 30f);
+                }
+                else
+                {
+                    backoff = 1f;
+                }
+            }
+            _serverSaveRunning = false;
         }
 
         public void NormalizeCurrentData()

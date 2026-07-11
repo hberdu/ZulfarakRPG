@@ -36,16 +36,9 @@ namespace ZulfarakRPG
             guildButton?.onClick.AddListener(() => ShowPanel(guildPanel));
             profileButton?.onClick.AddListener(() => ShowPanel(profilePanel));
 
-            if (NetworkManager.Instance != null)
-            {
-                NetworkManager.Instance.OnConnected    += () => SetConnectionStatus(true);
-                NetworkManager.Instance.OnDisconnected += () => SetConnectionStatus(false);
-                SetConnectionStatus(NetworkManager.Instance.IsConnected);
-            }
-            else
-            {
-                SetConnectionStatus(false);
-            }
+            // Connection status now reflects the REST/auth session (the WebSocket layer
+            // was retired). Green once we're authenticated against the Railway backend.
+            SetConnectionStatus(ServerApiClient.Instance != null && ServerApiClient.Instance.IsReady);
 
             RefreshPlayerInfo();
             ShowPanel(missionBoardPanel);

@@ -34,8 +34,8 @@ namespace ZulfarakRPG
             _loading = LoadingScreenUI.Create();
             _loading.SetProgress(0.05f, "Conectando ao servidor...");
 
-            // Connect to server
-            NetworkManager.Instance.Connect();
+            // (The legacy ws://localhost WebSocket layer was retired — guild/lobby/mission
+            //  features run over the REST backend now.)
 
             _loading.SetProgress(0.15f, "Verificando Steam...");
             if (!SteamIntegration.Instance.IsInitialized)
@@ -83,7 +83,10 @@ namespace ZulfarakRPG
 
             for (int attempt = 1; attempt <= 3; attempt++)
             {
-                var authTask = api.AuthenticateWithSteamAsync(steam.SteamId, steam.SteamName);
+                // A fresh ticket per attempt — the backend validates it via Steam's Web API
+                // when configured (real AppID + key); otherwise it's ignored (dev fallback).
+                var ticket = steam.GetAuthSessionTicketHex();
+                var authTask = api.AuthenticateWithSteamAsync(steam.SteamId, steam.SteamName, ticket);
                 var completed = await Task.WhenAny(authTask, Task.Delay(TimeSpan.FromSeconds(25)));
                 if (completed == authTask && await authTask)
                 {

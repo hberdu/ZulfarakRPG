@@ -17,12 +17,19 @@ namespace ZulfarakRPG
         public string apiBaseUrl = "https://zulfarakrpg-production.up.railway.app";
 
         private const string TokenPrefKey = "zulfarak.jwt.token";
+        private const string AdminKeyPrefKey = "zulfarak.admin.key";
+        private const string AdminHeaderName = "X-Admin-Key";
         private static readonly HttpClient Http = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
         private string _accessToken;
+        private string _adminKey;
         private bool _sessionAuthenticated;
 
         public bool IsAuthenticated => !string.IsNullOrWhiteSpace(_accessToken);
         public bool IsReady => _sessionAuthenticated && IsAuthenticated;
+
+        // True only on a developer machine that has the catalog admin key set (env var
+        // ZULFARAK_ADMIN_KEY or PlayerPrefs). Regular player builds never push the catalog.
+        public bool HasAdminKey => !string.IsNullOrWhiteSpace(_adminKey);
 
         private void Awake()
         {
@@ -30,21 +37,25 @@ namespace ZulfarakRPG
             Instance = this;
             DontDestroyOnLoad(gameObject);
             _accessToken = PlayerPrefs.GetString(TokenPrefKey, string.Empty);
+            _adminKey = Environment.GetEnvironmentVariable("ZULFARAK_ADMIN_KEY");
+            if (string.IsNullOrWhiteSpace(_adminKey))
+                _adminKey = PlayerPrefs.GetString(AdminKeyPrefKey, string.Empty);
             _sessionAuthenticated = false;
         }
 
-        public async Task<bool> AuthenticateWithSteamAsync(string steamId, string playerName)
+        public async Task<bool> AuthenticateWithSteamAsync(string steamId, string playerName, string sessionTicket = null)
         {
-            if (string.IsNullOrWhiteSpace(steamId))
+            if (string.IsNullOrWhiteSpace(steamId) && string.IsNullOrWhiteSpace(sessionTicket))
             {
-                Debug.LogWarning("[ServerApi] steamId vazio.");
+                Debug.LogWarning("[ServerApi] steamId e sessionTicket vazios.");
                 return false;
             }
 
             var req = new SteamAuthRequest
             {
                 steamId = steamId,
-                playerName = string.IsNullOrWhiteSpace(playerName) ? steamId : playerName
+                playerName = string.IsNullOrWhiteSpace(playerName) ? steamId : playerName,
+                sessionTicket = sessionTicket ?? string.Empty
             };
 
             try
@@ -139,24 +150,24 @@ namespace ZulfarakRPG
 
         public async Task SyncItemDefinitionsAsync(ItemDefinitionDto[] items)
         {
-            if (items == null || items.Length == 0)
+            if (items == null || items.Length == 0 || !HasAdminKey)
             {
                 return;
             }
 
             var payload = new SyncItemDefinitionsRequest { items = items };
-            await PutAsync("/api/items/definitions/sync", payload).ConfigureAwait(false);
+            await PutAsync("/api/items/definitions/sync", payload, includeAdminKey: true).ConfigureAwait(false);
         }
 
         public async Task SyncEnemyDefinitionsAsync(EnemyDefinitionDto[] enemies)
         {
-            if (enemies == null || enemies.Length == 0)
+            if (enemies == null || enemies.Length == 0 || !HasAdminKey)
             {
                 return;
             }
 
             var payload = new SyncEnemyDefinitionsRequest { enemies = enemies };
-            await PutAsync("/api/enemies/definitions/sync", payload).ConfigureAwait(false);
+            await PutAsync("/api/enemies/definitions/sync", payload, includeAdminKey: true).ConfigureAwait(false);
         }
 
         public async Task<EnemyDefinitionDto[]> LoadEnemyDefinitionsAsync()
@@ -209,6 +220,52 @@ namespace ZulfarakRPG
             return JsonConvert.DeserializeObject<MonsterKillResultDto>(raw);
         }
 
+        // ── Guilds ───────────────────────────────────────────────────────────
+        public async Task<GuildDto> CreateGuildAsync(string name, string description = null)
+        {
+            var raw = await PostAsync("/api/guild", new CreateGuildRequest { name = name, description = description ?? string.Empty }, includeAuth: true).ConfigureAwait(false);
+            return DeserializeOrNull<GuildDto>(raw);
+        }
+
+        public async Task<GuildDto> GetMyGuildAsync()
+        {
+            var raw = await GetAsync("/api/guild/me").ConfigureAwait(false);
+            return DeserializeOrNull<GuildDto>(raw);
+        }
+
+        public async Task<GuildSummaryDto[]> ListGuildsAsync()
+        {
+            var raw = await GetAsync("/api/guild").ConfigureAwait(false);
+            if (string.IsNullOrWhiteSpace(raw)) return Array.Empty<GuildSummaryDto>();
+            return JsonConvert.DeserializeObject<GuildSummaryDto[]>(raw) ?? Array.Empty<GuildSummaryDto>();
+        }
+
+        public async Task<GuildDto> JoinGuildAsync(string guildId)
+        {
+            var raw = await PostAsync($"/api/guild/{guildId}/join", new { }, includeAuth: true).ConfigureAwait(false);
+            return DeserializeOrNull<GuildDto>(raw);
+        }
+
+        public async Task LeaveGuildAsync()
+        {
+            await PostAsync("/api/guild/leave", new { }, includeAuth: true).ConfigureAwait(false);
+        }
+
+        public async Task<GuildMissionResultDto> ResolveGuildMissionAsync(string missionId)
+        {
+            var raw = await PostAsync("/api/guild/mission/resolve", new ResolveGuildMissionRequest { missionId = missionId }, includeAuth: true).ConfigureAwait(false);
+            return DeserializeOrNull<GuildMissionResultDto>(raw);
+        }
+
+        public async Task SyncGuildMissionsAsync(GuildMissionDefinitionDto[] missions)
+        {
+            if (missions == null || missions.Length == 0 || !HasAdminKey) return;
+            await PutAsync("/api/guild/missions/sync", new SyncGuildMissionsRequest { missions = missions }, includeAdminKey: true).ConfigureAwait(false);
+        }
+
+        private static T DeserializeOrNull<T>(string raw) where T : class
+            => string.IsNullOrWhiteSpace(raw) ? null : JsonConvert.DeserializeObject<T>(raw);
+
         private async Task<string> GetAsync(string path)
         {
             using var req = BuildRequest(HttpMethod.Get, path, includeAuth: true);
@@ -234,9 +291,9 @@ namespace ZulfarakRPG
             return await res.Content.ReadAsStringAsync().ConfigureAwait(false);
         }
 
-        private async Task<string> PutAsync(string path, object payload)
+        private async Task<string> PutAsync(string path, object payload, bool includeAdminKey = false)
         {
-            using var req = BuildRequest(HttpMethod.Put, path, includeAuth: true, payload);
+            using var req = BuildRequest(HttpMethod.Put, path, includeAuth: true, payload, includeAdminKey);
             using var res = await Http.SendAsync(req).ConfigureAwait(false);
             if (!res.IsSuccessStatusCode)
             {
@@ -246,13 +303,16 @@ namespace ZulfarakRPG
             return await res.Content.ReadAsStringAsync().ConfigureAwait(false);
         }
 
-        private HttpRequestMessage BuildRequest(HttpMethod method, string path, bool includeAuth, object payload = null)
+        private HttpRequestMessage BuildRequest(HttpMethod method, string path, bool includeAuth, object payload = null, bool includeAdminKey = false)
         {
             var uri = $"{apiBaseUrl.TrimEnd('/')}{path}";
             var req = new HttpRequestMessage(method, uri);
 
             if (includeAuth && !string.IsNullOrWhiteSpace(_accessToken))
                 req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
+
+            if (includeAdminKey && !string.IsNullOrWhiteSpace(_adminKey))
+                req.Headers.Add(AdminHeaderName, _adminKey);
 
             if (payload != null)
             {
@@ -269,6 +329,7 @@ namespace ZulfarakRPG
     {
         public string steamId;
         public string playerName;
+        public string sessionTicket;
     }
 
     [Serializable]
@@ -599,5 +660,88 @@ namespace ZulfarakRPG
         public CombatDropResultDto[] drops = Array.Empty<CombatDropResultDto>();
         public InventoryStateDto inventory;
         public CharacterDto character;
+    }
+
+    // ── Guild DTOs ───────────────────────────────────────────────────────────
+    [Serializable]
+    public class CreateGuildRequest
+    {
+        public string name;
+        public string description;
+    }
+
+    [Serializable]
+    public class GuildMemberDto
+    {
+        public string steamId;
+        public string name;
+        public int level;
+        public int classType;
+        public int subclassType;
+        public bool isLeader;
+    }
+
+    [Serializable]
+    public class GuildDto
+    {
+        public string id;
+        public string name;
+        public string description;
+        public string leaderSteamId;
+        public int level;
+        public long exp;
+        public int maxMembers;
+        public int memberCount;
+        public GuildMemberDto[] members = Array.Empty<GuildMemberDto>();
+    }
+
+    [Serializable]
+    public class GuildSummaryDto
+    {
+        public string id;
+        public string name;
+        public int level;
+        public int memberCount;
+        public int maxMembers;
+        public string leaderSteamId;
+    }
+
+    [Serializable]
+    public class GuildMissionDefinitionDto
+    {
+        public string missionId;
+        public string name;
+        public int requiredLevel = 1;
+        public int requiredPlayers = 1;
+        public long expReward;
+        public long goldReward;
+        public double baseSuccessChance = 0.5;
+        public double tankBonus = 0.10;
+        public double healerBonus = 0.15;
+        public double dpsBonus = 0.05;
+    }
+
+    [Serializable]
+    public class SyncGuildMissionsRequest
+    {
+        public GuildMissionDefinitionDto[] missions = Array.Empty<GuildMissionDefinitionDto>();
+    }
+
+    [Serializable]
+    public class ResolveGuildMissionRequest
+    {
+        public string missionId;
+    }
+
+    [Serializable]
+    public class GuildMissionResultDto
+    {
+        public string missionId;
+        public bool victory;
+        public double successChance;
+        public long expPerMember;
+        public long goldPerMember;
+        public int membersRewarded;
+        public GuildDto guild;
     }
 }
