@@ -50,7 +50,8 @@ namespace ZulfarakRPG
             try
             {
                 var buffer = new byte[1024];
-                var handle = Steamworks.SteamUser.GetAuthSessionTicket(buffer, buffer.Length, out uint written);
+                var identity = new Steamworks.SteamNetworkingIdentity();
+                var handle = Steamworks.SteamUser.GetAuthSessionTicket(buffer, buffer.Length, out uint written, ref identity);
                 if (handle == Steamworks.HAuthTicket.Invalid || written == 0) return null;
                 var sb = new System.Text.StringBuilder((int)written * 2);
                 for (int i = 0; i < written; i++) sb.Append(buffer[i].ToString("x2"));
