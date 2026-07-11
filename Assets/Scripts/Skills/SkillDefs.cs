@@ -5,6 +5,14 @@ namespace ZulfarakRPG
 {
     public enum SkillEffect { Damage, Heal }
 
+    // How a damage skill lands:
+    //  Single            – hits only the nearest enemy (default).
+    //  AreaMelee         – hits EVERY enemy within the swing/blast radius (warrior + mage).
+    //  ArcherSerpent     – zig-zag venom arrow: normal hit + poison DoT.
+    //  ArcherConcentrated– 2 s charge, then a single 200%-damage white shot.
+    //  ArcherRain        – 3 arrows rain down on random enemies for 75% each.
+    public enum SkillShape { Single, AreaMelee, ArcherSerpent, ArcherConcentrated, ArcherRain }
+
     // One skill. Each class has exactly 3 skills (one node). Learning gives a cooldown-
     // based auto-cast in the dungeon (no mana). Carries its pack icon, an element colour,
     // and which PixelEffect animation sheet to play on cast.
@@ -23,6 +31,7 @@ namespace ZulfarakRPG
         public Color color;             // element colour (icon tint + HUD + fallback FX)
         public int fxSheet;             // PixelEffect sheet number (1..10)
         public int fxCols, fxRows;      // sheet grid
+        public SkillShape shape;        // how the damage lands (see SkillShape)
 
         public float CooldownAt(int level) => baseCooldown * (1f - 0.06f * (level - 1));
         public float PowerAt(int level)    => basePower * level;
@@ -41,34 +50,40 @@ namespace ZulfarakRPG
         static readonly Color Steel  = new Color(0.86f, 0.86f, 0.96f);
 
         static SkillDef S(string id, string name, string desc, ClassType cls, SkillEffect fx,
-                          float cd, float pw, int iconTile, Color color, int fxSheet, int fxCols, int fxRows)
+                          float cd, float pw, int iconTile, Color color, int fxSheet, int fxCols, int fxRows,
+                          SkillShape shape = SkillShape.Single)
             => new SkillDef
             {
+                // maxLevel high so a skill point (1 per character level) can always be
+                // invested — you can keep leveling a skill every time you level up.
                 id = id, name = name, desc = desc, cls = cls, node = 0, effect = fx,
-                baseCooldown = cd, basePower = pw, maxLevel = 5,
+                baseCooldown = cd, basePower = pw, maxLevel = 20,
                 iconPath = IconPaths.Skill(iconTile), color = color,
-                fxSheet = fxSheet, fxCols = fxCols, fxRows = fxRows
+                fxSheet = fxSheet, fxCols = fxCols, fxRows = fxRows, shape = shape
             };
 
+        // Warrior + Mage damage skills all hit in AREA (every enemy in the blast).
         static readonly SkillDef[] Warrior =
         {
-            S("w_golpe",     "Golpe Pesado",  "Golpe forte no inimigo mais proximo.", ClassType.Warrior, SkillEffect.Damage, 3.0f, 16f, 12,  Steel,  8, 3, 2),
-            S("w_investida", "Investida",     "Avanca girando a lamina em area.",     ClassType.Warrior, SkillEffect.Damage, 6.0f, 44f, 107, Steel,  9, 4, 3),
-            S("w_vigor",     "Vigor",         "Recupera vida do guerreiro.",          ClassType.Warrior, SkillEffect.Heal,   7.0f, 24f, 337, Nature, 3, 2, 2),
+            S("w_golpe",     "Golpe Pesado",  "Golpe forte que atinge todos ao redor.", ClassType.Warrior, SkillEffect.Damage, 3.0f, 16f, 12,  Steel,  8, 3, 2, SkillShape.AreaMelee),
+            S("w_investida", "Investida",     "Avanca girando a lamina, dano em area.",  ClassType.Warrior, SkillEffect.Damage, 6.0f, 44f, 107, Steel,  9, 4, 3, SkillShape.AreaMelee),
+            S("w_vigor",     "Vigor",         "Recupera vida do guerreiro.",             ClassType.Warrior, SkillEffect.Heal,   7.0f, 24f, 337, Nature, 3, 2, 2),
         };
 
         static readonly SkillDef[] Mage =
         {
-            S("m_fogo",   "Bola de Fogo",     "Arremessa uma bola de fogo.",          ClassType.Mage, SkillEffect.Damage, 3.5f, 22f, 4,  Fire,   4, 3, 3),
-            S("m_gelo",   "Fragmento de Gelo","Estilhaco de gelo cortante.",          ClassType.Mage, SkillEffect.Damage, 5.0f, 36f, 64, Ice,    5, 3, 2),
-            S("m_arcano", "Explosao Arcana",  "Detona energia arcana sobre o alvo.",  ClassType.Mage, SkillEffect.Damage, 7.0f, 58f, 38, Arcane, 6, 3, 2),
+            S("m_fogo",   "Bola de Fogo",     "Explosao de fogo que atinge todos na area.", ClassType.Mage, SkillEffect.Damage, 3.5f, 22f, 4,  Fire,   4, 3, 3, SkillShape.AreaMelee),
+            S("m_gelo",   "Fragmento de Gelo","Estilhacos de gelo em area.",                ClassType.Mage, SkillEffect.Damage, 5.0f, 36f, 64, Ice,    5, 3, 2, SkillShape.AreaMelee),
+            S("m_arcano", "Explosao Arcana",  "Detona energia arcana em area.",             ClassType.Mage, SkillEffect.Damage, 7.0f, 58f, 38, Arcane, 6, 3, 2, SkillShape.AreaMelee),
         };
 
+        // Archer skills — damage is a % of the archer's ATTACK (computed in SkillAutoCaster),
+        // so basePower here is just the nominal number the HUD tooltip shows.
         static readonly SkillDef[] Archer =
         {
-            S("a_certeiro","Tiro Certeiro",   "Flecha certeira de alto dano.",        ClassType.Archer, SkillEffect.Damage, 3.0f, 18f, 14, Steel,  8, 3, 2),
-            S("a_veneno",  "Flecha Venenosa", "Flecha que envenena o alvo.",          ClassType.Archer, SkillEffect.Damage, 5.0f, 32f, 16, Nature, 1, 4, 3),
-            S("a_chuva",   "Chuva de Flechas","Torrente de flechas sobre o alvo.",    ClassType.Archer, SkillEffect.Damage, 7.0f, 52f, 1,  Steel,  8, 3, 2),
+            S("a_serpe",       "Tiro de Serpe",    "Flecha em zigue-zague: dano normal + veneno (30% do ataque/s por 4s).", ClassType.Archer, SkillEffect.Damage, 5.0f, 30f, 16, Nature, 1, 4, 3, SkillShape.ArcherSerpent),
+            S("a_concentrado", "Tiro Concentrado", "Concentra por 2s e dispara: 200% do dano de ataque.",                   ClassType.Archer, SkillEffect.Damage, 6.0f, 200f, 14, Steel, 8, 3, 2, SkillShape.ArcherConcentrated),
+            S("a_chuva",       "Chuva de Flechas", "3 flechas caem sobre inimigos aleatorios: 75% do ataque cada.",         ClassType.Archer, SkillEffect.Damage, 7.0f, 75f, 1,  Steel, 8, 3, 2, SkillShape.ArcherRain),
         };
 
         public static ClassType CurrentClass => PlayerManager.Instance != null && PlayerManager.Instance.Data != null

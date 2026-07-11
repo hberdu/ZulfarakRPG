@@ -71,12 +71,24 @@ namespace ZulfarakRPG
         {
             _player = FindAnyObjectByType<PlayerController2D>();
             if (idleFrames != null && idleFrames.Length > 0 && _sr != null) _sr.sprite = idleFrames[0];
+
+            // Regular enemies read a touch smaller than the hero; the boss keeps its authored
+            // size (SpawnScaleMultiplier override). Applied BEFORE seating so the ground snap
+            // below re-aligns the resized collider/feet.
+            float sizeMul = SpawnScaleMultiplier;
+            if (!Mathf.Approximately(sizeMul, 1f))
+            {
+                var s = transform.localScale;
+                transform.localScale = new Vector3(s.x * sizeMul, s.y * sizeMul, s.z);
+            }
+
             // Ground on the same line as the player using the authored foot collider
             // (offset 0.5, size 0.3x0.2 — identical to the hero); gravity + the shared
             // GroundFloor then keep it pinned to the floor while it walks, so it can't fly.
             RestOnGroundAtSpawn();
 
             _hpBar?.AttachAbove(_sr);
+            if (UsesBossHealthBar) _hpBar?.EnableBossFrame();
             _hpBar?.SetHealth(_hp, maxHealth);
             PlayAnim(idleFrames, 8f);
             StartCoroutine(ResolveEnemyFromServer());
@@ -107,9 +119,68 @@ namespace ZulfarakRPG
             _attackLock -= Time.deltaTime;
 
             TickAI();
+            TickPoison();
 
             ClampToSceneBounds();
             UpdateHpBarStagger();
+        }
+
+        // ── Poison damage-over-time (archer's Tiro de Serpe) ─────────────────
+        float _poisonDps;
+        float _poisonTimeLeft;
+        float _poisonTick;
+
+        // Applies (or refreshes) a poison DoT: `dps` damage per second for `duration`
+        // seconds. Re-applying takes the stronger dps and the longer remaining time.
+        public void ApplyPoison(float dps, float duration)
+        {
+            if (_dead || dps <= 0f || duration <= 0f) return;
+            _poisonDps      = Mathf.Max(_poisonDps, dps);
+            _poisonTimeLeft = Mathf.Max(_poisonTimeLeft, duration);
+        }
+
+        void TickPoison()
+        {
+            if (_dead || _poisonTimeLeft <= 0f) return;
+            _poisonTimeLeft -= Time.deltaTime;
+            _poisonTick     += Time.deltaTime;
+            const float interval = 0.5f;
+            if (_poisonTick >= interval)
+            {
+                _poisonTick -= interval;
+                float dmg = _poisonDps * interval;
+                ApplyPoisonDamage(dmg);
+                // Sync the tick to co-op partners so the enemy's HP + green numbers match.
+                MultiplayerSync.Instance?.BroadcastDamage(netInstanceId, dmg, false, poison: true);
+            }
+            if (_poisonTimeLeft <= 0f) _poisonDps = 0f;
+        }
+
+        // A poison tick replayed from a co-op partner (they own the DoT); shows the same
+        // green number and HP loss here without a hurt flash / stun.
+        public void ApplyRemotePoisonTick(float dmg) => ApplyPoisonDamage(dmg);
+
+        void ApplyPoisonDamage(float dmg)
+        {
+            if (_dead || dmg <= 0f) return;
+            // Direct HP loss (no hurt flash / stun) + a green poison number.
+            _hp = Mathf.Max(0f, _hp - dmg);
+            _hpBar?.SetHealth(_hp, maxHealth);
+            DamagePopup.Spawn(transform, dmg, new Color(0.45f, 1f, 0.35f, 1f));
+            if (_hp <= 0f) StartCoroutine(Die());
+        }
+
+        // All living skeletons whose position is within `radius` of `center` — used by the
+        // warrior/mage area skills and the archer's arrow rain to pick targets.
+        public static System.Collections.Generic.List<SkeletonEnemy> AliveInRadius(Vector3 center, float radius)
+        {
+            var list = new System.Collections.Generic.List<SkeletonEnemy>();
+            float r2 = radius * radius;
+            foreach (var e in FindObjectsByType<SkeletonEnemy>(FindObjectsSortMode.None))
+                if (e != null && e.IsAlive &&
+                    ((Vector2)(e.transform.position - center)).sqrMagnitude <= r2)
+                    list.Add(e);
+            return list;
         }
 
         // In co-op the enemy engages whichever lobby member is CLOSEST — the local
@@ -266,9 +337,17 @@ namespace ZulfarakRPG
         // Hook for subclasses (e.g. boss killing its remaining minions).
         protected virtual void OnDeathStarted() { }
 
+        // Bosses override this to get the bigger dragon-framed HP bar.
+        protected virtual bool UsesBossHealthBar => false;
+
         // Multiplier applied on top of server-catalog stats so bosses keep their
         // buffed HP/damage even when ResolveEnemyFromServer overwrites the fields.
         protected virtual float ServerStatMultiplier => 1f;
+
+        // On-spawn size multiplier applied to the authored prefab scale. Regular skeletons
+        // read a touch smaller than the hero; the boss overrides this to 1 to keep its size.
+        // Applied in Start() before ground-seating, which re-aligns the enemy automatically.
+        protected virtual float SpawnScaleMultiplier => 0.85f;
 
         IEnumerator RegisterKillOnServer()
         {

@@ -32,7 +32,7 @@ namespace ZulfarakRPG
 
             var scaler = go.AddComponent<CanvasScaler>();
             scaler.uiScaleMode         = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(600, 180);
+            scaler.referenceResolution = new Vector2(480, 180);
             scaler.matchWidthOrHeight  = 0.5f;
 
             var ui = go.AddComponent<LoadingScreenUI>();

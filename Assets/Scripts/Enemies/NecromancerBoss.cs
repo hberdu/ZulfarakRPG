@@ -28,6 +28,13 @@ namespace ZulfarakRPG
         // are already authored doubled).
         protected override float ServerStatMultiplier => 2f;
 
+        // Dragon-framed boss HP bar (see WorldHealthBar.EnableBossFrame).
+        protected override bool UsesBossHealthBar => true;
+
+        // The boss shrinks only slightly (all characters read a touch smaller), staying clearly
+        // bigger than the regular enemies.
+        protected override float SpawnScaleMultiplier => 0.9f;
+
         private bool  _summoning;
         private bool  _casting;
         private float _summonTimer = 1.5f;   // first re-summon shortly after engaging
@@ -74,7 +81,7 @@ namespace ZulfarakRPG
             float dist = Mathf.Abs(dx);
             if (dist > 0.01f) _sr.flipX = dx < 0;   // face the target
 
-            if (dist < castMinDistance)
+            if (dist < EffectiveKiteDistance())
             {
                 float away  = -Mathf.Sign(dx);
                 float nextX = transform.position.x + away * moveSpeed * Time.deltaTime;
@@ -93,6 +100,18 @@ namespace ZulfarakRPG
                 return;
             }
             if (_attackLock <= 0) PlayAnim(idleFrames, 8f);
+        }
+
+        // How far the boss is allowed to kite back from the target. The desktop-overlay strip
+        // is narrow, so we NEVER let it retreat past the camera's visible half-width (minus a
+        // margin for its own sprite): the boss stays on screen no matter the window size, while
+        // still keeping its ranged distance when there's room. Adapts if the window is resized.
+        float EffectiveKiteDistance()
+        {
+            var cam = Camera.main;
+            if (cam == null || !cam.orthographic) return castMinDistance;
+            float halfW = cam.orthographicSize * cam.aspect;
+            return Mathf.Min(castMinDistance, Mathf.Max(0.8f, halfW - 0.5f));
         }
 
         IEnumerator CastRoutine()

@@ -36,7 +36,9 @@ namespace ZulfarakRPG
             float camX       = cam != null ? cam.transform.position.x : 2.5f;
             float viewBottom = cam != null ? cam.transform.position.y - cam.orthographicSize : -0.75f;
             float halfW      = cam != null ? cam.orthographicSize * cam.aspect : 2.5f;
-            float worldW     = Mathf.Max(halfW * 2f + 2f, 8f);
+            // Wide enough that the floor still fills the view once the camera FOLLOWS the hero
+            // across the arena (the ground is centred on the load-time camera X and stays put).
+            float worldW     = Mathf.Max(halfW * 2f + 2f, 40f);
 
             // Sand fills well below the view so it always reads as deep, continuous ground.
             float dirtBottom = viewBottom - 3f;

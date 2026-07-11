@@ -29,6 +29,11 @@ namespace ZulfarakRPG
         readonly Dictionary<string, int> _levels = new();
         readonly List<string> _equipped = new();
 
+        // The class the learned/equipped lists were last validated against. When it changes
+        // (e.g. the player switched mago→arqueiro) foreign-class skills are pruned. Null so
+        // the first frame with a known class always runs the check.
+        ClassType? _syncedClass;
+
         string SavePath => Path.Combine(Application.persistentDataPath, "skills.json");
 
         void Awake()
@@ -39,12 +44,20 @@ namespace ZulfarakRPG
             Load();
         }
 
+        // Keeps the skill set locked to the active class every frame (cheap: only does work
+        // when the class actually changes).
+        void Update() => EnsureClassSynced();
+
         // ── Queries ──────────────────────────────────────────────────────
         public int GetLevel(string id) => _levels.TryGetValue(id, out var l) ? l : 0;
 
         public int SpentPoints
         {
-            get { int t = 0; foreach (var kv in _levels) t += kv.Value; return t; }
+            get
+            {
+                EnsureClassSynced();   // points spent on a former class must not count here
+                int t = 0; foreach (var kv in _levels) t += kv.Value; return t;
+            }
         }
 
         int PlayerLevel => PlayerManager.Instance?.Data?.level ?? 1;
@@ -67,6 +80,7 @@ namespace ZulfarakRPG
         {
             var def = SkillDefs.Get(id);
             if (def == null) return false;
+            if (def.cls != SkillDefs.CurrentClass) return false;   // only your own specialty
             if (AvailablePoints <= 0) return false;
             if (GetLevel(id) >= def.maxLevel) return false;
             if (!IsNodeUnlocked(def.node)) return false;
@@ -120,12 +134,65 @@ namespace ZulfarakRPG
         // Equipped skills that are still learned, in slot order.
         public IEnumerable<(SkillDef def, int level)> Equipped()
         {
+            EnsureClassSynced();   // never auto-cast a skill from a class the player left
             foreach (var id in _equipped)
             {
                 int l = GetLevel(id);
                 var def = SkillDefs.Get(id);
                 if (def != null && l > 0) yield return (def, l);
             }
+        }
+
+        // ── Class specialty guard ────────────────────────────────────────
+        // A character may only keep skills of its OWN class. Switching class (mago→arqueiro)
+        // used to leave the old spells learned AND equipped — so mage spells kept auto-casting
+        // and their spent points starved the archer's tree. Whenever the active class changes
+        // we drop every skill that doesn't belong to it; the freed points return to the pool
+        // automatically (AvailablePoints = level − points spent on THIS class's skills).
+        void EnsureClassSynced()
+        {
+            var pm = PlayerManager.Instance;
+            if (pm == null || pm.Data == null) return;   // class unknown yet — never prune blindly
+            var cls = pm.Data.classType;
+            if (_syncedClass == cls) return;
+            _syncedClass = cls;
+            if (PruneForeignSkills(cls))
+            {
+                Save();
+                OnSkillsChanged?.Invoke();
+            }
+        }
+
+        // Removes learned/equipped skills that aren't part of `cls`, then backfills any free
+        // equip slot with the class's own learned skills. Returns true if anything changed.
+        bool PruneForeignSkills(ClassType cls)
+        {
+            bool changed = false;
+
+            var stale = new List<string>();
+            foreach (var kv in _levels)
+            {
+                var def = SkillDefs.Get(kv.Key);
+                if (def == null || def.cls != cls) stale.Add(kv.Key);
+            }
+            foreach (var id in stale) { _levels.Remove(id); changed = true; }
+
+            for (int i = _equipped.Count - 1; i >= 0; i--)
+            {
+                var def = SkillDefs.Get(_equipped[i]);
+                if (def == null || def.cls != cls || GetLevel(_equipped[i]) <= 0)
+                { _equipped.RemoveAt(i); changed = true; }
+            }
+
+            // Fill any slot freed by pruning with this class's remaining learned skills.
+            if (_equipped.Count < MaxEquipped)
+                foreach (var kv in _levels)
+                {
+                    if (_equipped.Count >= MaxEquipped) break;
+                    if (kv.Value > 0 && !_equipped.Contains(kv.Key)) { _equipped.Add(kv.Key); changed = true; }
+                }
+
+            return changed;
         }
 
         // ── Persistence ──────────────────────────────────────────────────
@@ -141,6 +208,13 @@ namespace ZulfarakRPG
                 if (data.entries != null)
                     foreach (var e in data.entries)
                         if (!string.IsNullOrEmpty(e.id) && e.level > 0) _levels[e.id] = e.level;
+
+                // Migrate renamed archer skills so invested points aren't lost:
+                //   a_veneno  → a_serpe        (Tiro de Serpe, the venom shot)
+                //   a_certeiro→ a_concentrado  (Tiro Concentrado, the charged shot)
+                MigrateSkill("a_veneno",   "a_serpe");
+                MigrateSkill("a_certeiro", "a_concentrado");
+
                 if (data.equipped != null)
                     foreach (var id in data.equipped)
                         if (GetLevel(id) > 0 && !_equipped.Contains(id) && _equipped.Count < MaxEquipped)
@@ -156,6 +230,17 @@ namespace ZulfarakRPG
                     if (_equipped.Count >= MaxEquipped) break;
                     if (kv.Value > 0 && SkillDefs.Get(kv.Key) != null) _equipped.Add(kv.Key);
                 }
+        }
+
+        // Moves a learned level from an old (removed) skill id onto its replacement, so a
+        // save made before the archer skills were renamed keeps its points.
+        void MigrateSkill(string oldId, string newId)
+        {
+            if (!_levels.TryGetValue(oldId, out var lvl) || lvl <= 0) return;
+            _levels[newId] = Mathf.Max(GetLevel(newId), lvl);
+            _levels.Remove(oldId);
+            for (int i = 0; i < _equipped.Count; i++)
+                if (_equipped[i] == oldId) _equipped[i] = newId;
         }
 
         void Save()

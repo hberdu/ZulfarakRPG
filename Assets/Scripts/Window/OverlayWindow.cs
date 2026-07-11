@@ -49,26 +49,27 @@ namespace ZulfarakRPG
         const uint SWP_SHOWWINDOW  = 0x0040;
         const uint SWP_FRAMECHANGED= 0x0020;
 
-        // Fully-transparent clear colour for the gameplay window. The camera clears
-        // to alpha 0, and DwmExtendFrameIntoClientArea (all-negative "sheet of glass"
-        // margins) tells Windows to composite every alpha-0 pixel as a see-through
-        // hole over the live desktop. Sprites/text/HUD (alpha 1) stay opaque.
-        // This is the Built-in Render Pipeline path — no URP renderer feature needed,
-        // and it works with Unity's DirectX swapchain (unlike LWA_COLORKEY, which a
-        // DX flip-model swapchain bypasses entirely → that's why magenta stayed pink).
-        public static readonly Color BackgroundColor = new Color(0f, 0f, 0f, 0f);
+        // MAGENTA clear colour for the gameplay window. This project renders through URP with
+        // the AlphaMaskFeature (see AlphaFromMagenta.shader): after post-processing it rewrites
+        // every magenta pixel (R≥.85, G≤.15, B≥.85) to alpha 0, and DwmExtendFrameIntoClientArea
+        // (all-negative "sheet of glass" margins) then composites those alpha-0 pixels as a
+        // see-through hole over the live desktop. Sprites/text/HUD stay opaque.
+        // NOTE: clearing straight to transparent-black instead leaves the frame OPAQUE, because
+        // URP's final present clobbers the clear alpha unless AlphaMaskFeature keys off magenta.
+        public static readonly Color BackgroundColor = new Color(1f, 0f, 1f, 1f);
 
         // ── Public settings ───────────────────────────────────────────────────
-        public int windowWidth  = 600;
+        // 400 px wide keeps the strip compact (TaskbarHero-style) instead of a very wide
+        // band. The character's on-screen size is unaffected — it depends only on the
+        // strip HEIGHT and GameplayCamOrtho, not the width (which just controls how much
+        // world is visible left/right). CameraFollow2D scrolls to keep the hero centred.
+        public int windowWidth  = 480;
         public int windowHeight = 120;
 
-        // Orthographic half-height applied to Camera.main during gameplay. Tuned to
-        // preserve the character pixel size after we shrank the gameplay strip from
-        // 180 → 120 px (TaskbarHero-style thin band): ortho = 0.75 * 120/180 = 0.50.
-        // Combined with GameplayCamY, this crops most of the empty sky above the
-        // character while leaving the full body + HP bar on screen and only a sliver
-        // of ground below the feet.
-        public const float GameplayCamOrtho = 0.50f;
+        // Orthographic half-height applied to Camera.main during gameplay. The CITY and the
+        // DUNGEON share this exact zoom so the world reads at the same scale in both. A bit
+        // zoomed out so the whole (compact) city fits and characters read a touch smaller.
+        public const float GameplayCamOrtho = 0.72f;
         public const float GameplayCamY     = 0.10f;
 
         public static OverlayWindow Instance { get; private set; }
@@ -139,7 +140,7 @@ namespace ZulfarakRPG
             // Bootstrap boots at the gameplay resolution so the loading screen and
             // the game share the exact same window size (no resize on scene swap).
             bool gameplay = sceneName == "Zulfarak" || sceneName == "Dungeon" || sceneName == "Bootstrap";
-            int newW = gameplay ? 600 : 380;
+            int newW = gameplay ? 480 : 380;
             int newH = gameplay ? 120 : 640;
             windowWidth = newW;
             windowHeight = newH;
@@ -222,11 +223,13 @@ namespace ZulfarakRPG
                        WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX);
             SetWindowLong(_hwnd, GWL_STYLE, style);
 
-            // Hide from taskbar/Alt+Tab. NO WS_EX_LAYERED — the color-key it enables
-            // is bypassed by Unity's DirectX flip-model swapchain. We use DWM per-pixel
-            // alpha instead (below), which composites the framebuffer's alpha channel.
+            // WS_EX_LAYERED is required so LayeredWindowRenderer can push per-pixel-alpha frames
+            // via UpdateLayeredWindow (the reliable transparency path — the DX swapchain clobbers
+            // the framebuffer alpha, so DWM/color-key both failed). WS_EX_TOOLWINDOW hides us
+            // from the taskbar/Alt+Tab. NO DwmExtendFrameIntoClientArea and NO
+            // SetLayeredWindowAttributes — both are incompatible with UpdateLayeredWindow.
             int ex = GetWindowLong(_hwnd, GWL_EXSTYLE);
-            ex |= WS_EX_TOOLWINDOW;
+            ex |= WS_EX_TOOLWINDOW | WS_EX_LAYERED;
             SetWindowLong(_hwnd, GWL_EXSTYLE, ex);
 
             if (repositionWindow)
@@ -236,11 +239,9 @@ namespace ZulfarakRPG
                     SWP_SHOWWINDOW | SWP_FRAMECHANGED);
             }
 
-            // "Sheet of glass": all-negative margins extend the DWM frame across the
-            // whole client area, so Windows blends the window using the framebuffer's
-            // per-pixel alpha. Camera clears to alpha 0 → those pixels show the desktop.
-            var margins = new MARGINS { cxLeftWidth = -1, cxRightWidth = -1, cyTopHeight = -1, cyBottomHeight = -1 };
-            DwmExtendFrameIntoClientArea(_hwnd, ref margins);
+#if !UNITY_EDITOR
+            LayeredWindowRenderer.Ensure();
+#endif
         }
 
         public static void MoveWindowTo(int x, int y)
@@ -330,10 +331,14 @@ namespace ZulfarakRPG
                 IsDraggingWindow = false;
             }
 
+            // Keep BOTH sticky: Unity occasionally resets the ex-style, which would drop the
+            // taskbar-hiding AND the color-key transparency. Re-assert them (and re-apply the
+            // key) whenever either is missing.
+            const int wanted = WS_EX_TOOLWINDOW | WS_EX_LAYERED;
             int ex = GetWindowLong(_hwnd, GWL_EXSTYLE);
-            if ((ex & WS_EX_TOOLWINDOW) == 0)
+            if ((ex & wanted) != wanted)
             {
-                ex |= WS_EX_TOOLWINDOW;
+                ex |= wanted;
                 SetWindowLong(_hwnd, GWL_EXSTYLE, ex);
             }
 #endif

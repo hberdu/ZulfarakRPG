@@ -18,6 +18,7 @@ namespace ZulfarakRPG
 
         PlayerController2D _player;
         readonly Dictionary<string, float> _cd = new();
+        int _skillArrowIdx;   // cycles the archer's arrow variants for skill projectiles
 
         void Awake()
         {
@@ -66,6 +67,10 @@ namespace ZulfarakRPG
             return false;
         }
 
+        // Radius (world units) of the warrior/mage area skills — "everything inside the
+        // swing/blast animation".
+        const float AreaRadius = 1.9f;
+
         bool TryCast(SkillDef def, int level)
         {
             if (def.effect == SkillEffect.Heal)
@@ -76,14 +81,193 @@ namespace ZulfarakRPG
                 return true;
             }
 
-            // Damage: strike the nearest living enemy on the battlefield.
-            var e = _player.NearestEnemy(14f);
+            // Damage: aim at the nearest living enemy on the battlefield.
+            var e = _player.NearestEnemy(16f);
             if (e == null || !e.IsAlive) return false;
 
-            float dmgAnim = _player.PlayCastAnimation(e.transform.position);
-            float dmg = def.PowerAt(level) + _player.attackDamage * 0.5f;
-            StartCoroutine(ApplyDamageAtCastApex(e, def, dmg, Mathf.Max(0.05f, dmgAnim * 0.5f)));
-            return true;
+            float atk = _player.attackDamage;
+
+            switch (def.shape)
+            {
+                case SkillShape.ArcherConcentrated:
+                    // 2 s charge → single 200% white shot (handles its own animation).
+                    StartCoroutine(ConcentratedShot(e, 2f * atk));
+                    return true;
+
+                case SkillShape.ArcherSerpent:
+                {
+                    float anim = _player.PlayCastAnimation(e.transform.position);
+                    // Normal attack damage on hit + poison 30% of attack per second for 4 s.
+                    StartCoroutine(FireSerpentAtApex(e, atk, 0.30f * atk, 4f, Mathf.Max(0.05f, anim * 0.5f)));
+                    return true;
+                }
+
+                case SkillShape.ArcherRain:
+                {
+                    float anim = _player.PlayCastAnimation(e.transform.position);
+                    StartCoroutine(FaceUpDuringRain(anim + 0.2f));   // aim the volley into the sky
+                    StartCoroutine(ArrowRainAtApex(0.75f * atk, Mathf.Max(0.05f, anim * 0.5f)));
+                    return true;
+                }
+
+                case SkillShape.AreaMelee:
+                {
+                    float anim = _player.PlayCastAnimation(e.transform.position);
+                    float dmg  = def.PowerAt(level) + atk * 0.5f;
+                    StartCoroutine(ApplyAreaAtApex(e.transform.position, def, dmg, Mathf.Max(0.05f, anim * 0.5f)));
+                    return true;
+                }
+
+                default: // Single
+                {
+                    float anim = _player.PlayCastAnimation(e.transform.position);
+                    float dmg  = def.PowerAt(level) + atk * 0.5f;
+                    StartCoroutine(ApplyDamageAtCastApex(e, def, dmg, Mathf.Max(0.05f, anim * 0.5f)));
+                    return true;
+                }
+            }
+        }
+
+        // World point in front of the hero (collider centre nudged toward the target) —
+        // where projectiles/muzzle effects originate.
+        Vector3 Muzzle(Vector3 targetPos)
+        {
+            var col = _player.GetComponent<Collider2D>();
+            Vector3 c = col != null ? col.bounds.center : _player.transform.position + Vector3.up * 0.5f;
+            float dir = Mathf.Sign(targetPos.x - _player.transform.position.x);
+            if (dir == 0f) dir = 1f;
+            return c + new Vector3(dir * 0.35f, 0.05f, 0f);
+        }
+
+        // The archer's real arrow sprite — the SAME art the basic shot flies — so skill
+        // projectiles (Serpe, Chuva) match instead of using a separate dart. Cycles the pack
+        // variants; falls back to the shared arrow when none are assigned.
+        Sprite CurrentArrowSprite()
+        {
+            var variants = _player != null ? _player.arrowVariantSprites : null;
+            if (variants != null && variants.Length > 0)
+            {
+                var s = variants[_skillArrowIdx % variants.Length];
+                _skillArrowIdx = (_skillArrowIdx + 1) % variants.Length;
+                if (s != null) return s;
+            }
+            return Arrow.SharedSprite;
+        }
+
+        // ── Archer: Tiro de Serpe ────────────────────────────────────────────
+        System.Collections.IEnumerator FireSerpentAtApex(SkeletonEnemy target, float hitDmg,
+                                                         float poisonDps, float poisonDur, float delay)
+        {
+            yield return new WaitForSeconds(delay);
+            if (target == null || !target.IsAlive) yield break;
+            Vector3 origin = Muzzle(target.transform.position);
+            var tcol = target.GetComponent<Collider2D>();
+            Vector3 tpos = tcol != null ? tcol.bounds.center : target.transform.position + Vector3.up * 0.5f;
+            SerpentArrow.Spawn(origin, target, hitDmg, poisonDps, poisonDur, CurrentArrowSprite());
+            MultiplayerSync.Instance?.BroadcastSerpent(origin, tpos);
+        }
+
+        // Tilts the archer to aim UP while the arrow-rain volley is fired (side-view sprite has
+        // no up pose, so we lean it skyward), then restores the upright pose.
+        System.Collections.IEnumerator FaceUpDuringRain(float dur)
+        {
+            if (_player == null) yield break;
+            var tr = _player.transform;
+            var sr = _player.GetComponent<SpriteRenderer>();
+            bool facingLeft = sr != null && sr.flipX;
+            float tilt = facingLeft ? -42f : 42f;   // lean back so the bow points to the sky
+            Quaternion upright = tr.localRotation;
+            tr.localRotation = Quaternion.Euler(0f, 0f, tilt);
+            float t = 0f;
+            while (t < dur && _player != null) { t += Time.deltaTime; yield return null; }
+            if (_player != null) _player.transform.localRotation = upright;
+        }
+
+        // ── Archer: Chuva de Flechas ─────────────────────────────────────────
+        System.Collections.IEnumerator ArrowRainAtApex(float perArrowDamage, float delay)
+        {
+            yield return new WaitForSeconds(delay);
+            var enemies = SkeletonEnemy.AliveInRadius(_player.transform.position, 22f);
+            if (enemies.Count == 0) yield break;
+            // Three arrows onto random enemies (repeats allowed when fewer than 3 remain).
+            for (int i = 0; i < 3; i++)
+            {
+                var tgt = enemies[Random.Range(0, enemies.Count)];
+                if (tgt == null || !tgt.IsAlive) continue;
+                var col = tgt.GetComponent<Collider2D>();
+                Vector3 landing = col != null ? col.bounds.center : tgt.transform.position + Vector3.up * 0.5f;
+                FallingArrow.Spawn(tgt, perArrowDamage, i * 0.12f, CurrentArrowSprite());
+                MultiplayerSync.Instance?.BroadcastArrowFall(landing);
+            }
+        }
+
+        // ── Archer: Tiro Concentrado ─────────────────────────────────────────
+        System.Collections.IEnumerator ConcentratedShot(SkeletonEnemy target, float damage)
+        {
+            // White charge aura growing at the hero for 2 seconds.
+            var aura = SkillCastFXWhite(_player.transform.position);
+            float t = 0f;
+            const float charge = 2f;
+            while (t < charge)
+            {
+                if (_player == null) { if (aura) Destroy(aura); yield break; }
+                if (target == null || !target.IsAlive) { if (aura) Destroy(aura); yield break; }
+                t += Time.deltaTime;
+                if (aura) { aura.transform.position = _player.transform.position + Vector3.up * 0.5f;
+                            aura.transform.localScale = Vector3.one * Mathf.Lerp(0.3f, 1.1f, t / charge); }
+                yield return null;
+            }
+            if (aura) Destroy(aura);
+            if (target == null || !target.IsAlive) yield break;
+
+            // Release: draw pose, white burst, and a big fast white arrow (200% damage).
+            float anim = _player.PlayCastAnimation(target.transform.position);
+            yield return new WaitForSeconds(Mathf.Max(0.04f, anim * 0.4f));
+            if (target == null || !target.IsAlive) yield break;
+
+            Vector3 origin = Muzzle(target.transform.position);
+            SkillCastFX.Spawn(origin, Color.white);
+
+            var go = new GameObject("ConcentratedArrow");
+            go.transform.position = origin;
+            var arrow = go.AddComponent<Arrow>();
+            arrow.speed = 22f;
+            arrow.Init(target, damage, false, null);
+            var sr = go.GetComponent<SpriteRenderer>();
+            if (sr != null) { sr.color = Color.white; }
+            // Init already sized it big (Arrow.TargetWorldSize); the charged 200% shot is the
+            // heaviest arrow, so nudge it a bit larger still.
+            go.transform.localScale *= 1.2f;
+
+            MultiplayerSync.Instance?.BroadcastConcentrated(origin, target.transform.position);
+        }
+
+        // A soft white glow sprite used for the concentrated-shot charge aura.
+        GameObject SkillCastFXWhite(Vector3 pos)
+        {
+            var go = new GameObject("ConcentratedCharge");
+            go.transform.position = pos + Vector3.up * 0.5f;
+            var sr = go.AddComponent<SpriteRenderer>();
+            sr.sprite = SkillDart.Get();       // any small sprite; scaled up as a glow
+            sr.color = new Color(1f, 1f, 1f, 0.65f);
+            sr.sortingOrder = 12;
+            return go;
+        }
+
+        // ── Warrior / Mage: area damage ──────────────────────────────────────
+        System.Collections.IEnumerator ApplyAreaAtApex(Vector3 center, SkillDef def, float dmg, float delay)
+        {
+            yield return new WaitForSeconds(delay);
+            var hits = SkeletonEnemy.AliveInRadius(center, AreaRadius);
+            foreach (var e in hits)
+            {
+                if (e == null || !e.IsAlive) continue;
+                e.TakeDamage(dmg, false);
+                MultiplayerSync.Instance?.BroadcastDamage(e.netInstanceId, dmg, false);
+            }
+            // One large effect over the blast so the area read is obvious.
+            SkillEffectAnim.Spawn(center, def.fxSheet, def.fxCols, def.fxRows, def.color, 3.8f);
+            MultiplayerSync.Instance?.BroadcastSkillBurst(center, def.fxSheet, def.fxCols, def.fxRows, def.color, 3.8f);
         }
 
         // Waits until the player's raised-staff apex before landing the effect + damage,
@@ -105,6 +289,7 @@ namespace ZulfarakRPG
             MultiplayerSync.Instance?.BroadcastDamage(target.netInstanceId, dmg, false);
             // Skills read BIG and super visible (much larger than the basic-attack projectiles).
             SkillEffectAnim.Spawn(target.transform.position, def.fxSheet, def.fxCols, def.fxRows, def.color, 3.2f);
+            MultiplayerSync.Instance?.BroadcastSkillBurst(target.transform.position, def.fxSheet, def.fxCols, def.fxRows, def.color, 3.2f);
         }
 
         IEnumerator ApplyHealAtCastApex(SkillDef def, int level, float delay)
@@ -112,6 +297,7 @@ namespace ZulfarakRPG
             yield return new WaitForSeconds(delay);
             _player.Heal(def.PowerAt(level));
             SkillEffectAnim.Spawn(_player.transform.position, def.fxSheet, def.fxCols, def.fxRows, def.color, 2.4f);
+            MultiplayerSync.Instance?.BroadcastSkillBurst(_player.transform.position, def.fxSheet, def.fxCols, def.fxRows, def.color, 2.4f);
         }
 
         // Element colour for the HUD / fallback FX (carried on the skill).

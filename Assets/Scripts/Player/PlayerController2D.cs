@@ -173,15 +173,24 @@ namespace ZulfarakRPG
                 Debug.Log($"[Player.Start] sprite={_sr.sprite.name} bottom={ab.bottomFromBottom:F3} top={ab.topFromBottom:F3} spriteH={_sr.sprite.bounds.size.y:F3} pos={transform.position} scale={transform.lossyScale}");
             }
 
+            // Shrink the hero slightly so ALL characters read a touch smaller (matches the
+            // reduced enemies). Applied before seating so RestOnGroundAtSpawn re-grounds it.
+            {
+                const float HeroScale = 0.85f;
+                var s = transform.localScale;
+                transform.localScale = new Vector3(s.x * HeroScale, s.y * HeroScale, s.z);
+            }
+
             // Rest the player on the ground exactly like the city NPCs: settle its
             // authored foot collider (offset 0.5, size 0.3×0.2 — identical to the NPCs)
             // onto the ground line. Deterministic; no reliance on alpha-readable art.
             RestOnGroundAtSpawn();
 
             // Class-specific reach (overrides the authored value): the archer AND the mage
-            // fight from range (the mage lobs a fireball), while the melee Warrior must
-            // close right up to the enemy before it swings.
-            attackRange = (_classType == ClassType.Archer || _classType == ClassType.Mage) ? 6f : 1.1f;
+            // fight from range, but SHORT enough that they only fire at enemies already on
+            // screen (was 6 → they were shooting targets still off the right edge). The melee
+            // Warrior must close right up to the enemy before it swings.
+            attackRange = (_classType == ClassType.Archer || _classType == ClassType.Mage) ? 3.5f : 1.1f;
 
             // Tight GREEN HP bar: width and Y both auto-detected from the sprite alpha.
             _hpBar?.AttachAbove(_sr,
@@ -200,6 +209,46 @@ namespace ZulfarakRPG
             SkillManager.Ensure();
             _skillCaster = GetComponent<SkillAutoCaster>();
             if (_skillCaster == null) _skillCaster = gameObject.AddComponent<SkillAutoCaster>();
+
+            // The scenes ship with a FIXED camera, so the hero could walk off-screen (and in
+            // the dungeon it spawns off to the side of the static view). Wire the main camera
+            // to FOLLOW this local hero in every scene so it's always centred on the character.
+            SetupCameraFollow();
+        }
+
+        // Makes Camera.main track this hero horizontally (the overlay owns Y via fixedY). Runs
+        // for the LOCAL player only (RemotePlayer avatars never call this). Snaps once so there's
+        // no start-of-scene pan, then CameraFollow2D lerps to keep the hero centred.
+        void SetupCameraFollow()
+        {
+            var cam = Camera.main;
+            if (cam == null) return;
+            bool inDungeon = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name == "Dungeon";
+            var follow = cam.GetComponent<CameraFollow2D>();
+
+            if (!inDungeon)
+            {
+                // CITY: free static overview — no follow. The zoom (GameplayCamOrtho) already
+                // shows the whole city at once.
+                if (follow != null) follow.enabled = false;
+                return;
+            }
+
+            // DUNGEON: camera LOCKED onto the hero (party), kept at the SAME screen spot the hero
+            // travels at — biased a little left so waves rushing in from the right are visible,
+            // but not slammed against the edge.
+            if (follow == null) follow = cam.gameObject.AddComponent<CameraFollow2D>();
+            follow.enabled     = true;
+            follow.target      = transform;
+            follow.smoothSpeed = 8f;
+            follow.fixedY      = OverlayWindow.GameplayCamY;
+            follow.minX = -1000f;   // wide → no clamp; hero stays framed anywhere in the arena
+            follow.maxX =  1000f;
+            follow.leftBias = 0.55f;   // hero further left, near the HUD buttons
+            // Snap once so there's no start-of-scene pan.
+            float halfW = cam.orthographic ? cam.orthographicSize * cam.aspect : 0f;
+            var p = cam.transform.position;
+            cam.transform.position = new Vector3(transform.position.x + follow.leftBias * halfW, follow.fixedY, p.z);
         }
 
         private SkillAutoCaster _skillCaster;
@@ -446,12 +495,11 @@ namespace ZulfarakRPG
                     var near = FindNearest(kitePreferredDistance);
                     if (near != null && TryKiteAwayFrom(near)) return;
                 }
-                else
+                else if (_classType == ClassType.Warrior)
                 {
-                    // Walk FORWARD to meet the nearest enemy — but only once it has
-                    // actually appeared on screen. During the wave transition the hero
-                    // stands free (idle) until monsters walk in, then advances and holds
-                    // at attack range instead of marching in place at them.
+                    // Only the melee Warrior chases: walk FORWARD to meet the nearest enemy
+                    // once it's on screen, then hold at attack range instead of marching in
+                    // place at them.
                     var target = FindNearest(999f);
                     if (target != null)
                     {
@@ -463,6 +511,8 @@ namespace ZulfarakRPG
                         }
                     }
                 }
+                // The ARCHER holds its ground and shoots enemies as they rush into range — it
+                // never chases (it was drifting around too much, especially to cast the rain).
             }
 
             // Idle — also fires between auto-attacks while an enemy is in range.
@@ -600,6 +650,18 @@ namespace ZulfarakRPG
             arrowGO.transform.position = spawnPos;
             var arrow = arrowGO.AddComponent<Arrow>();
             arrow.Init(target, dmg, crit, arrowSprite);
+
+            var tcol = target.GetComponent<Collider2D>();
+            Vector3 tp = tcol != null ? tcol.bounds.center : target.transform.position + Vector3.up * 0.5f;
+
+            // Hold the archer's draw/shot pose from release until the (slow) arrow lands, so the
+            // whole shot reads as one continuous charge; the next shot only starts on impact.
+            float flightTime = Vector2.Distance(spawnPos, tp) / Mathf.Max(0.1f, arrow.speed);
+            _attackLock = Mathf.Max(_attackLock, flightTime + 0.05f);
+            _atkTimer   = Mathf.Max(_atkTimer, flightTime + 0.10f);
+
+            // Co-op: let partners see the shot (a cosmetic arrow on their screens).
+            MultiplayerSync.Instance?.BroadcastShoot(ClassType.Archer, tp);
         }
 
         // Mage counterpart of FireArrowAfterDraw: the fireball leaves the staff at the
@@ -642,6 +704,11 @@ namespace ZulfarakRPG
             fbGO.transform.position = spawnPos;
             var fb = fbGO.AddComponent<Fireball>();
             fb.Init(target, dmg, crit, magic);
+
+            // Co-op: let partners see the cast (a cosmetic fireball on their screens).
+            var tcol = target.GetComponent<Collider2D>();
+            Vector3 tp = tcol != null ? tcol.bounds.center : target.transform.position + Vector3.up * 0.5f;
+            MultiplayerSync.Instance?.BroadcastShoot(ClassType.Mage, tp);
         }
 
         // Public cast trigger used by SkillAutoCaster so learned skills visually cast

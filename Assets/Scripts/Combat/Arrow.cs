@@ -7,7 +7,7 @@ namespace ZulfarakRPG
     // the impact point. Sprite + impact are generated procedurally (no assets).
     public class Arrow : MonoBehaviour
     {
-        public float speed       = 14f;
+        public float speed       = 5f;   // much slower so the shot reads as a deliberate charge
         public float damage      = 25f;
         public float maxLifetime = 1.5f;
         public float hitDistance = 0.45f;
@@ -19,6 +19,12 @@ namespace ZulfarakRPG
 
         static Sprite _arrowSprite;
         static Sprite _impactSprite;
+
+        // On-screen length of the arrow, in WORLD units (the sprite's longest side is scaled
+        // to span this). One tunable number so the projectile is sized consistently regardless
+        // of the source sprite's pixel size (pack arrows are 100 px, the fallback is 32 px).
+        // A hero character is ~1.7 world units tall, for reference.
+        public const float TargetWorldSize = 2.0f;
 
         // customSprite: a specific arrow from the pack's Arrow(Projectile) folder, cycled
         // by the archer so successive shots differ. Null → the shared default arrow.
@@ -32,9 +38,23 @@ namespace ZulfarakRPG
             Sprite sprite = customSprite != null ? customSprite : (_arrowSprite ??= LoadArrowSprite());
             _sr             = gameObject.AddComponent<SpriteRenderer>();
             _sr.sprite      = sprite;
-            _sr.sortingOrder = 5;
-            // Basic attack projectile — kept SMALL (skills read much bigger).
-            transform.localScale = Vector3.one * (customSprite != null ? 0.4f : 0.55f);
+            _sr.sortingOrder = 100;  // above EVERYTHING so the arrow always overlaps player + enemies
+            ApplyWorldSize(transform, sprite, TargetWorldSize);
+        }
+
+        // The arrow art the basic shot falls back to (Resources/Arrow03, else the procedural
+        // arrow). Exposed so the Archer's SKILL projectiles (Serpe, Chuva) can fly the SAME
+        // arrow sprite instead of a separate dart.
+        public static Sprite SharedSprite => _arrowSprite ??= LoadArrowSprite();
+
+        // Scales `t` so `sprite`'s longest side spans `worldSize` world units, normalising away
+        // the different pixel dimensions of the pack arrows vs the fallback. Static so the skill
+        // projectiles can size their arrows exactly like the basic shot.
+        public static void ApplyWorldSize(Transform t, Sprite sprite, float worldSize)
+        {
+            float px  = sprite != null ? Mathf.Max(sprite.rect.width, sprite.rect.height) : 0f;
+            float ppu = sprite != null ? sprite.pixelsPerUnit : 0f;
+            t.localScale = (px <= 0f || ppu <= 0f) ? Vector3.one : Vector3.one * (worldSize / (px / ppu));
         }
 
         void Update()

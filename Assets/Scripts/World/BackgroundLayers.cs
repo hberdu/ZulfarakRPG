@@ -1,25 +1,23 @@
-using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
 namespace ZulfarakRPG
 {
-    // 1. Builds a complete scenic BACKDROP from the GandalfHardcore parallax background
-    //    layers (Resources/CityBg), stacked back→front and parented to the camera so it
-    //    stays fixed in view and fills the black area behind the trees (city + dungeon).
-    // 2. In the DUNGEON, re-dresses the existing scrolling ParallaxLayer objects with
-    //    Gandalf trees/statues (occasional + widely spaced) instead of the old fragment
-    //    art — WITHOUT disabling them, so WaveManager's wave-to-wave scroll still works.
+    // OVERLAY AESTHETIC: the game runs as a transparent, click-through window over the live
+    // desktop (see OverlayWindow — alpha-0 camera clear + DwmExtendFrameIntoClientArea). So
+    // there is NO scenic background at all: on every gameplay scene load we tear down any
+    // backdrop that was ever built and switch OFF the dungeon's scrolling parallax tree
+    // layers, leaving ONLY the ground, object/prop sprites and characters over the see-through
+    // desktop.
     //
-    // Runs at runtime, so it survives scene re-saves.
+    // Runs at runtime, so it takes effect regardless of what the scene assets contain.
     public class BackgroundLayers : MonoBehaviour
     {
-        static readonly string[] LayerRes = { "layer5", "castle", "layer4", "layer3", "layer2", "layer1" };
-        const int   BaseSort = -22;
-        const float Margin   = 1.60f;   // overscan so no black edges show while it drifts
+        // The scrolling parallax "background tree" layers authored in the Dungeon scene.
+        static readonly string[] ParallaxLayerNames = { "ParallaxFar", "ParallaxMid", "ParallaxNear" };
 
-        // Extra sideways scroll driven by WaveManager during the dungeon's inter-wave run,
-        // so the backdrop drifts there too (the player stays put in the dungeon).
+        // Vestigial: WaveManager still advances this during the inter-wave run. Nothing reads
+        // it anymore (there's no backdrop to drift), but keeping the field compiles that call.
         public static float DungeonScroll;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
@@ -31,110 +29,32 @@ namespace ZulfarakRPG
 
         static void OnSceneLoaded(Scene scene, LoadSceneMode mode)
         {
-            bool city    = scene.name == "Zulfarak";
-            bool dungeon = scene.name == "Dungeon";
-            if (!city && !dungeon) return;
-            var cam = Camera.main;
-            if (cam == null) return;
+            bool gameplay = scene.name == "Zulfarak" || scene.name == "Dungeon";
+            if (!gameplay) return;
 
             DungeonScroll = 0f;
-            BuildBackdrop(cam, parallax: dungeon);   // ONLY the dungeon backdrop drifts; the city is static
-            if (dungeon) DressParallax();
-        }
 
-        // Fixed-to-camera scenic backdrop (rebuilt each load). When parallax is on (city),
-        // each layer drifts at its own speed as the player walks, so it reads as depth.
-        static void BuildBackdrop(Camera cam, bool parallax)
-        {
-            var prev = cam.transform.Find("__Background");
-            if (prev != null) Destroy(prev.gameObject);
-            var root = new GameObject("__Background");
-            root.transform.SetParent(cam.transform, false);
-            root.transform.localPosition = new Vector3(0f, 0f, 10f);   // world z ≈ 0, in front of the camera
-
-            float viewH = cam.orthographicSize * 2f;
-            float viewW = viewH * cam.aspect;
-
-            for (int i = 0; i < LayerRes.Length; i++)
+            // 1) Remove any scenic backdrop a previous version parented to the camera, so the
+            //    camera's transparent clear shows the desktop behind everything.
+            var cam = Camera.main;
+            if (cam != null)
             {
-                var sprite = Resources.Load<Sprite>("CityBg/" + LayerRes[i]);
-                if (sprite == null) continue;
-                float sw = sprite.bounds.size.x, sh = sprite.bounds.size.y;
-                if (sw < 0.0001f || sh < 0.0001f) continue;
-
-                var go = new GameObject("Bg_" + LayerRes[i]);
-                go.transform.SetParent(root.transform, false);
-                go.transform.localPosition = Vector3.zero;
-                var sr = go.AddComponent<SpriteRenderer>();
-                sr.sprite       = sprite;
-                sr.sortingOrder = BaseSort + i;                        // -22 (back) → -17 (front)
-                float scale     = Mathf.Max(viewW / sw, viewH / sh) * Margin;
-                go.transform.localScale = new Vector3(scale, scale, 1f);
-
-                if (parallax)
-                {
-                    // Second copy one sprite-width to the right so the layer can wrap
-                    // seamlessly no matter how far the inter-wave runs scroll it.
-                    var dup = new GameObject("Bg_" + LayerRes[i] + "_wrap");
-                    dup.transform.SetParent(go.transform, false);
-                    dup.transform.localPosition = new Vector3(sw, 0f, 0f);
-                    var dsr = dup.AddComponent<SpriteRenderer>();
-                    dsr.sprite       = sprite;
-                    dsr.sortingOrder = sr.sortingOrder;
-
-                    var pb = go.AddComponent<ParallaxBg>();
-                    pb.factor    = 0.03f + i * 0.03f;   // back slow → front fast
-                    pb.wrapWidth = sw * scale;
-                }
+                var prev = cam.transform.Find("__Background");
+                if (prev != null) Destroy(prev.gameObject);
             }
-        }
 
-        // Point the dungeon's scrolling parallax layers at complete Gandalf trees, spawned
-        // sparsely (large spacing) so only the occasional tree/statue drifts past.
-        static void DressParallax()
-        {
-            var props = new List<Sprite>();
-            foreach (var n in new[] { "Tree3", "Birch2" })
-            {
-                var s = Resources.Load<Sprite>("CityDecor/" + n);
-                if (s != null) props.Add(s);
-            }
-            if (props.Count == 0) return;
-            var arr = props.ToArray();
-
-            foreach (var n in new[] { "ParallaxFar", "ParallaxMid", "ParallaxNear" })
+            // 2) Silence the dungeon's scrolling parallax tree layers. sceneLoaded fires BEFORE
+            //    their Start(), so they never spawn a tree. Clearing the sprite pool also makes
+            //    WaveManager.Scroll() early-return (so it never touches the un-Started layer's
+            //    RNG), then we switch the layer off entirely. (No-op in the city — no parallax.)
+            foreach (var n in ParallaxLayerNames)
             {
                 var go = GameObject.Find(n);
                 if (go == null) continue;
                 var pl = go.GetComponent<ParallaxLayer>();
-                if (pl == null) continue;
-                pl.sprites    = arr;
-                pl.tint       = Color.white;
-                pl.minSpacing = 5f;      // sparse → "one or another, spaced"
-                pl.maxSpacing = 11f;
-                pl.minScale   = 0.40f;
-                pl.maxScale   = 0.80f;
+                if (pl != null) pl.sprites = new Sprite[0];
+                go.SetActive(false);
             }
-        }
-    }
-
-    // Drifts a camera-parented backdrop layer sideways, each at its own depth. Driven ONLY
-    // by the shared DungeonScroll (advanced by WaveManager during the inter-wave run), so it
-    // moves while travelling and stays perfectly still during combat/idle. Only attached in
-    // the dungeon (the city backdrop is fixed).
-    class ParallaxBg : MonoBehaviour
-    {
-        public float factor;
-        public float wrapWidth;   // world width of one sprite copy; drift wraps over it
-
-        void LateUpdate()
-        {
-            var lp = transform.localPosition;
-            float drift = BackgroundLayers.DungeonScroll * factor;
-            // Wrap over one sprite width — the duplicate copy at +wrapWidth slides in
-            // to cover the gap, so the backdrop is continuous for any scroll distance.
-            lp.x = wrapWidth > 0.0001f ? -Mathf.Repeat(drift, wrapWidth) : -drift;
-            transform.localPosition = lp;
         }
     }
 }

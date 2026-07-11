@@ -166,21 +166,52 @@ namespace ZulfarakRPG
             SendToAllExceptMe(new P2PMessage { op = "portal", dest = destinationScene });
         }
 
+        // Co-op VISUAL sync: when the local ranged hero shoots (arrow / fireball), tell the
+        // others so a cosmetic projectile flies from this avatar toward the target on their
+        // screens — the partner can actually SEE the shot. Damage syncs via BroadcastDamage.
+        public void BroadcastShoot(ClassType cls, Vector3 targetPos)
+        {
+            SendToAllExceptMe(new P2PMessage { op = "shoot", cls = (int)cls, tx = targetPos.x, ty = targetPos.y });
+        }
+
         // Co-op combat sync: whenever the local player lands a hit (melee, arrow,
         // fireball), broadcast the damage so the remote client applies the same hit
         // to their local copy of the enemy. Both clients spawn identical enemies
         // deterministically via WaveManager, so netInstanceId matches on both sides.
-        public void BroadcastDamage(string netInstanceId, float dmg, bool crit)
+        public void BroadcastDamage(string netInstanceId, float dmg, bool crit, bool poison = false)
         {
             if (string.IsNullOrEmpty(netInstanceId)) return;
             SendToAllExceptMe(new P2PMessage
             {
-                op    = "damage",
-                netId = netInstanceId,
-                dmg   = dmg,
-                crit  = crit,
+                op     = "damage",
+                netId  = netInstanceId,
+                dmg    = dmg,
+                crit   = crit,
+                poison = poison,
             });
         }
+
+        // ── Skill VFX sync (both players see each other's magic) ─────────────
+        // The big skill burst (SkillEffectAnim). Replayed at the same world point.
+        public void BroadcastSkillBurst(Vector3 pos, int sheet, int cols, int rows, Color color, float scale)
+            => SendToAllExceptMe(new P2PMessage
+            {
+                op = "vfx", vfx = "burst", tx = pos.x, ty = pos.y,
+                fxSheet = sheet, fxCols = cols, fxRows = rows,
+                col = ColorUtility.ToHtmlStringRGB(color), scale = scale
+            });
+
+        // Archer's zig-zag venom arrow (Tiro de Serpe).
+        public void BroadcastSerpent(Vector3 from, Vector3 to)
+            => SendToAllExceptMe(new P2PMessage { op = "vfx", vfx = "serpent", ox = from.x, oy = from.y, tx = to.x, ty = to.y });
+
+        // Archer's charged white shot (Tiro Concentrado).
+        public void BroadcastConcentrated(Vector3 from, Vector3 to)
+            => SendToAllExceptMe(new P2PMessage { op = "vfx", vfx = "concentrated", ox = from.x, oy = from.y, tx = to.x, ty = to.y });
+
+        // One falling arrow of the archer's Chuva de Flechas.
+        public void BroadcastArrowFall(Vector3 landing)
+            => SendToAllExceptMe(new P2PMessage { op = "vfx", vfx = "rain", tx = landing.x, ty = landing.y });
 
         void SendToAllExceptMe(P2PMessage msg)
         {
@@ -238,6 +269,18 @@ namespace ZulfarakRPG
                         SceneManager.LoadScene(msg.dest);
                     break;
 
+                case "shoot":
+                    // A partner fired a ranged attack — spawn a cosmetic projectile from
+                    // their avatar toward the target so we see the shot.
+                    if (_remotes.TryGetValue(senderId, out var shooter) && shooter != null)
+                    {
+                        bool fireball = (ClassType)msg.cls == ClassType.Mage;
+                        Vector3 from = shooter.transform.position + Vector3.up * 0.5f;
+                        Vector3 to   = new Vector3(msg.tx, msg.ty, 0f);
+                        CosmeticProjectile.Spawn(from, to, fireball);
+                    }
+                    break;
+
                 case "damage":
                     // Remote player hit an enemy — apply the same damage to our
                     // local copy so both clients see synchronized HP/kills.
@@ -247,11 +290,43 @@ namespace ZulfarakRPG
                         {
                             if (e != null && e.IsAlive && e.netInstanceId == msg.netId)
                             {
-                                e.TakeDamage(msg.dmg, msg.crit);
+                                if (msg.poison) e.ApplyRemotePoisonTick(msg.dmg);  // green, no flash/stun
+                                else            e.TakeDamage(msg.dmg, msg.crit);
                                 break;
                             }
                         }
                     }
+                    break;
+
+                case "vfx":
+                    // A partner's skill effect — replay it here (COSMETIC; damage syncs via
+                    // "damage" packets) so both players see each other's magic.
+                    ReplayVfx(msg);
+                    break;
+            }
+        }
+
+        // Rebuilds a partner's skill effect locally (visual only).
+        void ReplayVfx(P2PMessage msg)
+        {
+            Vector3 a = new Vector3(msg.ox, msg.oy, 0f);
+            Vector3 b = new Vector3(msg.tx, msg.ty, 0f);
+            switch (msg.vfx)
+            {
+                case "burst":
+                    Color color = Color.white;
+                    if (!string.IsNullOrEmpty(msg.col)) ColorUtility.TryParseHtmlString("#" + msg.col, out color);
+                    SkillEffectAnim.Spawn(b, msg.fxSheet, msg.fxCols, msg.fxRows, color, msg.scale);
+                    break;
+                case "serpent":
+                    SerpentArrow.SpawnCosmetic(a, b);
+                    break;
+                case "concentrated":
+                    SkillCastFX.Spawn(a, Color.white);
+                    CosmeticProjectile.Spawn(a, b, false);
+                    break;
+                case "rain":
+                    FallingArrow.SpawnCosmetic(b, 0f);
                     break;
             }
         }
@@ -272,6 +347,17 @@ namespace ZulfarakRPG
             public bool   crit;    // crit flag for "damage" op
             public float  hp;      // sender's current HP ("state" op)
             public float  maxHp;   // sender's max HP ("state" op)
+            public float  tx;      // shot/vfx target X ("shoot"/"vfx" op)
+            public float  ty;      // shot/vfx target Y ("shoot"/"vfx" op)
+            public bool   poison;  // poison-tick flag ("damage" op)
+            public string vfx;     // skill-vfx kind ("vfx" op): burst/serpent/concentrated/rain
+            public int    fxSheet; // PixelEffect sheet for "burst"
+            public int    fxCols;  // sheet grid cols for "burst"
+            public int    fxRows;  // sheet grid rows for "burst"
+            public string col;     // hex RGB colour for "burst"
+            public float  scale;   // effect scale for "burst"
+            public float  ox;      // vfx origin X (serpent/concentrated)
+            public float  oy;      // vfx origin Y (serpent/concentrated)
         }
     }
 }

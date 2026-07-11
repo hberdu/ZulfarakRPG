@@ -104,19 +104,24 @@ namespace ZulfarakRPG
                 GroundBySprite(go, sr, groundTop);
             }
 
+            // Scale every static NPC to the HERO's size so the player and NPCs share one
+            // proportion in the city (the hero was shrunk slightly in his Start()).
+            var player = FindAnyObjectByType<PlayerController2D>();
+            float npcScale = player != null ? Mathf.Abs(player.transform.lossyScale.y) : 1.7f;
+
             foreach (var n in Npcs)
             {
                 var go = GameObject.Find(n);
                 if (go == null) continue;
                 var sr = go.GetComponent<SpriteRenderer>();
                 if (sr != null) sr.color = Color.white;
+                go.transform.localScale = new Vector3(npcScale, npcScale, 1f);
                 GroundAlignUtil.SeatCharacterOnGround(go.transform, sr);
             }
 
             // Let the hero roam the whole city width, edge to edge — and re-seat him
             // through the SAME path/ground value as the NPCs so all characters share
             // one visual ground height (his own Start() seat ran frames earlier).
-            var player = FindAnyObjectByType<PlayerController2D>();
             if (player != null)
             {
                 player.sceneBoundsMinX = 0.15f;

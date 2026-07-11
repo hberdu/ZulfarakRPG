@@ -99,6 +99,38 @@ namespace ZulfarakRPG
             ApplyLayout();
         }
 
+        // Turns this into a BOSS bar: bigger, deep-crimson fill, and a dragon coiled
+        // behind/around it. The dragon art is Resources/UI/BossHpDragon if present, else
+        // the existing Red-Eyes DragonFrame. Purely decorative (rendered behind the bar).
+        public void EnableBossFrame(float widthScale = 2.4f, float heightScale = 1.7f)
+        {
+            barWidth  *= widthScale;
+            barHeight *= heightScale;
+            ApplyLayout();
+            if (_fillSr != null) _fillSr.color = new Color(0.78f, 0.09f, 0.13f, 1f);
+
+            var dragon = Resources.Load<Sprite>("UI/BossHpDragon");
+            if (dragon == null) dragon = Resources.Load<Sprite>("UI/DragonFrame");
+            if (dragon == null) return;
+
+            var go = new GameObject("BossDragon");
+            go.transform.SetParent(transform, false);
+            var sr = go.AddComponent<SpriteRenderer>();
+            sr.sprite       = dragon;
+            sr.sortingOrder = -1;   // behind the bar's bg/outline/fill
+
+            // Width ~1.5× the bar, keeping the art's aspect so wings/head frame the bar.
+            var bs = dragon.bounds.size;
+            if (bs.x > 1e-4f && bs.y > 1e-4f)
+            {
+                float dw = barWidth * 1.5f;
+                float dh = dw * (bs.y / bs.x);
+                go.transform.localScale = new Vector3(dw / bs.x, dh / bs.y, 1f);
+            }
+            // Slightly behind in Z too so it never z-fights the bar strips.
+            go.transform.localPosition = new Vector3(0f, 0f, 0.02f);
+        }
+
         // Lifts the bar by a small Y delta so overlapping enemies' bars don't stack
         // perfectly on top of each other. Caller passes a per-frame value.
         public void SetStaggerOffset(float yOffset)

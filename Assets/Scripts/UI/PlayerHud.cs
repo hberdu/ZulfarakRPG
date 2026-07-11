@@ -58,6 +58,12 @@ namespace ZulfarakRPG
 
         static void OnSceneLoaded(Scene scene, LoadSceneMode mode)
         {
+            // Native top popups are Win32 windows, not GameObjects, so they survive a scene
+            // change and get stranded at a position computed for the OLD strip (e.g. leaving
+            // the dungeon with the skill tree open left it bugged over the city). Close them
+            // all on every transition — they're transient overlays and reopen from the HUD.
+            TopPopups.CloseAllExcept(TopPopups.Kind.None);
+
             bool gameplay = scene.name == "Zulfarak" || scene.name == "Dungeon";
             if (_instance == null && gameplay) Build();
             if (_instance != null)

@@ -34,7 +34,7 @@ namespace ZulfarakRPG
         [Header("Inter-wave run")]
         public ParallaxLayer[] parallaxLayers;
         public float runScrollSpeed    = 4.0f;
-        public float runScrollDistance = 15.0f;  // ~50 "passos" of scroll
+        public float runScrollDistance = 12.0f;  // slightly shorter gap between waves
 
         // ── State ──────────────────────────────────────────────────────────
         private int  _wave        = 0;
@@ -175,19 +175,9 @@ namespace ZulfarakRPG
 
         IEnumerator SpawnBossWave()
         {
-            if (bossText == null && clearText != null)
-            {
-                // Scene built before bossText existed — clone the CLEAR label.
-                bossText = Instantiate(clearText, clearText.transform.parent);
-                bossText.name  = "BossText";
-                bossText.color = new Color(0.9f, 0.15f, 0.15f);
-                bossText.gameObject.SetActive(false);
-            }
-            if (bossText)
-            {
-                bossText.text = "BOSS";
-                yield return StartCoroutine(ScrollBanner(bossText));
-            }
+            // Pixel-art "BOSS" banner (same font as the damage numbers).
+            PixelBanner.Show("BOSS", new Color(0.95f, 0.20f, 0.20f));
+            yield return new WaitForSeconds(1.5f);
 
             var prefab = necromancerPrefab;
             if (prefab == null)
@@ -346,7 +336,7 @@ namespace ZulfarakRPG
             StopAllCoroutines();
             if (clearText)  clearText.gameObject.SetActive(false);
             if (bossText)   bossText.gameObject.SetActive(false);
-            if (defeatText) StartCoroutine(ScrollBanner(defeatText));
+            PixelBanner.Show("DEFEAT", new Color(0.92f, 0.16f, 0.16f));
         }
 
         // ── Called by PlayerController2D after the victory pause ───────────
@@ -362,9 +352,8 @@ namespace ZulfarakRPG
         // ── Visual ─────────────────────────────────────────────────────────
         void ShowClearText()
         {
-            if (!clearText) return;
-            clearText.text = "CLEAR";
-            StartCoroutine(ScrollBanner(clearText));
+            // Pixel-art "CLEAR" banner (same font as the damage numbers).
+            PixelBanner.Show("CLEAR", new Color(1f, 0.85f, 0.30f));
         }
 
         // Big banner sliding in from the left, holding center, then sliding out

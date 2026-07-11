@@ -76,22 +76,26 @@ namespace ZulfarakRPG
             var lp = Object.FindAnyObjectByType<PlayerController2D>();
             if (lp == null) return;
 
+            // Prefer the per-class ATTACK VARIANT frames (archerAttack1Frames, …) the local
+            // hero actually swings with — the merged *AttackFrames arrays are often empty
+            // once the variant system is used, which is why the partner's swing/cast wasn't
+            // showing (the avatar fell back to idle).
             switch (ClassType)
             {
                 case ClassType.Mage:
                     _idle = lp.wizardIdleFrames;
                     _walk = lp.wizardWalkFrames;
-                    _atk  = lp.wizardAttackFrames;
+                    _atk  = Pick(lp.wizardAttack1Frames, lp.wizardAttackFrames);
                     break;
                 case ClassType.Archer:
                     _idle = lp.archerIdleFrames;
                     _walk = lp.archerWalkFrames;
-                    _atk  = lp.archerAttackFrames;
+                    _atk  = Pick(lp.archerAttack1Frames, lp.archerAttackFrames);
                     break;
                 default:
                     _idle = lp.soldierIdleFrames;
                     _walk = lp.soldierWalkFrames;
-                    _atk  = lp.soldierAttackFrames;
+                    _atk  = Pick(lp.soldierAttack1Frames, lp.soldierAttackFrames);
                     break;
             }
             if (_idle == null || _idle.Length == 0) _idle = lp.soldierIdleFrames;
@@ -103,6 +107,9 @@ namespace ZulfarakRPG
 
             SwitchAnim(_animKey, force: true);
         }
+
+        static Sprite[] Pick(Sprite[] preferred, Sprite[] fallback)
+            => (preferred != null && preferred.Length > 0) ? preferred : fallback;
 
         public void ApplyState(float x, float y, bool flipX, string anim)
         {
