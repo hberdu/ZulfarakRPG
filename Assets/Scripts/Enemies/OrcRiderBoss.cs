@@ -20,6 +20,7 @@ namespace ZulfarakRPG
         protected override float ServerStatMultiplier => 1f;
         protected override bool  UsesBossHealthBar     => true;
         protected override float SpawnScaleMultiplier  => 1.1f;   // mounted = bigger
+        protected override float EntranceInvulnSeconds => 2f;     // untouchable while charging in
 
         private bool  _charging;
         private float _chargeTimer = 3f;   // first charge a few seconds in

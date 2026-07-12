@@ -166,8 +166,6 @@ namespace ZulfarakRPG
         static void PopulateFriends()
         {
             _friends.Clear();
-            // Always-available "outside Steam" option: copy a download link + lobby code.
-            _friends.Add(new FriendEntry { name = "Convidar de fora da Steam (link + código)", isCopy = true, online = true });
 #if STEAMWORKS_NET
             if (SteamIntegration.Instance == null || !SteamIntegration.Instance.IsInitialized)
             {
@@ -283,10 +281,10 @@ namespace ZulfarakRPG
             // Dark near-black panel + gold pixel bevel + ruby corner studs (mirrors inventory menu).
             if (_brushPanel   == IntPtr.Zero) _brushPanel   = CreateSolidBrush(Bgr(0.06f, 0.05f, 0.05f));
             if (_brushOutline == IntPtr.Zero) _brushOutline = CreateSolidBrush(Bgr(0.00f, 0.00f, 0.00f));
-            if (_brushBevHi   == IntPtr.Zero) _brushBevHi   = CreateSolidBrush(Bgr(0.95f, 0.75f, 0.30f));
-            if (_brushBevLo   == IntPtr.Zero) _brushBevLo   = CreateSolidBrush(Bgr(0.35f, 0.24f, 0.08f));
+            if (_brushBevHi   == IntPtr.Zero) _brushBevHi   = CreateSolidBrush(Bgr(0.42f, 0.42f, 0.46f));
+            if (_brushBevLo   == IntPtr.Zero) _brushBevLo   = CreateSolidBrush(Bgr(0.15f, 0.15f, 0.17f));
             if (_brushRuby    == IntPtr.Zero) _brushRuby    = CreateSolidBrush(Bgr(0.85f, 0.15f, 0.15f));
-            if (_brushDivider == IntPtr.Zero) _brushDivider = CreateSolidBrush(Bgr(0.20f, 0.15f, 0.06f));
+            if (_brushDivider == IntPtr.Zero) _brushDivider = CreateSolidBrush(Bgr(0.16f, 0.16f, 0.18f));
             if (_brushRowA    == IntPtr.Zero) _brushRowA    = CreateSolidBrush(Bgr(0.10f, 0.08f, 0.08f));
             if (_brushRowB    == IntPtr.Zero) _brushRowB    = CreateSolidBrush(Bgr(0.14f, 0.11f, 0.10f));
             if (_brushTag     == IntPtr.Zero) _brushTag     = CreateSolidBrush(Bgr(0.32f, 0.11f, 0.10f));
@@ -479,7 +477,7 @@ namespace ZulfarakRPG
                         _brushOutline, _brushBevHi, _brushBevLo, f.sent ? _brushTagUse : _brushTag);
                     var tagRc = new RECT { Left = tagX, Top = tagY, Right = tagX + tagW, Bottom = tagY + tagH };
                     SelectObject(hdc, _fontTag);
-                    SetTextColor(hdc, f.sent ? Bgr(0.85f, 1f, 0.85f) : Bgr(1f, 0.90f, 0.55f));
+                    SetTextColor(hdc, f.sent ? Bgr(0.85f, 1f, 0.85f) : Bgr(0.90f, 0.88f, 0.80f));
                     string tag = f.isCopy ? (f.sent ? "Copiado!" : "Copiar")
                                           : (f.sent ? "Enviado!" : "Convidar");
                     DrawTextW(hdc, tag, -1, ref tagRc, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);

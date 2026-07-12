@@ -1,178 +1,150 @@
 using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.EventSystems;
 using TMPro;
 using UnityEngine.SceneManagement;
 
 namespace ZulfarakRPG
 {
+    // "Seleção de Herói": the three classes stand around the campfire. Hovering a hero previews its
+    // name + description and plays a little attack loop; CLICKING a hero starts the game right away.
+    // There is no name field any more — the character reuses the player's Steam persona name.
     public class CharacterCreationUI : MonoBehaviour
     {
-        [Header("Class Cards (Mage / Warrior / Archer)")]
-        public Button[]            classButtons;
-        public Image[]             classArtImages;
-        public Image[]             classSelectionBorders;
-        public TextMeshProUGUI[]   classNameTexts;
-        public TextMeshProUGUI[]   classDescTexts;
+        [Header("Class figures (index 0=Mage, 1=Warrior, 2=Archer)")]
+        public Button[]          classButtons;
+        public Image[]           classArtImages;
+        public Image[]           classSelectionBorders;   // optional highlight ring per class
 
-        [Header("Name Input")]
-        public TMP_InputField  nameInput;
-        public Button          confirmButton;
-        public TextMeshProUGUI confirmErrorText;
+        [Header("Shared info panel")]
+        public TextMeshProUGUI   infoNameText;
+        public TextMeshProUGUI   infoDescText;
 
-        [Header("Portrait Animation — Idle Frames per Class")]
-        public Sprite[] mageIdleFrames;
-        public Sprite[] warriorIdleFrames;
-        public Sprite[] archerIdleFrames;
+        [Header("Idle / Attack frames per class")]
+        public Sprite[] mageIdleFrames,   warriorIdleFrames,   archerIdleFrames;
+        public Sprite[] mageAttackFrames, warriorAttackFrames, archerAttackFrames;
 
-        [Header("Portrait Animation — Attack Frames per Class")]
-        public Sprite[] mageAttackFrames;
-        public Sprite[] warriorAttackFrames;
-        public Sprite[] archerAttackFrames;
+        static readonly string[] Names = { "Mago", "Guerreiro", "Arqueiro" };
+        static readonly string[] Descs =
+        {
+            "Mestre arcano. Lança feitiços de fogo, gelo e raio à distância.",
+            "Lutador corpo-a-corpo tanque, com forte defesa e escudo.",
+            "Atirador ágil que elimina inimigos de longe com flechas.",
+        };
+        static readonly Color BorderOn  = new Color(0.95f, 0.78f, 0.25f, 1f);
+        static readonly Color BorderOff = new Color(1f, 1f, 1f, 0f);
+        const float IdleFps = 1f / 7f, AttackFps = 1f / 11f;
 
-        // Selected-border colors
-        static readonly Color BorderSelected   = new Color(0.92f, 0.75f, 0.18f, 1f);
-        static readonly Color BorderUnselected = new Color(0.15f, 0.10f, 0.05f, 0.35f);
+        Sprite[][]  _idle, _attack;
+        Coroutine[] _anim = new Coroutine[3];
+        int _preview = -1;
 
-        // Animation speed (seconds per frame)
-        const float IdleFps   = 1f / 7f;
-        const float AttackFps = 1f / 11f;
-
-        private ClassType    _selected = ClassType.Warrior;
-        private Coroutine[]  _anim     = new Coroutine[3];
-        private Sprite[][]   _idle;
-        private Sprite[][]   _attack;
-
-        // ── Unity lifecycle ───────────────────────────────────────────────────
-
-        private void Start()
+        void Start()
         {
             _idle   = new[] { mageIdleFrames,   warriorIdleFrames,   archerIdleFrames };
-            _attack = new[] { mageAttackFrames,  warriorAttackFrames, archerAttackFrames };
+            _attack = new[] { mageAttackFrames, warriorAttackFrames, archerAttackFrames };
 
-            for (int i = 0; i < classButtons.Length; i++)
+            int n = classButtons != null ? Mathf.Min(classButtons.Length, 3) : 0;
+            for (int i = 0; i < n; i++)
             {
                 int idx = i;
-                classButtons[i]?.onClick.AddListener(() => SelectClass((ClassType)idx));
+                if (classButtons[i] == null) continue;
+                classButtons[i].onClick.AddListener(() => StartAs((ClassType)idx));   // click = start
+                AddHover(classButtons[i].gameObject, () => Preview(idx));             // hover = preview
+                ShowIdle(idx, 0);
+                SetBorder(idx, false);
             }
-
-            confirmButton?.onClick.AddListener(Confirm);
-
-            // Set initial idle frames
-            for (int i = 0; i < 3; i++)
-                ShowIdle(i, frame: 0);
-
-            SelectClass(ClassType.Warrior);
+            Preview(1);   // Warrior previewed by default
         }
 
-        private void OnDestroy()
+        void OnDestroy()
         {
-            for (int i = 0; i < 3; i++)
-                if (_anim[i] != null) StopCoroutine(_anim[i]);
+            for (int i = 0; i < 3; i++) if (_anim[i] != null) StopCoroutine(_anim[i]);
         }
 
-        // ── Class selection ───────────────────────────────────────────────────
-
-        private void SelectClass(ClassType type)
+        static void AddHover(GameObject go, System.Action onEnter)
         {
-            _selected = type;
+            var trg = go.GetComponent<EventTrigger>();
+            if (trg == null) trg = go.AddComponent<EventTrigger>();
+            var e = new EventTrigger.Entry { eventID = EventTriggerType.PointerEnter };
+            e.callback.AddListener(_ => onEnter());
+            trg.triggers.Add(e);
+        }
 
+        void Preview(int idx)
+        {
+            if (idx == _preview) return;
+            _preview = idx;
+            if (infoNameText) infoNameText.text = Names[idx];
+            if (infoDescText) infoDescText.text = Descs[idx];
             for (int i = 0; i < 3; i++)
             {
-                bool isSelected = ((int)type == i);
-
-                // Border highlight
-                if (classSelectionBorders.Length > i && classSelectionBorders[i] != null)
-                    classSelectionBorders[i].color = isSelected ? BorderSelected : BorderUnselected;
-
-                // Stop previous animation
+                SetBorder(i, i == idx);
                 if (_anim[i] != null) { StopCoroutine(_anim[i]); _anim[i] = null; }
-
-                if (isSelected)
-                    _anim[i] = StartCoroutine(AnimateSelected(i));
-                else
-                    ShowIdle(i, frame: 0);
+                if (i == idx) _anim[i] = StartCoroutine(AnimateSelected(i));
+                else ShowIdle(i, 0);
             }
         }
 
-        // ── Coroutines ────────────────────────────────────────────────────────
-
-        private IEnumerator AnimateSelected(int idx)
+        void SetBorder(int i, bool on)
         {
-            var img     = (classArtImages.Length > idx) ? classArtImages[idx] : null;
-            var idle    = _idle?[idx];
-            var attack  = _attack?[idx];
-
-            // Brief idle cycle before attack
-            if (idle != null && idle.Length > 0)
-                foreach (var f in idle)
-                {
-                    if (img) img.sprite = f;
-                    yield return new WaitForSeconds(IdleFps);
-                }
-
-            while (true)
-            {
-                // Attack burst
-                if (attack != null && attack.Length > 0)
-                {
-                    foreach (var f in attack)
-                    {
-                        if (img) img.sprite = f;
-                        yield return new WaitForSeconds(AttackFps);
-                    }
-                    yield return new WaitForSeconds(0.35f);
-                }
-
-                // Recovery idle
-                if (idle != null && idle.Length > 0)
-                    foreach (var f in idle)
-                    {
-                        if (img) img.sprite = f;
-                        yield return new WaitForSeconds(IdleFps);
-                    }
-            }
+            if (classSelectionBorders != null && classSelectionBorders.Length > i && classSelectionBorders[i] != null)
+                classSelectionBorders[i].color = on ? BorderOn : BorderOff;
         }
 
-        private void ShowIdle(int idx, int frame)
+        // Create the character with the player's STEAM name (no manual name entry) and start.
+        void StartAs(ClassType cls)
         {
-            if (classArtImages.Length <= idx || classArtImages[idx] == null) return;
-            var frames = _idle?[idx];
-            if (frames != null && frames.Length > frame)
-                classArtImages[idx].sprite = frames[frame];
-        }
-
-        // ── Confirm ───────────────────────────────────────────────────────────
-
-        private void Confirm()
-        {
-            if (confirmErrorText) confirmErrorText.text = "";
-
-            string charName = nameInput != null ? nameInput.text.Trim() : "";
-            if (string.IsNullOrWhiteSpace(charName))
-            {
-                if (confirmErrorText) confirmErrorText.text = "Digite um nome para o personagem.";
-                return;
-            }
-
-            SubclassType defaultSub = _selected switch
+            SubclassType sub = cls switch
             {
                 ClassType.Mage    => SubclassType.FireMage,
                 ClassType.Warrior => SubclassType.Berserker,
                 ClassType.Archer  => SubclassType.Hunter,
-                _                 => SubclassType.Berserker
+                _                 => SubclassType.Berserker,
             };
+
+            var steam = SteamIntegration.Instance;
+            string steamName = steam != null ? steam.SteamName : null;
+            if (string.IsNullOrWhiteSpace(steamName)) steamName = "Herói";
 
             var data = new PlayerData
             {
-                steamId      = SteamIntegration.Instance != null ? SteamIntegration.Instance.SteamId : default,
-                playerName   = charName,
-                classType    = _selected,
-                subclassType = defaultSub
+                steamId      = steam != null ? steam.SteamId : "",
+                playerName   = steamName,          // reuse the Steam persona name
+                classType    = cls,
+                subclassType = sub,
             };
-
             PlayerManager.Instance?.CreateNewCharacter(data);
             SceneManager.LoadScene("Zulfarak");
+        }
+
+        IEnumerator AnimateSelected(int idx)
+        {
+            var img    = (classArtImages != null && classArtImages.Length > idx) ? classArtImages[idx] : null;
+            var idle   = _idle?[idx];
+            var attack = _attack?[idx];
+
+            if (idle != null && idle.Length > 0)
+                foreach (var f in idle) { if (img) img.sprite = f; yield return new WaitForSeconds(IdleFps); }
+
+            while (true)
+            {
+                if (attack != null && attack.Length > 0)
+                {
+                    foreach (var f in attack) { if (img) img.sprite = f; yield return new WaitForSeconds(AttackFps); }
+                    yield return new WaitForSeconds(0.35f);
+                }
+                if (idle != null && idle.Length > 0)
+                    foreach (var f in idle) { if (img) img.sprite = f; yield return new WaitForSeconds(IdleFps); }
+            }
+        }
+
+        void ShowIdle(int idx, int frame)
+        {
+            if (classArtImages == null || classArtImages.Length <= idx || classArtImages[idx] == null) return;
+            var frames = _idle?[idx];
+            if (frames != null && frames.Length > frame) classArtImages[idx].sprite = frames[frame];
         }
     }
 }

@@ -18,6 +18,11 @@ namespace ZulfarakRPG
         [Header("State")]
         public bool openOnStart = true;
 
+        // RANK A challenge portal (red). Instead of loading a scene, entering it announces
+        // "PORTAL RANK A" and summons the extremely hard Minotaur boss into the current scene.
+        [Header("Rank A")]
+        public bool rankA = false;
+
         [Header("Tooltip")]
         // Persistent label rendered above the portal, e.g. "1-1" (dungeon 1, phase 1).
         // Leave blank to render no tooltip.
@@ -38,6 +43,12 @@ namespace ZulfarakRPG
             new Color(0.75f, 0.45f, 1.00f, 0.80f), // mid: bright purple
             new Color(0.95f, 0.88f, 1.00f, 0.95f), // inner: white-violet core
         };
+        // Red palette for the RANK A challenge portal (same three-ring look, danger colours).
+        static readonly Color[]  RankARingColors = {
+            new Color(0.95f, 0.15f, 0.12f, 0.55f), // outer: dim red
+            new Color(1.00f, 0.35f, 0.26f, 0.80f), // mid: bright red
+            new Color(1.00f, 0.85f, 0.80f, 0.95f), // inner: white-hot core
+        };
 
         void Start()
         {
@@ -55,6 +66,7 @@ namespace ZulfarakRPG
                 spr = MakeProceduralRing();
                 if (glowSprite != null) glowSprite.sprite = spr;
             }
+            var ringColors = rankA ? RankARingColors : RingColors;
             _rings = new SpriteRenderer[RingSizes.Length];
             for (int i = 0; i < RingSizes.Length; i++)
             {
@@ -63,7 +75,7 @@ namespace ZulfarakRPG
                 go.transform.localScale = Vector3.one * RingSizes[i];
                 var sr = go.AddComponent<SpriteRenderer>();
                 sr.sprite       = spr;
-                sr.color        = RingColors[i];
+                sr.color        = ringColors[i];
                 sr.sortingOrder = i + 3;
                 _rings[i] = sr;
                 go.SetActive(_open);
@@ -125,8 +137,8 @@ namespace ZulfarakRPG
             return _whitePixel;
         }
 
-        // Procedural fallback when the wizard didn't assign a portal sprite. Renders a
-        // soft purple ring (visible at any scale) so the portal isn't invisible.
+        // Procedural fallback when the wizard didn't assign a portal sprite. Renders a soft WHITE
+        // ring (visible at any scale) so the ring tint (purple / rank-A red) shows true.
         static Sprite _proceduralRing;
         static Sprite MakeProceduralRing()
         {
@@ -143,7 +155,7 @@ namespace ZulfarakRPG
                     float d  = Mathf.Sqrt(dx*dx + dy*dy);
                     float a  = Mathf.Clamp01(1f - Mathf.Abs(d - 0.9f) * 4f);
                     a       += Mathf.Clamp01(1f - d) * 0.30f;
-                    t.SetPixel(x, y, new Color(0.78f, 0.55f, 1.0f, Mathf.Clamp01(a)));
+                    t.SetPixel(x, y, new Color(1f, 1f, 1f, Mathf.Clamp01(a)));
                 }
             t.Apply();
             _proceduralRing = Sprite.Create(t, new Rect(0, 0, N, N), new Vector2(0.5f, 0.5f), 100f);
@@ -203,17 +215,46 @@ namespace ZulfarakRPG
             }
         }
 
+        // Walk INTO the portal (collider) → enter.
         void OnTriggerEnter2D(Collider2D other)
         {
-            if (!_open || _transitioning) return;
             if (!other.CompareTag("Player")) return;
-            // In a multi-player lobby only the leader actually initiates the
-            // group transit — followers wait for the leader's PORTAL broadcast,
-            // so we don't fire transitions out of order.
+            TryEnter();
+        }
+
+        // CLICK the portal → enter. Lets the player CHOOSE between the purple (leave) and the red
+        // (RANK A) portal in the final dungeon without having to walk into one.
+        void OnMouseDown() => TryEnter();
+
+        void TryEnter()
+        {
+            if (!_open || _transitioning) return;
+            // In a multi-player lobby only the leader actually initiates the group transit —
+            // followers wait for the leader's PORTAL broadcast, so transitions don't fire out of order.
             var lobby = SteamLobbyManager.Instance;
             if (lobby != null && lobby.InLobby && !lobby.IsLeader) return;
             _transitioning = true;
-            StartCoroutine(Transition());
+            StartCoroutine(rankA ? RankAChallenge() : Transition());
+        }
+
+        // RANK A: no scene swap. Close the portal, splash "PORTAL RANK A" (same banner as
+        // CLEAR/BOSS), then summon the Minotaur into THIS scene for the hero to fight.
+        IEnumerator RankAChallenge()
+        {
+            _open = false;
+            if (glowSprite) glowSprite.gameObject.SetActive(false);
+            if (_rings != null) foreach (var r in _rings) if (r) r.gameObject.SetActive(false);
+            if (_tooltipRoot) _tooltipRoot.SetActive(false);
+
+            PixelBanner.Show("PORTAL RANK A", new Color(0.95f, 0.20f, 0.16f));
+            yield return new WaitForSeconds(1.5f);
+
+            // Spawn on the far side of the arena so the boss visibly stalks in.
+            float groundY = GroundAlignUtil.FindGroundTopY();
+            var spawn = new Vector3(MapBounds.MaxX - 0.3f, groundY + 0.5f, 0f);
+            MinotaurBoss.Spawn(spawn);
+
+            Destroy(gameObject, 0.4f);   // the challenge is claimed — remove the spent portal
         }
 
         IEnumerator Transition()

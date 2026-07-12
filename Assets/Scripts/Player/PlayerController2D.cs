@@ -118,7 +118,8 @@ namespace ZulfarakRPG
         private Sprite    _holdPose;      // forced pose (e.g. archer aiming up) that overrides anim
         private float     _holdUntil;
 
-        bool InCity    => SceneManager.GetActiveScene().name == "Zulfarak";
+        bool InCity    => SceneManager.GetActiveScene().name == "Zulfarak"
+                       || SceneManager.GetActiveScene().name.StartsWith("Camp_");   // settlements walk like the city
         bool InDungeon => SceneManager.GetActiveScene().name == "Dungeon"
                        || SceneManager.GetActiveScene().name.StartsWith("Dungeon_");
 
@@ -398,6 +399,7 @@ namespace ZulfarakRPG
 
             _atkTimer   -= Time.deltaTime;
             _attackLock -= Time.deltaTime;
+            if (_bossSightTimer > 0f) _bossSightTimer -= Time.deltaTime;
 
             if (InCity)  HandleCityInput();
 
@@ -574,6 +576,7 @@ namespace ZulfarakRPG
         void HandleAutoAttack()
         {
             if (_atkTimer > 0) return;
+            if (_bossSightTimer > 0f) return;   // brief startled pause when a boss appears
 
             var target = FindNearest(attackRange);
             if (target == null) return;
@@ -791,6 +794,17 @@ namespace ZulfarakRPG
         // Nearest living enemy to the hero within `range` (used by the skill auto-caster).
         public SkeletonEnemy NearestEnemy(float range) => FindNearest(range);
 
+        float _bossSightTimer;
+
+        // Called by a boss the instant it spawns: the hero holds its attacks for one second and a
+        // surprised "!" balloon pops over its head.
+        public void ReactToBoss()
+        {
+            if (_phase == Phase.Dead) return;
+            _bossSightTimer = 1f;
+            SurpriseBalloon.Spawn(transform);
+        }
+
         // ── Combat ─────────────────────────────────────────────────────
         public void TakeDamage(float dmg, bool isMagic = false)
         {
@@ -866,6 +880,23 @@ namespace ZulfarakRPG
             }
         }
 
+        // Called by HorseCutscene during map travel: freezes the hero (no input/AI/physics) and
+        // lifts its sprite above the horse so it can be carried on the mount. The scene reloads
+        // right after, so these overrides don't need undoing.
+        public void BeginRide()
+        {
+            if (_phase == Phase.Dead) return;
+            _phase          = Phase.WalkingToPortal;   // any non-Playing phase suppresses Update/AI
+            _hasClickTarget = false;
+            if (_rb != null) { _rb.linearVelocity = Vector2.zero; _rb.bodyType = RigidbodyType2D.Kinematic; }
+            if (_animCoroutine != null) StopCoroutine(_animCoroutine);
+            if (_sr != null)
+            {
+                if (_idle != null && _idle.Length > 0) _sr.sprite = _idle[0];
+                _sr.sortingOrder = 260;                // ride on top of the horse (sortingOrder 250)
+            }
+        }
+
         // Called by Portal2D when the player enters the portal trigger. Stops all
         // input/AI/physics, locks the player in idle, and renders a pulsing white
         // halo above the sprite for the portal's pre-load animation window.
@@ -929,8 +960,11 @@ namespace ZulfarakRPG
 
             yield return new WaitForSeconds(1.6f);
             PlayerManager.Instance?.RestoreFullHealthAndSave();
-            // Death penalty: always respawn in the main city, not back into the dungeon.
-            SceneManager.LoadScene("Zulfarak");
+            // Respawn in THIS dungeon's own settlement (Dungeon_2_1 → Camp_2_1, Dungeon → Zulfarak),
+            // never dumped back to the first city. Matches each dungeon's exit-portal destination.
+            var scene = SceneManager.GetActiveScene().name;
+            string city = scene.StartsWith("Dungeon_") ? "Camp" + scene.Substring("Dungeon".Length) : "Zulfarak";
+            SceneManager.LoadScene(city);
         }
 
         // ── Celebration + portal walk ───────────────────────────────────────
@@ -949,16 +983,16 @@ namespace ZulfarakRPG
             WaveManager.Instance?.OnCelebrationDone();
         }
 
-        public void WalkToPortal(Vector3 portalPos)
+        public void WalkToPortal(Vector3 portalPos, string destScene = "Zulfarak")
         {
             _phase = Phase.WalkingToPortal;
-            StartCoroutine(WalkToRoutine(portalPos));
+            StartCoroutine(WalkToRoutine(portalPos, destScene));
         }
 
-        IEnumerator WalkToRoutine(Vector3 target)
+        IEnumerator WalkToRoutine(Vector3 target, string destScene)
         {
             PlayAnim(_walk, 10f, forceRestart: true);
-            while (Mathf.Abs(transform.position.x - target.x) > 0.4f)
+            while (Mathf.Abs(transform.position.x - target.x) > 0.25f)
             {
                 float dir = Mathf.Sign(target.x - transform.position.x);
                 _rb.linearVelocity = new Vector2(dir * moveSpeed * 0.8f, _rb.linearVelocity.y);
@@ -967,15 +1001,13 @@ namespace ZulfarakRPG
             }
             _rb.linearVelocity = Vector2.zero;
             PlayAnim(_idle, 8f, forceRestart: true);
-            // The return to the city lingers: the hero stands in the portal while a
-            // dense smoke cloud slowly swallows him ("demora um pouco mais"), then the
-            // screen fades to black before the city loads.
+            // The hero stands in the portal while a dense smoke cloud slowly swallows him,
+            // then the screen fades to black before the destination scene loads.
             yield return StartCoroutine(PortalAbsorbRoutine(2.4f));
-            // Returning to the city — don't arm the Dungeon arrival bloom.
             PortalSmoke.PendingAtWaveStart = false;
             SceneFader.FadeToBlack(0.4f);
             yield return new WaitForSeconds(0.4f);
-            SceneManager.LoadScene("Zulfarak");
+            SceneManager.LoadScene(string.IsNullOrEmpty(destScene) ? "Zulfarak" : destScene);
         }
 
         // ── Grounded detection ─────────────────────────────────────────────

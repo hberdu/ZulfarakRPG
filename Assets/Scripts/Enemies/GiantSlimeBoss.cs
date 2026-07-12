@@ -21,6 +21,7 @@ namespace ZulfarakRPG
         protected override float ServerStatMultiplier => 1f;
         protected override bool  UsesBossHealthBar     => true;
         protected override float SpawnScaleMultiplier  => 1.3f;   // big blob
+        protected override float EntranceInvulnSeconds => 2f;     // untouchable while it oozes in
 
         private bool  _slamming;
         private float _slamTimer = 3f;

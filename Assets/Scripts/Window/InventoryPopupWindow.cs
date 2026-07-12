@@ -85,6 +85,17 @@ namespace ZulfarakRPG
         static int _hoverX, _hoverY;
         static bool _mouseTracking;
 
+        // ── Slot-picker modal ────────────────────────────────────────────────
+        // Clicking an equipment slot opens a modal listing every bag item that fits that slot
+        // (plus "Retirar" when the slot is filled); clicking an entry equips it into the slot.
+        struct PickerEntry { public bool unequip; public string itemId, itemName; public ItemRarity rarity; public string iconPath; }
+        static bool _pickerOpen;
+        static ItemType _pickerSlot;
+        static string _pickerLabel = "";
+        static readonly List<PickerEntry> _pickerEntries = new List<PickerEntry>();
+        static int _pickerScroll;
+        static int _pickerHover = -1;
+
         public static bool IsOpen => _hwnd != IntPtr.Zero;
 
         public static void Toggle()
@@ -97,9 +108,7 @@ namespace ZulfarakRPG
         {
             TopPopups.CloseAllExcept(TopPopups.Kind.Inventory);
             _hoverKind = 0; _hoverIndex = -1; _mouseTracking = false;
-            // Seed the bag with one item of every quality per slot so the equipment
-            // visuals can be tested (idempotent — skips items already held).
-            TestItems.AddAllToBag(Inventory.Instance);
+            // Items are earned from server-defined monster drops now — nothing is seeded here.
 #if UNITY_EDITOR
             Debug.Log("[InventoryPopup] aberto (editor).");
 #else
@@ -478,12 +487,24 @@ namespace ZulfarakRPG
                 case WM_ERASEBKGND:
                     return new IntPtr(1);
                 case WM_KEYDOWN:
-                    if (wParam.ToInt32() == VK_ESCAPE) Hide();
+                    if (wParam.ToInt32() == VK_ESCAPE)
+                    {
+                        if (_pickerOpen) ClosePicker(hWnd);
+                        else Hide();
+                    }
                     return IntPtr.Zero;
                 case WM_MOUSEWHEEL:
                 {
-                    RebuildRows();
                     int delta = (short)((wParam.ToInt64() >> 16) & 0xFFFF);
+                    if (_pickerOpen)
+                    {
+                        PickerLayout(out _, out _, out _, out _, out _, out int rowH2, out int visRows2, out _, out _);
+                        int maxS = Mathf.Max(0, (_pickerEntries.Count - visRows2) * rowH2);
+                        _pickerScroll = Mathf.Clamp(_pickerScroll - (delta / 120) * rowH2, 0, maxS);
+                        InvalidateRect(hWnd, IntPtr.Zero, true);
+                        return IntPtr.Zero;
+                    }
+                    RebuildRows();
                     _bagScrollY = Mathf.Clamp(_bagScrollY - (delta / 120) * (BagCell + BagGap), 0, MaxBagScroll);
                     InvalidateRect(hWnd, IntPtr.Zero, true);
                     return IntPtr.Zero;
@@ -493,6 +514,14 @@ namespace ZulfarakRPG
                     int mx = (short)(lParam.ToInt64() & 0xFFFF);
                     int my = (short)((lParam.ToInt64() >> 16) & 0xFFFF);
                     _hoverX = mx; _hoverY = my;
+
+                    // While the slot picker is open it owns hover highlighting.
+                    if (_pickerOpen)
+                    {
+                        int ph2 = PickerRowAt(mx, my);
+                        if (ph2 != _pickerHover) { _pickerHover = ph2; InvalidateRect(hWnd, IntPtr.Zero, false); }
+                        return IntPtr.Zero;
+                    }
 
                     // Ask Windows to post WM_MOUSELEAVE once the cursor exits, so the tooltip
                     // clears when the mouse drops back down to the game window.
@@ -540,6 +569,8 @@ namespace ZulfarakRPG
                 {
                     int mx = (short)(lParam.ToInt64() & 0xFFFF);
                     int my = (short)((lParam.ToInt64() >> 16) & 0xFFFF);
+                    // The slot picker is modal — it eats the click while open.
+                    if (_pickerOpen) { HandlePickerClick(hWnd, mx, my); return IntPtr.Zero; }
                     // Close box (top-right of header)?
                     if (my < HeaderH && mx >= PopupWidth - 26) { Hide(); return IntPtr.Zero; }
 
@@ -557,12 +588,13 @@ namespace ZulfarakRPG
                     BuildDoll();
                     BuildBag();
 
-                    // Click an equipped doll slot → unequip.
+                    // Click a doll slot → open the modal picker of bag items that fit that slot.
                     foreach (var s in _dollSlots)
                     {
                         if (mx < s.x || mx > s.x + s.w || my < s.y || my > s.y + s.h) continue;
                         var row = _equipRows[s.equipIndex];
-                        if (row.has) { Inventory.Instance?.Unequip(row.slotType); InvalidateRect(hWnd, IntPtr.Zero, true); }
+                        OpenPicker(row.slotType, row.label);
+                        InvalidateRect(hWnd, IntPtr.Zero, true);
                         return IntPtr.Zero;
                     }
 
@@ -791,12 +823,13 @@ namespace ZulfarakRPG
             SelectObject(hdc, _fontHint);
             SetTextColor(hdc, Rpg ? RpgUiNative.InkOnDark : Bgr(0.62f, 0.62f, 0.68f));
             var hintRc = new RECT { Left = 8, Top = h - FooterH, Right = w - 8, Bottom = h - 4 };
-            DrawTextW(hdc, "Clique na sacola p/ equipar · clique no slot p/ retirar · roda rola · ESC fecha", -1, ref hintRc,
+            DrawTextW(hdc, "Clique na sacola p/ equipar · clique no slot p/ trocar · roda rola · ESC fecha", -1, ref hintRc,
                 DT_CENTER | DT_BOTTOM | DT_SINGLELINE | DT_NOPREFIX);
             SelectObject(hdc, prev);
 
-            // Hover tooltip drawn last so it floats above everything (no clip active here).
-            DrawTooltip(hdc, w, h);
+            // Hover tooltip / slot-picker modal drawn last so they float above everything.
+            if (_pickerOpen) DrawPicker(hdc, w, h);
+            else DrawTooltip(hdc, w, h);
         }
 
         // Resolves the ItemData for whatever the cursor is hovering (bag cell or equipped
@@ -878,6 +911,164 @@ namespace ZulfarakRPG
             ItemType.Gloves => "Maos", ItemType.Boots  => "Pes",      ItemType.Cape  => "Capa",
             ItemType.Consumable => "Consumivel", _ => "Item"
         };
+
+        // ── Slot picker modal ─────────────────────────────────────────────────
+        static void OpenPicker(ItemType slot, string label)
+        {
+            _pickerSlot = slot; _pickerLabel = label; _pickerScroll = 0; _pickerHover = -1;
+            _pickerEntries.Clear();
+
+            var inv = Inventory.Instance;
+            var db  = ItemDatabase.Instance;
+            if (inv != null)
+            {
+                // "Retirar" first when the slot is currently filled.
+                if (!string.IsNullOrWhiteSpace(inv.Equipment?.GetSlot(slot)))
+                    _pickerEntries.Add(new PickerEntry { unequip = true, itemName = "Retirar equipamento" });
+
+                // Every bag item that fits this slot (equipping already pulls it out of the bag,
+                // so the equipped item is never in this list).
+                foreach (var it in inv.Items)
+                {
+                    var data = db != null ? db.Get(it.itemId) : null;
+                    if (data == null || data.itemType != slot) continue;
+                    _pickerEntries.Add(new PickerEntry
+                    {
+                        itemId = it.itemId,
+                        itemName = !string.IsNullOrWhiteSpace(data.itemName) ? data.itemName : it.itemId,
+                        rarity = data.rarity,
+                        iconPath = data.iconPath
+                    });
+                }
+                _pickerEntries.Sort((a, b) =>
+                {
+                    if (a.unequip != b.unequip) return a.unequip ? -1 : 1;   // Retirar stays on top
+                    return QIndex(b.rarity).CompareTo(QIndex(a.rarity));      // best quality first
+                });
+            }
+            _pickerOpen = true;
+        }
+
+        static void ClosePicker(IntPtr hWnd)
+        {
+            _pickerOpen = false;
+            RebuildRows(); BuildDoll(); BuildBag();
+            InvalidateRect(hWnd, IntPtr.Zero, true);
+        }
+
+        static void HandlePickerClick(IntPtr hWnd, int mx, int my)
+        {
+            PickerLayout(out int px, out int py, out int pw, out int ph, out _, out _, out _, out int titleH, out _);
+            // Close X on the panel title, or a click outside the panel → dismiss.
+            if ((my >= py && my < py + titleH && mx >= px + pw - 24) ||
+                mx < px || mx > px + pw || my < py || my > py + ph)
+            { ClosePicker(hWnd); return; }
+
+            int idx = PickerRowAt(mx, my);
+            if (idx < 0) return;
+            var e = _pickerEntries[idx];
+            if (e.unequip) Inventory.Instance?.Unequip(_pickerSlot);
+            else           Inventory.Instance?.Equip(e.itemId);
+            ClosePicker(hWnd);
+        }
+
+        // Panel + list geometry (shared by paint, hit-test and wheel). `visRows` = rows actually
+        // shown (panel is sized to fit up to `cap`; extra items scroll).
+        static void PickerLayout(out int px, out int py, out int pw, out int ph,
+                                 out int listTop, out int rowH, out int visRows, out int titleH, out int footerH)
+        {
+            int w = PopupWidth, h = PopupHeight;
+            pw = Mathf.Clamp(w * 74 / 100, 220, w - 20);
+            titleH = 26; footerH = 16; rowH = 30;
+            int avail = h - HeaderH - 30 - titleH - footerH;
+            int cap   = Mathf.Max(1, avail / rowH);
+            visRows   = Mathf.Clamp(_pickerEntries.Count, 1, cap);
+            ph = titleH + visRows * rowH + footerH + 8;
+            px = (w - pw) / 2;
+            py = (h - ph) / 2 + 6;
+            listTop = py + titleH + 2;
+        }
+
+        static int PickerRowAt(int mx, int my)
+        {
+            if (!_pickerOpen) return -1;
+            PickerLayout(out int px, out int py, out int pw, out int ph, out int listTop, out int rowH, out int visRows, out _, out _);
+            if (mx < px + 3 || mx > px + pw - 3) return -1;
+            int listBot = listTop + visRows * rowH;
+            if (my < listTop || my >= listBot) return -1;
+            int idx = (my - listTop + _pickerScroll) / rowH;
+            return (idx >= 0 && idx < _pickerEntries.Count) ? idx : -1;
+        }
+
+        static void DrawPicker(IntPtr hdc, int w, int h)
+        {
+            PickerLayout(out int px, out int py, out int pw, out int ph, out int listTop, out int rowH, out int visRows, out int titleH, out int footerH);
+
+            // Drop shadow, then the bevelled panel.
+            var shadow = new RECT { Left = px + 4, Top = py + 4, Right = px + pw + 4, Bottom = py + ph + 4 };
+            FillRect(hdc, ref shadow, _brushOutline);
+            NativeFrameImage.PixelBevel(hdc, px, py, pw, ph, _brushOutline, _brushBevHi, _brushBevLo, _brushPanel);
+            SetBkMode(hdc, TRANSPARENT);
+
+            // Title bar + close X.
+            var titleBar = new RECT { Left = px + 3, Top = py + 3, Right = px + pw - 3, Bottom = py + titleH };
+            FillRect(hdc, ref titleBar, _brushDivider);
+            SelectObject(hdc, _fontSection);
+            SetTextColor(hdc, Bgr(1f, 0.82f, 0.32f));
+            var titleRc = new RECT { Left = px + 8, Top = py + 3, Right = px + pw - 24, Bottom = py + titleH };
+            DrawTextW(hdc, "Trocar: " + _pickerLabel, -1, ref titleRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+            var xRc = new RECT { Left = px + pw - 22, Top = py + 3, Right = px + pw - 4, Bottom = py + titleH };
+            SetTextColor(hdc, Bgr(1f, 0.9f, 0.85f));
+            DrawTextW(hdc, "X", -1, ref xRc, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+
+            if (_pickerEntries.Count == 0)
+            {
+                SelectObject(hdc, _fontRow);
+                SetTextColor(hdc, Bgr(0.70f, 0.68f, 0.60f));
+                var emptyRc = new RECT { Left = px + 10, Top = listTop + 6, Right = px + pw - 10, Bottom = listTop + rowH * 2 };
+                DrawTextW(hdc, "Nenhum equipamento na sacola para este slot.", -1, ref emptyRc, DT_CENTER | DT_TOP | DT_WORDBREAK | DT_NOPREFIX);
+            }
+
+            int listBot = listTop + visRows * rowH;
+            IntersectClipRect(hdc, px + 3, listTop, px + pw - 3, listBot);
+            for (int i = 0; i < _pickerEntries.Count; i++)
+            {
+                int rt = listTop + i * rowH - _pickerScroll;
+                if (rt + rowH <= listTop || rt >= listBot) continue;
+                var e = _pickerEntries[i];
+                var rc = new RECT { Left = px + 4, Top = rt, Right = px + pw - 4, Bottom = rt + rowH - 2 };
+                FillRect(hdc, ref rc, i == _pickerHover ? _brushTagUse : ((i & 1) == 0 ? _brushRowA : _brushRowB));
+
+                if (e.unequip)
+                {
+                    SelectObject(hdc, _fontRow);
+                    SetTextColor(hdc, Bgr(0.95f, 0.55f, 0.45f));
+                    var trc = new RECT { Left = px + 14, Top = rt, Right = px + pw - 8, Bottom = rt + rowH - 2 };
+                    DrawTextW(hdc, e.itemName, -1, ref trc, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+                    continue;
+                }
+
+                int iconBox = rowH - 8, ix = px + 8, iy = rt + 4;
+                NativeFrameImage.PixelBevel(hdc, ix, iy, iconBox, iconBox, _brushOutline, _brushBevLo, _brushBevLo, _brushSlot);
+                if (!string.IsNullOrEmpty(e.iconPath))
+                {
+                    var img = IconLibrary.Gdi(e.iconPath);
+                    if (img != null && img.Ready) img.BlitAspect(hdc, ix + 2, iy + 2, iconBox - 4, iconBox - 4);
+                }
+                DrawQualityBorder(hdc, ix, iy, iconBox, iconBox, e.rarity);
+
+                SelectObject(hdc, _fontRow);
+                SetTextColor(hdc, BgrOf(ItemData.QualityColor(e.rarity)));
+                var nrc = new RECT { Left = ix + iconBox + 8, Top = rt, Right = px + pw - 8, Bottom = rt + rowH - 2 };
+                DrawTextW(hdc, e.itemName, -1, ref nrc, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+            }
+            SelectClipRgn(hdc, IntPtr.Zero);
+
+            SelectObject(hdc, _fontHint);
+            SetTextColor(hdc, Bgr(0.66f, 0.64f, 0.56f));
+            var frc = new RECT { Left = px + 8, Top = py + ph - footerH, Right = px + pw - 8, Bottom = py + ph - 3 };
+            DrawTextW(hdc, "Clique p/ equipar · roda rola · ESC volta", -1, ref frc, DT_CENTER | DT_BOTTOM | DT_SINGLELINE | DT_NOPREFIX);
+        }
 
         // Compact identity line to the right of the dragon emblem: name, class, level.
         static void DrawSummaryText(IntPtr hdc, int x, int y, int w, int h)

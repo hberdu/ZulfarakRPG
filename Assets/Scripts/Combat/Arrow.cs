@@ -22,8 +22,8 @@ namespace ZulfarakRPG
 
         // On-screen length of the arrow, in WORLD units (the sprite's longest side is scaled
         // to span this). ONE number used by the basic shot AND every skill projectile so all
-        // arrows are the exact same size. Kept small (~the archer's width) for a realistic shot.
-        public const float TargetWorldSize = 0.75f;
+        // arrows are the exact same size. Small + realistic (~half the hero's height).
+        public const float TargetWorldSize = 0.32f;
 
         // customSprite: a specific arrow from the pack's Arrow(Projectile) folder, cycled
         // by the archer so successive shots differ. Null → the shared default arrow.
@@ -45,6 +45,12 @@ namespace ZulfarakRPG
         // arrow). Exposed so the Archer's SKILL projectiles (Serpe, Chuva) can fly the SAME
         // arrow sprite instead of a separate dart.
         public static Sprite SharedSprite => _arrowSprite ??= LoadArrowSprite();
+
+        // A FLAT, unshaded arrow (the procedural art, single flat colours). Chuva de Flechas uses
+        // this so the pack arrow's baked light/shadow pixels don't read as a wrong shadow when the
+        // arrow rotates to steep falling angles over small enemies.
+        static Sprite _flatSprite;
+        public static Sprite FlatSprite => _flatSprite ??= MakeArrowSprite();
 
         // Scales `t` so `sprite`'s longest side spans `worldSize` world units, normalising away
         // the different pixel dimensions of the pack arrows vs the fallback. Static so the skill

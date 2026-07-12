@@ -26,6 +26,7 @@ namespace ZulfarakRPG
         protected override float ServerStatMultiplier => 1f;   // server catalog sizes the alpha
         protected override bool  UsesBossHealthBar     => true;
         protected override float SpawnScaleMultiplier  => 1.35f; // biggest boss so far
+        protected override float EntranceInvulnSeconds => 2f;     // untouchable while it prowls in
 
         private bool  _pouncing;
         private float _pounceTimer = 3f;

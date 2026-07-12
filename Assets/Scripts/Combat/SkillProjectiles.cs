@@ -31,6 +31,100 @@ namespace ZulfarakRPG
         }
     }
 
+    // A white spread-winged EAGLE used as the Tiro Concentrado charge telegraph (the archer's
+    // counterpart to the Serpe's serpent). Procedural + self-contained: a symmetric silhouette
+    // redrawn per wing-raise so a short frame loop reads as a slow, powerful wing-beat. Faces +x;
+    // the caster flips it toward the target.
+    public static class SkillEagle
+    {
+        const int W = 27, H = 22, CX = 13;
+        static Sprite[] _frames;
+        static Sprite   _aura;
+
+        public static Sprite[] Frames()
+        {
+            if (_frames != null) return _frames;
+            int[] raise = { 16, 14, 12, 14 };   // wing-tip Y: high → mid → low → mid (beat loop)
+            _frames = new Sprite[raise.Length];
+            for (int i = 0; i < raise.Length; i++) _frames[i] = Build(raise[i]);
+            Debug.Assert(_frames.Length > 0 && _frames[0] != null, "[SkillEagle] frame build failed");
+            return _frames;
+        }
+
+        static Sprite Build(int wingTipY)
+        {
+            var t = new Texture2D(W, H, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point };
+            var m = new bool[W, H];
+
+            // Body (tail fan → chest → neck → head), symmetric about CX.
+            FillCol(m, 0, 0, 0, 3);      // tail feathers (widest at the bottom)
+            FillCol(m, 1, 1, 0, 2);
+            FillCol(m, 2, 2, 0, 1);
+            FillCol(m, 3, 5, 0, 1);      // body
+            FillCol(m, 6, 9, 0, 2);      // chest (wider)
+            FillCol(m, 10, 10, 0, 2);    // shoulders (wing roots)
+            FillCol(m, 11, 13, 0, 1);    // neck
+            FillCol(m, 14, 17, 0, 1);    // head
+            Plot(m, CX, 18);             // crown
+            Plot(m, CX + 2, 15); Plot(m, CX + 3, 15);   // beak (points +x)
+
+            // Wings: thick bands from the shoulders out+up to the tips, mirrored.
+            ThickLine(m, CX + 2, 10, W - 2, wingTipY, 2);
+            ThickLine(m, CX - 2, 10, 1,     wingTipY, 2);
+
+            for (int y = 0; y < H; y++)
+                for (int x = 0; x < W; x++)
+                    t.SetPixel(x, y, m[x, y] ? Color.white : Color.clear);
+            t.Apply();
+            return UnityEngine.Sprite.Create(t, new Rect(0, 0, W, H), new Vector2(0.5f, 0.5f), 100f);
+        }
+
+        // Soft white radial aura placed behind the eagle.
+        public static Sprite Aura()
+        {
+            if (_aura != null) return _aura;
+            const int S = 32;
+            var t = new Texture2D(S, S, TextureFormat.RGBA32, false) { filterMode = FilterMode.Bilinear };
+            float c = (S - 1) * 0.5f, maxR = S * 0.5f;
+            for (int y = 0; y < S; y++)
+                for (int x = 0; x < S; x++)
+                {
+                    float d = Mathf.Sqrt((x - c) * (x - c) + (y - c) * (y - c));
+                    float a = Mathf.Clamp01(1f - d / maxR);
+                    t.SetPixel(x, y, new Color(1f, 1f, 1f, a * a));   // soft falloff
+                }
+            t.Apply();
+            _aura = UnityEngine.Sprite.Create(t, new Rect(0, 0, S, S), new Vector2(0.5f, 0.5f), 100f);
+            return _aura;
+        }
+
+        static void FillCol(bool[,] m, int y0, int y1, int dx0, int dx1)
+        {
+            for (int y = y0; y <= y1; y++)
+                for (int dx = dx0; dx <= dx1; dx++) { Plot(m, CX + dx, y); Plot(m, CX - dx, y); }
+        }
+
+        static void ThickLine(bool[,] m, int x0, int y0, int x1, int y1, int r)
+        {
+            int dx = Mathf.Abs(x1 - x0), dy = Mathf.Abs(y1 - y0);
+            int sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1, err = dx - dy;
+            while (true)
+            {
+                for (int ox = -r; ox <= r; ox++)
+                    for (int oy = -r; oy <= r; oy++) Plot(m, x0 + ox, y0 + oy);
+                if (x0 == x1 && y0 == y1) break;
+                int e2 = 2 * err;
+                if (e2 > -dy) { err -= dy; x0 += sx; }
+                if (e2 <  dx) { err += dx; y0 += sy; }
+            }
+        }
+
+        static void Plot(bool[,] m, int x, int y)
+        {
+            if (x >= 0 && x < W && y >= 0 && y < H) m[x, y] = true;
+        }
+    }
+
     // "Tiro de Serpe": a green arrow that snakes toward the target in a zig-zag, deals the
     // archer's normal attack damage on hit, and leaves a poison DoT (30% of attack per
     // second for 4 s).
@@ -40,7 +134,7 @@ namespace ZulfarakRPG
         Vector3 _fixedTarget;        // used when _target == null
         bool _cosmetic;
         float _hitDamage, _poisonDps, _poisonDuration;
-        float _speed = 9f, _elapsed, _life;
+        float _speed = 5f, _elapsed, _life;   // slower, subtle venom shot
         SpriteRenderer _sr;
 
         public static void Spawn(Vector3 pos, SkeletonEnemy target, float hitDamage,
@@ -151,50 +245,52 @@ namespace ZulfarakRPG
         }
     }
 
-    // "Chuva de Flechas": an arrow that rises from the archer, curves over the target, then
-    // drops STRAIGHT DOWN (90°) onto the enemy's head. The caster spawns three on random enemies.
+    // "Chuva de Flechas": an arrow that LOBS in a parabolic arc from the archer and comes down
+    // DIAGONALLY onto the target's centre (not a 90° drop). Slow/subtle. Spawned on several enemies.
     public class FallingArrow : MonoBehaviour
     {
         SkeletonEnemy _target;   // null for cosmetic replay
         bool _cosmetic;
-        Vector3 _origin, _head, _apex;
+        Vector3 _origin, _landing, _aimOffset;
         float _damage, _delay, _t;
-        const float Dur = 0.55f;       // total arc + fall time
-        const float DropHeight = 1.5f; // straight vertical drop onto the head
+        const float Dur = 0.95f;       // slow, subtle arc
+        const float ArcHeight = 1.8f;  // apex above the straight line
 
-        // Head point = top of the enemy's collider (so the arrow lands on the head, not the body).
-        static Vector3 HeadOf(SkeletonEnemy e)
+        // Impact point = the enemy's collider CENTRE (body centre, not the head).
+        static Vector3 CenterOf(SkeletonEnemy e)
         {
             var col = e != null ? e.GetComponent<Collider2D>() : null;
-            return col != null ? new Vector3(col.bounds.center.x, col.bounds.max.y, e.transform.position.z)
-                               : (e != null ? e.transform.position + Vector3.up * 0.9f : Vector3.zero);
+            return col != null ? col.bounds.center
+                               : (e != null ? e.transform.position + Vector3.up * 0.5f : Vector3.zero);
         }
 
-        public static void Spawn(SkeletonEnemy target, Vector3 origin, float damage, float delay, Sprite sprite = null)
+        // aimOffset spreads each arrow of a volley to a distinct point around the target so two
+        // arrows landing on the SAME enemy fly separate arcs instead of overlapping into one
+        // "duplicated" animation.
+        public static void Spawn(SkeletonEnemy target, Vector3 origin, float damage, float delay, Sprite sprite = null, Vector3 aimOffset = default)
         {
-            var a = Make(origin, HeadOf(target), delay, sprite);
-            a._target = target; a._damage = damage;
+            var a = Make(origin, CenterOf(target) + aimOffset, delay, sprite);
+            a._target = target; a._damage = damage; a._aimOffset = aimOffset;
         }
 
-        // Visual-only replay on a partner's screen: falls onto a fixed head point, no damage.
-        public static void SpawnCosmetic(Vector3 head, float delay, Sprite sprite = null)
+        // Visual-only replay on a partner's screen: lobs onto a fixed point, no damage.
+        public static void SpawnCosmetic(Vector3 landing, float delay, Sprite sprite = null)
         {
-            Vector3 origin = head + new Vector3(Random.Range(-1.2f, 1.2f), DropHeight + 1.0f, 0f);
-            var a = Make(origin, head, delay, sprite);
+            Vector3 origin = landing + new Vector3(-2.0f, 2.2f, 0f);
+            var a = Make(origin, landing, delay, sprite);
             a._cosmetic = true;
         }
 
-        static FallingArrow Make(Vector3 origin, Vector3 head, float delay, Sprite sprite)
+        static FallingArrow Make(Vector3 origin, Vector3 landing, float delay, Sprite sprite)
         {
             var go = new GameObject("FallingArrow");
             var a = go.AddComponent<FallingArrow>();
-            a._origin = origin; a._head = head; a._delay = Mathf.Max(0f, delay);
-            // Apex = directly ABOVE the head; the arrow reaches it at the mid-point, then falls vertically.
-            a._apex = new Vector3(head.x, Mathf.Max(origin.y, head.y) + DropHeight, head.z);
+            a._origin = origin; a._landing = landing; a._delay = Mathf.Max(0f, delay);
             go.transform.position = origin;
             var sr = go.AddComponent<SpriteRenderer>();
-            // The same single flat arrow as the basic shot (no tint, no shading).
-            sr.sprite = sprite != null ? sprite : Arrow.SharedSprite;
+            // FLAT arrow (no baked shading) — the pack arrow's shading read as a wrong shadow at
+            // steep falling angles over common enemies.
+            sr.sprite = sprite != null ? sprite : Arrow.FlatSprite;
             sr.color = Color.white;
             sr.sortingOrder = 300;   // foreground, above everything
             Arrow.ApplyWorldSize(go.transform, sr.sprite, Arrow.TargetWorldSize);
@@ -206,27 +302,22 @@ namespace ZulfarakRPG
             // Stagger without disabling the component — hover until the delay elapses.
             if (_delay > 0f) { _delay -= Time.deltaTime; return; }
 
+            // Home onto a MOVING target: re-aim the landing point at the enemy's LIVE centre every
+            // frame, so the arrow comes down ON the enemy even while it walks. (It used to lock the
+            // landing to the cast-time position, so a moving enemy dodged the falling arrow.)
+            if (!_cosmetic && _target != null && _target.IsAlive)
+                _landing = CenterOf(_target) + _aimOffset;
+
             _t += Time.deltaTime / Dur;
             float u = Mathf.Clamp01(_t);
             Vector3 prev = transform.position;
-            Vector3 pos;
-            if (u < 0.5f)
-            {
-                // Curve: archer → apex directly above the head.
-                float a = u / 0.5f;
-                pos = new Vector3(Mathf.Lerp(_origin.x, _apex.x, a * a),   // ease toward the head's x
-                                  Mathf.Lerp(_origin.y, _apex.y, a),
-                                  _head.z);
-            }
-            else
-            {
-                // Pure vertical drop (90°) straight onto the head.
-                float b = (u - 0.5f) / 0.5f;
-                pos = new Vector3(_head.x, Mathf.Lerp(_apex.y, _head.y, b), _head.z);
-            }
-            transform.position = pos;
+            // Parabolic lob: straight-line interp + an arch, so it rises from the archer and
+            // descends DIAGONALLY onto the target centre.
+            float x = Mathf.Lerp(_origin.x, _landing.x, u);
+            float y = Mathf.Lerp(_origin.y, _landing.y, u) + ArcHeight * 4f * u * (1f - u);
+            transform.position = new Vector3(x, y, _landing.z);
 
-            Vector3 d = pos - prev;
+            Vector3 d = transform.position - prev;
             if (d.sqrMagnitude > 1e-6f)
                 transform.rotation = Quaternion.Euler(0f, 0f, Mathf.Atan2(d.y, d.x) * Mathf.Rad2Deg);
 

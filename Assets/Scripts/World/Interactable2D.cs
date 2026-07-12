@@ -64,9 +64,9 @@ namespace ZulfarakRPG
             var shadow = MakePanel("Shadow", new Vector3(0.015f, -0.018f, 0.02f),
                                    new Vector3(w, h, 1f), new Color(0f, 0f, 0f, 0.35f), 10);
 
-            // Gold border panel (slightly larger), then a dark inner panel on top.
+            // Grey border panel (slightly larger), then a dark inner panel on top.
             MakePanel("Border", new Vector3(0f, 0f, 0f),
-                      new Vector3(w + 0.03f, h + 0.03f, 1f), new Color(0.85f, 0.65f, 0.20f, 1f), 11);
+                      new Vector3(w + 0.03f, h + 0.03f, 1f), new Color(0.45f, 0.45f, 0.50f, 1f), 11);
             MakePanel("Bg", new Vector3(0f, 0f, -0.05f),
                       new Vector3(w, h, 1f), new Color(0.06f, 0.05f, 0.04f, 0.96f), 12);
 
@@ -77,7 +77,7 @@ namespace ZulfarakRPG
             tmp.text      = tooltipText;
             tmp.fontSize  = 0.45f;
             tmp.alignment = TextAlignmentOptions.Center;
-            tmp.color     = new Color(1f, 0.93f, 0.72f, 1f);   // warm parchment text
+            tmp.color     = new Color(0.92f, 0.92f, 0.95f, 1f);   // neutral grey-white text
             tmp.fontStyle = FontStyles.Bold;
             tmp.enableWordWrapping = false;
             var mr = labelGO.GetComponent<MeshRenderer>();

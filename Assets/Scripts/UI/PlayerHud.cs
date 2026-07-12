@@ -30,6 +30,14 @@ namespace ZulfarakRPG
         // dungeon portal, looping the challenge. Persisted so it survives restarts.
         static bool _repeatOn;
 
+        // Menu buttons whose cover fills PURPLE while their popup is open (same look as the repeat
+        // toggle). Polled every frame in Update so the colour tracks the popup no matter how it was
+        // closed (button re-click, ESC, or scene change).
+        readonly System.Collections.Generic.List<(Image cover, System.Func<bool> isOpen)> _menuIndicators
+            = new System.Collections.Generic.List<(Image, System.Func<bool>)>();
+        static readonly Color MenuOpenColor = new Color(0.44f, 0.16f, 0.66f, 1f);   // purple = open
+        static readonly Color MenuIdleColor = new Color(0.17f, 0.13f, 0.17f, 1f);   // dark   = closed
+
         // Bottom-left button-column metrics (public so the dungeon progress bar can
         // align itself relative to the button rail).
         public const float ButtonSize          = 24f;   // small square — about the on-screen size of the map icon
@@ -133,18 +141,23 @@ namespace ZulfarakRPG
             //   2: Map        — city only
             //   3: Friends    — city only
             //   4: Repeat run — city only
+            // Each menu button TOGGLES its popup (click opens; click again / ESC closes) and turns
+            // purple while it is open (see Update + _menuIndicators).
             BuildHudButton(canvas.transform, slot: 0, name: "MenuButton",   glyph: UpArrowSprite(),
-                onClick: () => InventoryPopupWindow.Toggle());
+                onClick: () => InventoryPopupWindow.Toggle(), isOpen: () => InventoryPopupWindow.IsOpen);
             BuildHudButton(canvas.transform, slot: 1, name: "SkillsButton", glyph: WizardHatSprite(),
-                onClick: () => SkillTreePopup.Show());
+                onClick: () => SkillTreePopup.Toggle(), isOpen: () => SkillTreePopup.IsOpen);
             _instance._cityOnlyMap = BuildHudButton(canvas.transform, slot: 2, name: "MapButton",    glyph: MapGlyphSprite(),
-                onClick: () => WorldMapPopup.Show());
+                onClick: () => { if (WorldMapPopup.IsOpen) WorldMapPopup.Hide(); else WorldMapPopup.Show(); },
+                isOpen: () => WorldMapPopup.IsOpen);
             _instance._cityOnlyFriends = BuildHudButton(canvas.transform, slot: 3, name: "FriendsButton", glyph: FriendsGlyphSprite(),
                 onClick: () =>
                 {
+                    if (FriendsListPopup.IsOpen) { FriendsListPopup.Hide(); return; }
                     SteamLobbyManager.Instance?.EnsureLobby();
                     FriendsListPopup.Show();
-                });
+                },
+                isOpen: () => FriendsListPopup.IsOpen);
 
             // "Repeat challenge" toggle (slot 4 = above Friends). Available in both
             // scenes so the player can flip it on/off mid-run without stopping at the
@@ -229,7 +242,8 @@ namespace ZulfarakRPG
         // button root so the caller can retain a reference (used to hide the
         // city-only buttons in the dungeon).
         static GameObject BuildHudButton(Transform parent, int slot, string name, Sprite glyph,
-                                         UnityEngine.Events.UnityAction onClick)
+                                         UnityEngine.Events.UnityAction onClick,
+                                         System.Func<bool> isOpen = null)
         {
             var go = new GameObject(name, typeof(RectTransform));
             go.transform.SetParent(parent, false);
@@ -254,8 +268,10 @@ namespace ZulfarakRPG
             crt.offsetMax = new Vector2(-4f, -4f);
             var cover = coverGO.AddComponent<Image>();
             cover.sprite        = SolidPixel();
-            cover.color         = new Color(0.17f, 0.13f, 0.17f, 1f);
+            cover.color         = MenuIdleColor;
             cover.raycastTarget = false;
+            // Menu buttons register their cover so Update can paint it purple while the popup is open.
+            if (isOpen != null && _instance != null) _instance._menuIndicators.Add((cover, isOpen));
 
             // Our glyph centred on the cover.
             var glyphGO = new GameObject("Glyph", typeof(RectTransform));
@@ -280,6 +296,25 @@ namespace ZulfarakRPG
         {
             if (Input.GetKeyDown(KeyCode.I))
                 InventoryPopupWindow.Toggle();
+
+            // ESC closes whichever menu is open. The native popups also self-close on ESC when they
+            // hold focus; this covers the case where the game strip has focus and keeps the button
+            // colours honest.
+            if (Input.GetKeyDown(KeyCode.Escape))
+            {
+                InventoryPopupWindow.Hide();
+                SkillTreePopup.Hide();
+                WorldMapPopup.Hide();
+                FriendsListPopup.Hide();
+            }
+
+            // Paint each menu button's cover purple while its popup is open (same look as the repeat
+            // toggle), dark otherwise — regardless of how it was opened or closed.
+            for (int i = 0; i < _menuIndicators.Count; i++)
+            {
+                var (cover, isOpen) = _menuIndicators[i];
+                if (cover != null) cover.color = isOpen() ? MenuOpenColor : MenuIdleColor;
+            }
         }
 
         // Two tiny buttons in the TOP-RIGHT corner: close (×) and minimize (_).

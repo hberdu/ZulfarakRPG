@@ -50,6 +50,7 @@ namespace ZulfarakRPG
         struct CityDef
         {
             public string  Name;
+            public string  Desc;    // shown in the hover tooltip
             public Vector2 LocalPos;
             public bool    Locked;
             public string  Scene;   // scene to load on click (null = no teleport)
@@ -59,11 +60,11 @@ namespace ZulfarakRPG
         // an irregular path. Panel root is centered on the camera at (2.5, 0).
         static readonly CityDef[] Cities =
         {
-            new CityDef { Name = "Zulfarak",   LocalPos = new Vector2(-1.50f, -0.06f), Locked = false, Scene = "Zulfarak" },
-            new CityDef { Name = "Acamp. Orc", LocalPos = new Vector2(-0.75f,  0.10f), Locked = false, Scene = "Camp_2_1" },
-            new CityDef { Name = "Vila Slime", LocalPos = new Vector2( 0.00f, -0.10f), Locked = false, Scene = "Camp_3_1" },
-            new CityDef { Name = "Cemiterio",  LocalPos = new Vector2( 0.75f,  0.08f), Locked = false, Scene = "Camp_4_1" },
-            new CityDef { Name = "???",        LocalPos = new Vector2( 1.50f, -0.04f), Locked = true  },
+            new CityDef { Name = "Zulfarak",   Desc = "Cidade natal — ferreiro,\nmestres de classe e o portal.", LocalPos = new Vector2(-1.50f, -0.06f), Locked = false, Scene = "Zulfarak" },
+            new CityDef { Name = "Acamp. Orc", Desc = "Orcs e o Orc Montador (chefe).",       LocalPos = new Vector2(-0.75f,  0.10f), Locked = false, Scene = "Camp_2_1" },
+            new CityDef { Name = "Vila Slime", Desc = "Slimes e o Slime Gigante (chefe).",    LocalPos = new Vector2( 0.00f, -0.10f), Locked = false, Scene = "Camp_3_1" },
+            new CityDef { Name = "Cemiterio",  Desc = "Lobisomens e o Lobo Alfa (chefe).",    LocalPos = new Vector2( 0.75f,  0.08f), Locked = false, Scene = "Camp_4_1" },
+            new CityDef { Name = "???",        Desc = "Região desconhecida —\nainda bloqueada.", LocalPos = new Vector2( 1.50f, -0.04f), Locked = true  },
         };
 
         // ── Build (one-shot) ──────────────────────────────────────────────
@@ -78,9 +79,18 @@ namespace ZulfarakRPG
             _instance.BuildTitleAndHint();
             _instance.BuildConnectors();
             _instance.BuildCities();
+            _instance.BuildCompass();
+            _instance.BuildTooltip();
         }
 
         Camera _cam;
+
+        // Hover tooltip (built once, hidden until the mouse is over a locality).
+        GameObject       _tooltip;
+        SpriteRenderer   _tooltipBg;
+        TextMeshPro      _tipName;
+        TextMeshPro      _tipDesc;
+        int              _hoveredCity = -1;
 
         void BuildPaper()
         {
@@ -93,6 +103,23 @@ namespace ZulfarakRPG
             var paper = MakeSprite("Paper", new Color(0.94f, 0.85f, 0.58f, 1f), 42);
             paper.transform.localPosition = new Vector3(0f, 0f, 0f);
             paper.transform.localScale    = new Vector3(3.66f, 0.96f, 1f);
+
+            // Detailed pixel-art overworld drawn on top of the parchment (same art the build's
+            // native popup blits). Uniform scale (square sprite → no distortion), fitted to the
+            // paper height and centred. Editor-only fallback; the build popup cover-fills the frame.
+            var mapSprite = Resources.Load<Sprite>("UI/WorldMap");
+            if (mapSprite != null)
+            {
+                var map = new GameObject("MapArt");
+                map.transform.SetParent(transform, false);
+                var sr = map.AddComponent<SpriteRenderer>();
+                sr.sprite       = mapSprite;
+                sr.sortingOrder = 43;                       // above paper (42), below cities (44+)
+                float unit = mapSprite.bounds.size.y;       // world height of the sprite at scale 1
+                float s    = unit > 0f ? 0.92f / unit : 1f; // fit the paper height (0.96 units)
+                map.transform.localPosition = new Vector3(0f, 0f, -0.02f);
+                map.transform.localScale    = new Vector3(s, s, 1f);
+            }
         }
 
         void BuildTitleAndHint()
@@ -214,17 +241,112 @@ namespace ZulfarakRPG
             }
         }
 
+        // ── Compass rose (top-right corner) ───────────────────────────────
+        void BuildCompass()
+        {
+            var ink  = new Color(0.30f, 0.18f, 0.05f, 0.95f);
+            var root = new GameObject("Compass");
+            root.transform.SetParent(transform, false);
+            root.transform.localPosition = new Vector3(1.55f, 0.28f, -0.05f);
+
+            void Spoke(float ang, float len)
+            {
+                var s = MakeSprite("Spoke", ink, 45);
+                s.transform.SetParent(root.transform, false);
+                s.transform.localPosition = Vector3.zero;
+                s.transform.localRotation = Quaternion.Euler(0f, 0f, ang);
+                s.transform.localScale    = new Vector3(0.012f, len, 1f);
+            }
+            Spoke(0f, 0.17f); Spoke(90f, 0.17f);      // N–S / E–W
+            Spoke(45f, 0.10f); Spoke(-45f, 0.10f);    // diagonals
+
+            var hub = MakeSprite("Hub", ink, 46);
+            hub.transform.SetParent(root.transform, false);
+            hub.transform.localPosition = Vector3.zero;
+            hub.transform.localRotation = Quaternion.Euler(0f, 0f, 45f);
+            hub.transform.localScale    = new Vector3(0.05f, 0.05f, 1f);
+
+            var n = MakeText("N", "N", 0.34f, ink, FontStyles.Bold, 46);
+            n.transform.SetParent(root.transform, false);
+            n.transform.localPosition = new Vector3(0f, 0.15f, -0.05f);
+        }
+
+        // ── Hover tooltip ─────────────────────────────────────────────────
+        void BuildTooltip()
+        {
+            _tooltip = new GameObject("Tooltip");
+            _tooltip.transform.SetParent(transform, false);
+
+            _tooltipBg = MakeSprite("TipBg", new Color(0.12f, 0.08f, 0.03f, 0.94f), 60).GetComponent<SpriteRenderer>();
+            _tooltipBg.transform.SetParent(_tooltip.transform, false);
+            _tooltipBg.transform.localScale = new Vector3(1.0f, 0.38f, 1f);
+
+            _tipName = MakeText("TipName", "", 0.42f, new Color(1f, 0.9f, 0.6f, 1f), FontStyles.Bold, 61).GetComponent<TextMeshPro>();
+            _tipName.transform.SetParent(_tooltip.transform, false);
+            _tipName.transform.localPosition = new Vector3(0f, 0.085f, -0.05f);
+
+            _tipDesc = MakeText("TipDesc", "", 0.30f, new Color(0.92f, 0.86f, 0.74f, 1f), FontStyles.Normal, 61).GetComponent<TextMeshPro>();
+            _tipDesc.transform.SetParent(_tooltip.transform, false);
+            _tipDesc.transform.localPosition = new Vector3(0f, -0.045f, -0.05f);
+
+            _tooltip.SetActive(false);
+        }
+
+        void ShowCityTooltip(int i)
+        {
+            if (_tooltip == null) return;
+            var c = Cities[i];
+            _tipName.text  = c.Name;
+            _tipName.color = c.Locked ? new Color(0.78f, 0.72f, 0.60f) : new Color(1f, 0.9f, 0.6f);
+            _tipDesc.text  = c.Desc ?? "";
+
+            // Balloon width fits the widest line; keep it inside the parchment.
+            int widest = Mathf.Max(c.Name.Length, LongestLine(c.Desc));
+            float w = Mathf.Clamp(widest * 0.11f + 0.35f, 1.0f, 2.5f);
+            _tooltipBg.transform.localScale = new Vector3(w, 0.40f, 1f);
+            _tooltip.transform.localPosition = new Vector3(
+                Mathf.Clamp(c.LocalPos.x, -1.83f + w * 0.5f, 1.83f - w * 0.5f),
+                c.LocalPos.y + 0.32f, -0.3f);
+            _tooltip.SetActive(true);
+        }
+
+        static int LongestLine(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return 0;
+            int best = 0;
+            foreach (var line in s.Split('\n')) best = Mathf.Max(best, line.Length);
+            return best;
+        }
+
+        void HideTooltip()
+        {
+            if (_tooltip != null) _tooltip.SetActive(false);
+        }
+
         // ── Input handling ────────────────────────────────────────────────
         void Update()
         {
             if (Input.GetKeyDown(KeyCode.Escape)) { Hide(); return; }
+            if (_cam == null) _cam = Camera.main;
+            if (_cam == null) return;
+
+            Vector3 mw = _cam.ScreenToWorldPoint(Input.mousePosition);
+
+            // Hover: pop a tooltip while the cursor rests over a locality dot.
+            int hover = -1;
+            for (int i = 0; i < Cities.Length; i++)
+            {
+                Vector2 w = (Vector2)transform.position + Cities[i].LocalPos;
+                if (((Vector2)mw - w).sqrMagnitude <= 0.16f * 0.16f) { hover = i; break; }
+            }
+            if (hover != _hoveredCity)
+            {
+                _hoveredCity = hover;
+                if (hover >= 0) ShowCityTooltip(hover); else HideTooltip();
+            }
 
             if (Input.GetMouseButtonDown(0))
             {
-                if (_cam == null) _cam = Camera.main;
-                if (_cam == null) return;
-                Vector3 mw = _cam.ScreenToWorldPoint(Input.mousePosition);
-
                 // City hit-test: click an unlocked city dot to travel there.
                 for (int i = 0; i < Cities.Length; i++)
                 {

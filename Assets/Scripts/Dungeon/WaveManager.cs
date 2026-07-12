@@ -87,17 +87,12 @@ namespace ZulfarakRPG
         {
             _waveDone = true;
             _progressBar?.SetWave(_wave);
-            yield return new WaitForSeconds(0.5f);
 
             if (_wave < _totalWaves)
             {
-                // Transition animation: the hero marches in place while the parallax
-                // scrolls to the next battlefield (+ a mystic fog sweep between phases).
+                // Walk to the next battlefield: the hero marches while the world scrolls past for
+                // a fixed 2 seconds at his current move speed, THEN the next wave spawns.
                 yield return StartCoroutine(RunToNextWave());
-                // The moment the transition animation ends, hand control straight back.
-                // The hero now stands free and only steps FORWARD once the freshly
-                // spawned enemies actually walk on-screen (see PlayerController2D
-                // .HandleMovement) — no more marching in place at the mobs.
                 _waveDone = false;
                 _player?.SetRunning(false);
                 yield return StartCoroutine(StartNextWave());
@@ -111,25 +106,26 @@ namespace ZulfarakRPG
             }
         }
 
+        // Inter-wave journey: the hero marches in place (walk anim) while the parallax + backdrop
+        // scroll past for a FIXED 2 seconds at his CURRENT move speed — so the distance travelled
+        // is exactly (moveSpeed × 2) world units, regardless of gear/level. The next wave spawns
+        // only after this, and SetRunning(false) drops the hero back to idle.
         IEnumerator RunToNextWave()
         {
-            // First regroup at the start (left edge) of the screen, then march in
-            // place while the parallax scrolls. SetRunning(false) is issued by
-            // WaveCleared the instant this transition animation finishes.
-            if (_player != null)
-                yield return StartCoroutine(_player.WalkBackToStart(_player.sceneBoundsMinX + 0.1f));
+            const float travelSeconds = 2f;
+            float speed = _player != null ? _player.moveSpeed : 1.6f;
             _player?.SetRunning(true);
 
-            float scrolled = 0f;
-            while (scrolled < runScrollDistance)
+            float t = 0f;
+            while (t < travelSeconds)
             {
-                float dx = runScrollSpeed * Time.deltaTime;
-                scrolled += dx;
+                float dx = speed * Time.deltaTime;
                 if (parallaxLayers != null)
                     for (int i = 0; i < parallaxLayers.Length; i++)
                         if (parallaxLayers[i] != null) parallaxLayers[i].Scroll(dx);
                 // Drift the far scenic backdrop too, at ~the city's parallax rate.
                 BackgroundLayers.DungeonScroll += dx * 0.40f;
+                t += Time.deltaTime;
                 yield return null;
             }
         }
@@ -140,7 +136,7 @@ namespace ZulfarakRPG
             _alive.Clear();
             _progressBar?.SetWave(_wave - 1);
             // No wave-announcement banner — the only HUD strings are BOSS, CLEAR and DEFEAT.
-            yield return new WaitForSeconds(0.25f);
+            yield return new WaitForSeconds(0.05f);   // near-instant hand-off to the next wave
 
             if (_wave >= _totalWaves)
             {
@@ -391,10 +387,56 @@ namespace ZulfarakRPG
         public void OnCelebrationDone()
         {
             if (clearText) clearText.gameObject.SetActive(false);
+
+            // Open the exit portal at a FIXED spot on the far left — just past the left-edge HUD
+            // buttons — instead of on top of where the boss died. The hero then walks left into it.
+            if (exitPortal != null)
+            {
+                float portalX = MapBounds.MinX + 0.4f;
+                var pp = exitPortal.transform.position;
+                exitPortal.transform.position = new Vector3(portalX, pp.y, pp.z);
+            }
             exitPortal?.Open();
-            _player?.WalkToPortal(exitPortal != null
-                ? exitPortal.transform.position
-                : new Vector3(-5, -1.5f, 0));
+
+            // Final dungeon: drop a RANK A (red) challenge portal right beside the purple exit and
+            // let the hero CHOOSE — walk into the purple to leave, or the red to face the Minotaur.
+            // (Other dungeons keep auto-walking the hero home.)
+            if (IsLastDungeon())
+            {
+                SpawnRankAPortal();
+                _player?.SetRunning(false);   // celebration over → hand control back so the hero can pick a portal
+                return;
+            }
+
+            string dest = exitPortal != null ? exitPortal.destinationScene : "Zulfarak";
+            _player?.WalkToPortal(exitPortal != null ? exitPortal.transform.position
+                                                     : new Vector3(-5, -1.5f, 0), dest);
+        }
+
+        // The last dungeon in the progression — where the RANK A red portal appears. Uses THIS
+        // WaveManager's own scene (robust even if a persistent/bootstrap scene is the "active" one).
+        // ponytail: single scene-name gate; update if a later dungeon (Dungeon_5_1…) becomes the end.
+        bool IsLastDungeon() => gameObject.scene.name == "Dungeon_4_1";
+
+        private bool _rankASpawned;
+        void SpawnRankAPortal()
+        {
+            if (_rankASpawned) return;
+            _rankASpawned = true;
+
+            Vector3 pp = exitPortal != null ? exitPortal.transform.position
+                                            : new Vector3(MapBounds.CenterX, -0.025f, 0f);
+            float x = Mathf.Clamp(pp.x + 1.3f, MapBounds.MinX + 0.3f, MapBounds.MaxX - 0.3f);
+
+            var go = new GameObject("RankAPortal");
+            go.transform.position   = new Vector3(x, pp.y, pp.z);
+            go.transform.localScale = Vector3.one * 0.8f;   // same size as every portal
+            var p = go.AddComponent<Portal2D>();            // RequireComponent adds the trigger collider
+            p.rankA         = true;
+            p.openOnStart   = true;
+            p.destinationScene = "";
+            p.tooltipText   = "RANK A";
+            Debug.Log($"[WaveManager] Portal RANK A (vermelho) criado em x={x:F2} (cena {gameObject.scene.name}).");
         }
 
         // ── Visual ─────────────────────────────────────────────────────────

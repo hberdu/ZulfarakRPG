@@ -115,10 +115,7 @@ public static partial class SceneSetupWizard
         MakeTiledGround(CAM_X + 1.0f, GROUND_CY, 7.0f, GROUND_H, "ground_rocky");
 
         // Scattered rocks along the path (props on the ground behind the fight).
-        PlaceDecoration("PathRock1", EnsureProp(ZulfArt + "rock_med.png"), Color.white, 1.2f, GROUND_TOP, 1.8f, -4);
-        PlaceDecoration("PathRock2", EnsureProp(ZulfArt + "rock_small.png"), Color.white, 2.6f, GROUND_TOP, 1.6f, -3);
-        PlaceDecoration("PathRock3", EnsureProp(ZulfArt + "rock_big.png"), Color.white, 6.1f, GROUND_TOP, 2.0f, -5);
-        PlaceDecoration("PathBush", EnsureProp(ZulfArt + "bush.png"), Color.white, 4.3f, GROUND_TOP, 1.5f, -3);
+        // Clean arena (no path props) — matches the first dungeon; only the layered backdrop shows.
         ScatterGroundDetail(0.5f, 7.0f, GROUND_TOP, 22,
             new[] { "rock_small.png", "rock_med.png", "bush.png" }, new Color(0.9f, 0.9f, 0.94f));
 
@@ -200,7 +197,7 @@ public static partial class SceneSetupWizard
         enemy.deathFrames = CharacterSpriteImporter.GetFrames(spriteChar, "Death");
         enemy.hurtFrames = CharacterSpriteImporter.GetFrames(spriteChar, "Hurt");
         enemy.maxHealth = 550f; enemy.attackDamage = 250f;  // fallback; server catalog overrides
-        enemy.moveSpeed = 2.2f;                             // early-phase pace (slow)
+        enemy.moveSpeed = 1.7f;                             // slower general pace
         enemy.sceneBoundsMinX = 0.45f; enemy.sceneBoundsMaxX = 4.55f;
         EditorUtility.SetDirty(enemy);
         return go;
@@ -239,16 +236,17 @@ public static partial class SceneSetupWizard
     // ── Animated campfire (4-frame spritesheet cycled by SimpleIdleAnim) ──────────────────
     private static void CreateCampfire(Vector3 groundPos)
     {
+        const float CAMPFIRE_SCALE = 1.3f;   // smaller than the hero (was 2×, too big)
         var frames = LoadCampfireFrames();
         var go = new GameObject("Campfire");
-        go.transform.localScale = new Vector3(2f, 2f, 1f);
+        go.transform.localScale = new Vector3(CAMPFIRE_SCALE, CAMPFIRE_SCALE, 1f);
         var sr = go.AddComponent<SpriteRenderer>();
         sr.sortingOrder = 0;
         if (frames.Length > 0)
         {
             sr.sprite = frames[0];
             var ab = ZulfarakRPG.SpriteAlphaBounds.Get(frames[0]);
-            go.transform.position = new Vector3(groundPos.x, groundPos.y - ab.bottomFromBottom * 2f, 0f);
+            go.transform.position = new Vector3(groundPos.x, groundPos.y - ab.bottomFromBottom * CAMPFIRE_SCALE, 0f);
             var anim = go.AddComponent<SimpleIdleAnim>();
             anim.frames = frames; anim.fps = 8f;
         }

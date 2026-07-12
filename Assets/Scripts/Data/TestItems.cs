@@ -90,6 +90,31 @@ namespace ZulfarakRPG
                 ApplyStaffStats(item, qi);
                 _byId[item.itemId] = item;
             }
+
+            // Real server catalog LEGENDARIES (no tst_ prefix → they persist to the server and
+            // match the boss drop tables). Base numeric stats mirror ItemSeeder; the rarity
+            // scaling in Inventory then multiplies them ~7× and layers on big crit/attack-speed
+            // (weapon) or resist (armour) bonuses.
+            AddCatalogItem("dragon_blade",    "Lâmina do Dragão", ItemType.Weapon, ItemRarity.Legendary, 60, 0,   0,  IconPaths.Weapon(4));
+            AddCatalogItem("aegis_of_titans", "Égide dos Titãs",  ItemType.Chest,  ItemRarity.Legendary, 0,  220, 60, IconPaths.Armor(48 + 3));
+        }
+
+        static void AddCatalogItem(string id, string name, ItemType type, ItemRarity rarity,
+                                   int atk, int hp, int def, string icon)
+        {
+            var it = ScriptableObject.CreateInstance<ItemData>();
+            it.itemId        = id;
+            it.itemName      = name;
+            it.description   = $"{name} — qualidade {ItemData.QualityLabel(rarity)}.";
+            it.itemType      = type;
+            it.rarity        = rarity;
+            it.iconPath      = icon;
+            it.requiredLevel = 10;
+            it.goldValue     = 2500;
+            it.bonusAttack   = atk;
+            it.bonusHp       = hp;
+            it.bonusDefense  = def;
+            _byId[id] = it;
         }
 
         // Per-slot attribute profiles, indexed by quality tier qi (0..3). Everything grows
@@ -191,10 +216,11 @@ namespace ZulfarakRPG
         // brown, blue, purple, gold — matching the quality colours.
         static readonly int[] GloveTiles = { 296, 299, 293, 301 };
 
-        // Resolves a test item by id (or null). ItemDatabase.Get falls back to this.
+        // Resolves a code-defined item by id (test items OR the real server-catalog legendaries).
+        // ItemDatabase.Get falls back to this when the ScriptableObject catalog lacks the id.
         public static ItemData Get(string id)
         {
-            if (!IsTestItem(id)) return null;
+            if (string.IsNullOrEmpty(id)) return null;
             EnsureBuilt();
             return _byId.TryGetValue(id, out var it) ? it : null;
         }

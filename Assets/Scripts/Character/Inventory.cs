@@ -99,68 +99,37 @@ namespace ZulfarakRPG
         public bool HasItem(string itemId, int qty = 1) =>
             Items.Any(i => i.itemId == itemId && i.quantity >= qty);
 
-        // Equip an item from the bag; unequips what was in that slot
+        // Equip an item from the bag; unequips what was in that slot. Applied LOCALLY so the UI +
+        // stats update immediately for ANY item, then persisted to the server via the inventory
+        // PUT — which stores the loadout without needing the item in the server catalog, so it
+        // reliably reaches the database (the old granular /equip endpoint silently failed when the
+        // item wasn't in the server catalog, leaving nothing updated).
         public bool Equip(string itemId)
         {
-            // Local test items (tst_*) never touch the server catalog — equip offline.
-            if (!TestItems.IsTestItem(itemId) && ServerApiClient.Instance != null && ServerApiClient.Instance.IsReady)
-            {
-                try
-                {
-                    var state = ServerApiClient.Instance.EquipItemAsync(itemId).GetAwaiter().GetResult();
-                    ApplyServerState(state);
-                    SaveLocal();
-                    OnInventoryChanged?.Invoke();
-                    return true;
-                }
-                catch (Exception e)
-                {
-                    Debug.LogWarning($"[Inventory] Equip remoto falhou: {e.Message}");
-                    return false;
-                }
-            }
-
             if (!HasItem(itemId)) return false;
-            var data = ItemDatabase.Instance.Get(itemId);
+            var data = ItemDatabase.Instance != null ? ItemDatabase.Instance.Get(itemId) : null;
             if (data == null || data.itemType == ItemType.Consumable) return false;
 
-            var player = PlayerManager.Instance.Data;
+            var player = PlayerManager.Instance != null ? PlayerManager.Instance.Data : null;
+            if (player == null) return false;
             if (player.level < data.requiredLevel) return false;
             if (!data.CanBeUsedBy(player.classType)) return false;
 
-            // Move current equipped item back to bag
+            // Move the currently-equipped item back to the bag, then equip the new one.
             string current = Equipment.GetSlot(data.itemType);
             if (!string.IsNullOrEmpty(current)) AddItem(current);
-
             RemoveItem(itemId);
             Equipment.SetSlot(data.itemType, itemId);
             RecalculateStats();
             Save();
             OnInventoryChanged?.Invoke();
+
+            PersistToServer();
             return true;
         }
 
         public bool Unequip(ItemType slot)
         {
-            // Local test items (tst_*) unequip offline, bypassing the server.
-            if (!TestItems.IsTestItem(Equipment.GetSlot(slot))
-                && ServerApiClient.Instance != null && ServerApiClient.Instance.IsReady)
-            {
-                try
-                {
-                    var state = ServerApiClient.Instance.UnequipItemAsync(slot).GetAwaiter().GetResult();
-                    ApplyServerState(state);
-                    SaveLocal();
-                    OnInventoryChanged?.Invoke();
-                    return true;
-                }
-                catch (Exception e)
-                {
-                    Debug.LogWarning($"[Inventory] Unequip remoto falhou: {e.Message}");
-                    return false;
-                }
-            }
-
             string id = Equipment.GetSlot(slot);
             if (string.IsNullOrEmpty(id)) return false;
             Equipment.SetSlot(slot, null);
@@ -168,6 +137,8 @@ namespace ZulfarakRPG
             RecalculateStats();
             Save();
             OnInventoryChanged?.Invoke();
+
+            PersistToServer();
             return true;
         }
 
@@ -199,20 +170,23 @@ namespace ZulfarakRPG
             return true;
         }
 
+        // Recomputes the live character stats: server-scale base (the SAME formula the backend's
+        // ProgressionRules uses, so the hero stays balanced against the server-scaled enemies and
+        // matches what the server reports) PLUS every equipped item's bonuses (flat + %). Called
+        // after any equip / unequip / server-state application, so gear always shows on the hero.
         private void RecalculateStats()
         {
-            var player = PlayerManager.Instance.Data;
-            var cls    = ClassDatabase.Instance.GetClass(player.classType);
-            var sub    = ClassDatabase.Instance.GetSubclass(player.subclassType);
-            if (cls == null) return;
+            var player = PlayerManager.Instance != null ? PlayerManager.Instance.Data : null;
+            if (player == null) return;
 
-            // Reset to base stats (scaled by level)
-            float lvlScale = 1f + (player.level - 1) * 0.08f;
-            player.maxHp   = Mathf.RoundToInt(cls.baseHp      * (sub?.hpMultiplier ?? 1f)  * lvlScale);
-            int baseAttack = Mathf.RoundToInt(cls.baseAttack  * (sub?.attackMultiplier ?? 1f) * lvlScale);
-            player.defense = Mathf.RoundToInt(cls.baseDefense * (sub?.defenseMultiplier ?? 1f) * lvlScale);
-            player.speed   = cls.baseSpeed * (sub?.speedMultiplier ?? 1f);
-            player.healPower = cls.baseHealPower * (sub?.healPowerMultiplier ?? 1f);
+            // Base stats by level — mirrors ProgressionRules on the backend (100 +50/lvl HP,
+            // 25 +25/lvl ATK & DEF, 0.01 +0.01/lvl speed, +1.25/lvl heal power).
+            int lvl = Mathf.Max(1, player.level);
+            player.maxHp     = 100 + 50 * (lvl - 1);
+            int baseAttack   = 25  + 25 * (lvl - 1);
+            player.defense   = 25  + 25 * (lvl - 1);
+            player.speed     = 0.01f + 0.01f * (lvl - 1);
+            player.healPower = 1.25f * (lvl - 1);
 
             // Reset the equipment-derived combat modifiers before re-summing them.
             player.armor                = 0;
@@ -236,13 +210,16 @@ namespace ZulfarakRPG
                 var item = ItemDatabase.Instance.Get(id);
                 if (item == null) continue;
 
-                player.maxHp    += item.bonusHp;
-                flatAttack      += item.bonusAttack + item.flatDamage;
-                player.defense  += item.bonusDefense + item.armor;
-                player.speed    += item.bonusSpeed;
-                player.healPower += item.bonusHealPower;
+                // Rarity makes items DRASTICALLY stronger: the numeric bonuses are multiplied by
+                // a steep per-tier factor (Common→Legendary), so a legendary piece dwarfs a common.
+                float rm = RarityMult(item.rarity);
+                player.maxHp    += Mathf.RoundToInt(item.bonusHp * rm);
+                flatAttack      += Mathf.RoundToInt((item.bonusAttack + item.flatDamage) * rm);
+                player.defense  += Mathf.RoundToInt((item.bonusDefense + item.armor) * rm);
+                player.speed    += item.bonusSpeed * rm;
+                player.healPower += item.bonusHealPower * rm;
 
-                player.armor                += item.armor;
+                player.armor                += Mathf.RoundToInt(item.armor * rm);
                 dmgPct                      += item.pctDamage;
                 player.critChanceBonus      += item.pctCritChance;
                 player.critDamageBonus      += item.pctCritDamage;
@@ -252,6 +229,11 @@ namespace ZulfarakRPG
                 player.magicResistPct       += item.pctMagicResist;
                 player.cooldownReductionPct += item.pctCooldownReduction;
                 player.moveSpeedBonus       += item.bonusMoveSpeed;
+
+                // Rarity-derived combat stats so higher tiers carry the flashy % stats even when
+                // the base item omits them: weapons → crit + attack speed + %dmg; armour → resist;
+                // rings/amulets → a mix. Legendary weapons hit hard, fast, and crit a lot.
+                AddRarityStats(player, item, ref dmgPct);
             }
 
             // Attack = (base + flat) boosted by % damage; resistances/CDR are capped so
@@ -267,9 +249,99 @@ namespace ZulfarakRPG
             PlayerManager.Instance.Save();
         }
 
+        // ── Rarity scaling ───────────────────────────────────────────────────
+        // Steep per-tier multiplier for an item's NUMERIC bonuses (atk/hp/def/speed/heal). Drastic
+        // gaps so rarity really matters: a Legendary piece is ~7× a Common one.
+        static float RarityMult(ItemRarity r) => r switch
+        {
+            ItemRarity.Common    => 1.0f,
+            ItemRarity.Uncommon  => 1.6f,
+            ItemRarity.Rare      => 2.6f,   // Raro
+            ItemRarity.Epic      => 4.2f,   // Mito
+            ItemRarity.Legendary => 7.0f,   // Lendário
+            _                    => 1.0f,
+        };
+
+        // Per-rarity flashy % stats (index by rarity 0..4). Weapons roll crit + attack speed +
+        // %damage + crit-damage; armour rolls resistances; rings/amulets take a blend — so a
+        // Legendary weapon hits hard, fast and crits a lot, and Legendary armour is very tanky.
+        static readonly float[] RCrit    = { 0f, 0.03f, 0.06f, 0.11f, 0.20f };
+        static readonly float[] RAtkSpd  = { 0f, 0.05f, 0.10f, 0.18f, 0.30f };
+        static readonly float[] RDmgPct  = { 0f, 0.05f, 0.10f, 0.18f, 0.30f };
+        static readonly float[] RCritDmg = { 0f, 0.06f, 0.14f, 0.28f, 0.55f };
+        static readonly float[] RResist  = { 0f, 0.04f, 0.08f, 0.14f, 0.22f };
+
+        static void AddRarityStats(PlayerData p, ItemData item, ref float dmgPct)
+        {
+            int r = Mathf.Clamp((int)item.rarity, 0, 4);
+            switch (item.itemType)
+            {
+                case ItemType.Weapon:
+                    p.critChanceBonus  += RCrit[r];
+                    p.attackSpeedBonus += RAtkSpd[r];
+                    p.critDamageBonus  += RCritDmg[r];
+                    dmgPct             += RDmgPct[r];
+                    break;
+                case ItemType.Ring:
+                case ItemType.Amulet:
+                    p.critChanceBonus   += RCrit[r] * 0.6f;
+                    p.critDamageBonus   += RCritDmg[r] * 0.6f;
+                    p.physicalResistPct += RResist[r] * 0.5f;
+                    p.magicResistPct    += RResist[r] * 0.5f;
+                    break;
+                case ItemType.Consumable:
+                    break;   // potions get no combat bonuses
+                default:     // Helmet / Chest / Legs / Boots / Gloves / Cape → defensive
+                    p.physicalResistPct += RResist[r];
+                    p.magicResistPct    += RResist[r];
+                    break;
+            }
+        }
+
         public void Save()
         {
             SaveLocal();
+        }
+
+        // Persists the current inventory + equipment loadout to the server (best-effort). Uses the
+        // inventory PUT, which stores the loadout regardless of the server item catalog, so the
+        // database updates reliably even for items the server hasn't catalogued.
+        private void PersistToServer()
+        {
+            if (ServerApiClient.Instance == null || !ServerApiClient.Instance.IsReady) return;
+            try
+            {
+                ServerApiClient.Instance.SaveInventoryAsync(BuildServerState()).GetAwaiter().GetResult();
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[Inventory] Persistência do inventário no servidor falhou: {e.Message}");
+            }
+        }
+
+        // Server-facing snapshot: strips local-only test items (bag + equipped slots), which the
+        // server has no catalogue for.
+        private InventoryStateDto BuildServerState()
+        {
+            string NonTest(string id) => TestItems.IsTestItem(id) ? null : id;
+            return new InventoryStateDto
+            {
+                items = Items
+                    .Where(i => i != null && i.quantity > 0 && !TestItems.IsTestItem(i.itemId))
+                    .Select(i => new InventoryItemDto { itemId = i.itemId, quantity = i.quantity })
+                    .ToArray(),
+                equipment = new EquipmentDto
+                {
+                    weaponId = NonTest(Equipment.weaponId),
+                    helmetId = NonTest(Equipment.helmetId),
+                    chestId  = NonTest(Equipment.chestId),
+                    legsId   = NonTest(Equipment.legsId),
+                    bootsId  = NonTest(Equipment.bootsId),
+                    glovesId = NonTest(Equipment.glovesId),
+                    ringId   = NonTest(Equipment.ringId),
+                    amuletId = NonTest(Equipment.amuletId)
+                }
+            };
         }
 
         public void Load()
@@ -323,18 +395,8 @@ namespace ZulfarakRPG
 
         private void ApplyServerState(InventoryStateDto remote, bool preserveCurrentHp = false)
         {
-            // The server doesn't know the local test items (tst_*), so a server sync would
-            // wipe them (and unequip them) — e.g. on every dungeon kill. Snapshot them here
-            // and re-apply after so they survive across scenes / combat.
-            var testBag = Items.Where(i => TestItems.IsTestItem(i.itemId)).ToList();
-            var testEquip = new List<(ItemType slot, string id)>();
-            foreach (ItemType slot in Enum.GetValues(typeof(ItemType)))
-            {
-                if (slot == ItemType.Consumable) continue;
-                var eqId = Equipment.GetSlot(slot);
-                if (TestItems.IsTestItem(eqId)) testEquip.Add((slot, eqId));
-            }
-
+            // Test items were removed — the server loot table is now the only source of gear, so a
+            // server sync is authoritative and any lingering tst_* items are dropped here.
             if (remote == null)
             {
                 Items = new List<InventoryItem>();
@@ -371,11 +433,9 @@ namespace ZulfarakRPG
                 }
             }
 
-            // Restore the local test items (bag + equipped) the server just discarded.
-            foreach (var t in testBag)
-                if (!Items.Any(i => i.itemId == t.itemId)) Items.Add(t);
-            foreach (var (slot, id) in testEquip)
-                Equipment.SetSlot(slot, id);
+            // Recompute the live stats from the server-scale base + every equipped item, so gear
+            // bonuses always show and combat rewards / reloads never wipe them.
+            RecalculateStats();
         }
 
         public void ApplyServerKillResult(InventoryStateDto remote, bool notify = true)

@@ -30,7 +30,7 @@ public static partial class SceneSetupWizard
         MakeGameplayCamera(CAM_X, ORTHO, new Color(0.05f, 0.055f, 0.07f));
         AddDragStrip();
         MakeTiledGround(CAM_X, GROUND_CY, GROUND_W, GROUND_H, "ground_eroded");
-        PlaceMountains(CAM_X, GROUND_TOP);
+        // Distant mountains come from the layered BackgroundLayers backdrop now (no pixel-art prop).
 
         // Fewer, darker rocks + low bushes; wagon + campfire, no buildings.
         PlaceDecoration("Rock_L", EnsureProp(ZulfArt + "rock_big.png"), new Color(0.7f, 0.7f, 0.75f), 0.6f, GROUND_TOP, 2.0f, -6);
@@ -70,11 +70,9 @@ public static partial class SceneSetupWizard
         MakeGameplayCamera(CAM_X, ORTHO, new Color(0.04f, 0.045f, 0.06f));
         AddDragStrip();
         MakeTiledGround(CAM_X + 1.0f, GROUND_CY, 7.0f, GROUND_H, "ground_eroded");
-        PlaceMountains(CAM_X, GROUND_TOP);
+        // Distant mountains come from the layered BackgroundLayers backdrop now (no pixel-art prop).
 
-        PlaceDecoration("PathRock1", EnsureProp(ZulfArt + "rock_small.png"), new Color(0.7f, 0.7f, 0.75f), 1.3f, GROUND_TOP, 1.6f, -3);
-        PlaceDecoration("PathRock2", EnsureProp(ZulfArt + "rock_med.png"), new Color(0.7f, 0.7f, 0.75f), 3.1f, GROUND_TOP, 1.7f, -4);
-        PlaceDecoration("PathRock3", EnsureProp(ZulfArt + "rock_small.png"), new Color(0.7f, 0.7f, 0.75f), 6.0f, GROUND_TOP, 1.6f, -3);
+        // Clean arena (no path props) — matches the first dungeon; only the layered backdrop shows.
         ScatterGroundDetail(0.5f, 7.0f, GROUND_TOP, 32,
             new[] { "rock_small.png", "rock_med.png", "bush.png" }, new Color(0.66f, 0.68f, 0.72f));
 
@@ -222,6 +220,8 @@ public static partial class SceneSetupWizard
     // tinted + pushed to back sorting orders so they sit behind the action as scatter.
     private static void ScatterGroundDetail(float x0, float x1, float groundTop, int seed, string[] props, Color tint)
     {
+        return;   // disabled: keep the maps CLEAN/spacious like the first map (no dense scatter)
+#pragma warning disable CS0162
         var rng = new System.Random(seed);
         int count = 8;
         for (int i = 0; i < count; i++)

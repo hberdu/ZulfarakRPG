@@ -10,7 +10,7 @@ namespace ZulfarakRPG
     {
         [Header("Stats")]
         public float maxHealth     = 50f;
-        public float moveSpeed     = 2.2f;   // early-phase pace: slow enough to react to
+        public float moveSpeed     = 1.7f;   // slower general pace: easy to react to
         public float gravityScale  = 3f;
         // Short melee reach — the skeleton must be right on top of the hero to hit.
         public float attackRange   = 0.7f;
@@ -51,6 +51,7 @@ namespace ZulfarakRPG
         protected float  _atkTimer;
         protected float  _attackLock;
         protected bool   _dead;
+        protected bool   _invulnerable;   // true while a boss makes its entrance — TakeDamage no-ops
 
         private Coroutine _animCoroutine;
         private string    _currentAnim;
@@ -87,6 +88,13 @@ namespace ZulfarakRPG
                 transform.localScale = new Vector3(s.x * sizeMul, s.y * sizeMul, s.z);
             }
 
+            // Per-phase difficulty ramp: scale the authored fallback stats up by the current
+            // dungeon phase so later phases progress (ResolveEnemyFromServer re-applies the SAME
+            // ramp to the catalog stats once they resolve).
+            maxHealth    *= PhaseHpMul();
+            attackDamage *= PhaseDmgMul();
+            _hp = maxHealth;
+
             // Ground on the same line as the player using the authored foot collider
             // (offset 0.5, size 0.3x0.2 — identical to the hero); gravity + the shared
             // GroundFloor then keep it pinned to the floor while it walks, so it can't fly.
@@ -97,6 +105,12 @@ namespace ZulfarakRPG
             _hpBar?.SetHealth(_hp, maxHealth);
             PlayAnim(idleFrames, 8f);
             StartCoroutine(ResolveEnemyFromServer());
+
+            // Bosses are untouchable while they make their entrance (0 for regular enemies).
+            if (EntranceInvulnSeconds > 0f) StartCoroutine(EntranceInvulnWindow());
+
+            // A boss appearing startles the hero: 1 s attack pause + a surprised "!" balloon.
+            if (UsesBossHealthBar) _player?.ReactToBoss();
 
             // Never physically shove anything: ignore collisions with other skeletons AND
             // the player. Enemies close to attackRange and strike via TakeDamage — contact
@@ -128,6 +142,22 @@ namespace ZulfarakRPG
 
             ClampToSceneBounds();
             UpdateHpBarStagger();
+        }
+
+        // Boss entrance grace: a smoke "appear" burst, then invulnerable for EntranceInvulnSeconds
+        // so the hero can't damage the boss before it has fully arrived. The boss still walks/acts
+        // normally during the window — only its damage-taking is disabled.
+        IEnumerator EntranceInvulnWindow()
+        {
+            _invulnerable = true;
+            PortalSmoke.BurstAt(transform.position + Vector3.up * 0.3f, 12);
+            float t = 0f;
+            while (t < EntranceInvulnSeconds && !_dead)
+            {
+                t += Time.deltaTime;
+                yield return null;
+            }
+            _invulnerable = false;
         }
 
         // ── Poison damage-over-time (archer's Tiro de Serpe) ─────────────────
@@ -296,7 +326,7 @@ namespace ZulfarakRPG
         // ── Combat ─────────────────────────────────────────────────────────
         public virtual void TakeDamage(float dmg, bool isCrit = false)
         {
-            if (_dead) return;
+            if (_dead || _invulnerable) return;   // bosses shrug off hits during their entrance
             // White popup (crits render yellow with a "*"). Only the player damages
             // enemies, so this is always "damage dealt by my character".
             DamagePopup.Spawn(transform, dmg, Color.white, isCrit);
@@ -333,9 +363,12 @@ namespace ZulfarakRPG
                 }
             }
 
-            yield return RegisterKillOnServer();
-
+            // Advance the wave IMMEDIATELY (before the server round-trip) so the inter-wave walk
+            // isn't delayed by network latency / the encounter wait. The kill is then registered
+            // in the background; the server grants the rewards regardless.
             WaveManager.Instance?.OnEnemyDied(this);
+
+            yield return RegisterKillOnServer();
             Destroy(gameObject, 0.3f);
         }
 
@@ -344,6 +377,11 @@ namespace ZulfarakRPG
 
         // Bosses override this to get the bigger dragon-framed HP bar.
         protected virtual bool UsesBossHealthBar => false;
+
+        // Seconds a BOSS stays invulnerable while it makes its entrance (0 = regular enemy). The
+        // hero can't damage the boss until this elapses. The Necromancer sets it itself around its
+        // scripted entrance; the other bosses use this fixed window as they appear/walk in.
+        protected virtual float EntranceInvulnSeconds => 0f;
 
         // Multiplier applied on top of server-catalog stats so bosses keep their
         // buffed HP/damage even when ResolveEnemyFromServer overwrites the fields.
@@ -499,11 +537,30 @@ namespace ZulfarakRPG
             }
 
             enemyId = matched.enemyId;
-            maxHealth = Mathf.Max(1f, matched.hp) * ServerStatMultiplier;
-            attackDamage = Mathf.Max(0f, matched.attack) * ServerStatMultiplier;
+            maxHealth = Mathf.Max(1f, matched.hp) * ServerStatMultiplier * PhaseHpMul();
+            attackDamage = Mathf.Max(0f, matched.attack) * ServerStatMultiplier * PhaseDmgMul();
             _hp = maxHealth;
             _hpBar?.SetHealth(_hp, maxHealth);
         }
+
+        // ── Per-phase difficulty ramp ──────────────────────────────────────────
+        // Dungeon phase = the digit after "Dungeon_" (Dungeon_2_1 → 2); the first dungeon
+        // ("Dungeon") = 1. Each phase step multiplies enemy HP and damage over the previous phase
+        // so later phases feel like real progression instead of same-y stats.
+        // ponytail: two flat knobs — retune here if a phase ends up too spongy or too deadly.
+        const float HpRampPerPhase  = 1.6f;   // phase 4 ≈ 4.1× the phase-1 HP
+        const float DmgRampPerPhase = 1.3f;   // phase 4 ≈ 2.2× the phase-1 damage
+
+        static int CurrentPhase()
+        {
+            var n = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
+            int us = n.IndexOf('_');
+            if (us >= 0 && us + 1 < n.Length && char.IsDigit(n[us + 1])) return n[us + 1] - '0';
+            return 1;
+        }
+
+        static float PhaseHpMul()  => Mathf.Pow(HpRampPerPhase,  Mathf.Max(0, CurrentPhase() - 1));
+        static float PhaseDmgMul() => Mathf.Pow(DmgRampPerPhase, Mathf.Max(0, CurrentPhase() - 1));
 
         private static EnemyDefinitionDto ResolveCatalogEnemy(EnemyDefinitionDto[] catalog, string enemyIdRaw, string enemyNameRaw)
         {

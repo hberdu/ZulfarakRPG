@@ -152,6 +152,7 @@ namespace ZulfarakRPG
 
         IEnumerator EntranceRoutine()
         {
+            _invulnerable = true;   // can't be hit until the whole entrance (portal → taunt → summon) ends
             // Materialize on-screen out of a green portal instead of walking in.
             var pos = new Vector3(
                 Mathf.Clamp(sceneBoundsMaxX - 0.9f, sceneBoundsMinX, sceneBoundsMaxX),
@@ -178,6 +179,7 @@ namespace ZulfarakRPG
             // Opening summon, then the ranged fight begins.
             yield return StartCoroutine(SummonRoutine());
             _entranceDone = true;
+            _invulnerable = false;   // entrance over — the fight (and damage) begins
         }
 
         // A little mocking "laugh" — the necromancer faces the player and bobs with a

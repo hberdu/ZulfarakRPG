@@ -47,6 +47,16 @@ public static class CharacterSpriteImporter
         ("Archer", "Arrow3", @"Arrow(Projectile)\Arrow03(100x100).png", 1),
     };
 
+    // Phase 2/3/4 enemies live in the v2.0 pack (SrcBase2, underscore filenames like
+    // "Orc_Idle.png"). Imported to Assets/Art/Characters/<name> so GetFrames("Orc"/"Slime"/… )
+    // resolves — otherwise the orcs/slimes/werewolves spawn invisible.
+    private static readonly (string charName, (string anim, int frames)[] anims)[] V2Enemies = {
+        ("Orc",       new[] { ("Idle",6),("Walk",8),("Attack01",6),("Attack02",6),("Hurt",4),("Death",4) }),
+        ("Orc rider", new[] { ("Idle",6),("Walk",8),("Attack01",8),("Attack02",9),("Hurt",4),("Death",4) }),
+        ("Slime",     new[] { ("Idle",6),("Walk",6),("Attack01",6),("Attack02",12),("Hurt",4),("Death",4) }),
+        ("Werewolf",  new[] { ("Idle",6),("Walk",8),("Attack01",9),("Attack02",13),("Hurt",4),("Death",4) }),
+    };
+
     // charName = asset folder name, srcFolder = folder name inside pack
     private static readonly CharDef[] Characters = {
         new CharDef("Wizard", "Wizard", new[] {
@@ -152,6 +162,23 @@ public static class CharacterSpriteImporter
             File.Copy(srcFile, destAbs, overwrite: true);
             AssetDatabase.ImportAsset(destFile);
             ConfigureSprite(destFile, charName, anim, frames, SpriteAlignment.Center);
+        }
+
+        // Phase 2/3/4 enemies (v2 pack): Orc, Orc rider, Slime, Werewolf.
+        foreach (var (charName, anims) in V2Enemies)
+        {
+            Directory.CreateDirectory(Application.dataPath + "/../" + DestBase + "/" + charName);
+            string srcDir = $@"{SrcBase2}\{charName}\{charName}";
+            foreach (var (anim, frames) in anims)
+            {
+                string srcFile  = $@"{srcDir}\{charName}_{anim}.png";
+                string destFile = $"{DestBase}/{charName}/{charName}-{anim}.png";
+                string destAbs  = Application.dataPath + "/../" + destFile;
+                if (!File.Exists(srcFile)) { Debug.LogWarning($"[ZulfarakRPG] Not found: {srcFile}"); continue; }
+                File.Copy(srcFile, destAbs, overwrite: true);
+                AssetDatabase.ImportAsset(destFile);
+                ConfigureSprite(destFile, charName, anim, frames);
+            }
         }
 
         AssetDatabase.Refresh();

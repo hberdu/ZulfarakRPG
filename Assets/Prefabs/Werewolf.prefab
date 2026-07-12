@@ -182,18 +182,62 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: ZulfarakRPG::ZulfarakRPG.SkeletonEnemy
   maxHealth: 550
-  moveSpeed: 2.2
+  moveSpeed: 1.7
   gravityScale: 3
   attackRange: 0.7
   attackDamage: 250
   attackCooldown: 1.8
   sceneBoundsMinX: 0.45
   sceneBoundsMaxX: 4.55
-  idleFrames: []
-  walkFrames: []
-  attackFrames: []
-  deathFrames: []
-  hurtFrames: []
+  idleFrames:
+  - {fileID: 4565372846758268570, guid: 16c6e90e171bb064295eda5b288b2bb7, type: 3}
+  - {fileID: -5431055816626353104, guid: 16c6e90e171bb064295eda5b288b2bb7, type: 3}
+  - {fileID: 4981596948431694777, guid: 16c6e90e171bb064295eda5b288b2bb7, type: 3}
+  - {fileID: 7992208743141392169, guid: 16c6e90e171bb064295eda5b288b2bb7, type: 3}
+  - {fileID: 9217762701747348682, guid: 16c6e90e171bb064295eda5b288b2bb7, type: 3}
+  - {fileID: -8424546917131734541, guid: 16c6e90e171bb064295eda5b288b2bb7, type: 3}
+  walkFrames:
+  - {fileID: -3701199581462768929, guid: 358c7d2e745cfb94ba45d8fa0ace0d5b, type: 3}
+  - {fileID: -7547501532470485945, guid: 358c7d2e745cfb94ba45d8fa0ace0d5b, type: 3}
+  - {fileID: -4216219597229827858, guid: 358c7d2e745cfb94ba45d8fa0ace0d5b, type: 3}
+  - {fileID: 5448589304762213395, guid: 358c7d2e745cfb94ba45d8fa0ace0d5b, type: 3}
+  - {fileID: 1915964264584243621, guid: 358c7d2e745cfb94ba45d8fa0ace0d5b, type: 3}
+  - {fileID: 5799248973064564117, guid: 358c7d2e745cfb94ba45d8fa0ace0d5b, type: 3}
+  - {fileID: -7661666850059498734, guid: 358c7d2e745cfb94ba45d8fa0ace0d5b, type: 3}
+  - {fileID: -6517846222131938427, guid: 358c7d2e745cfb94ba45d8fa0ace0d5b, type: 3}
+  attackFrames:
+  - {fileID: -6702294005266946484, guid: d03a9bf545dc0f54387c0aa97ddce803, type: 3}
+  - {fileID: 6550674813423456542, guid: d03a9bf545dc0f54387c0aa97ddce803, type: 3}
+  - {fileID: -4754545450081411495, guid: d03a9bf545dc0f54387c0aa97ddce803, type: 3}
+  - {fileID: -6533295423077769211, guid: d03a9bf545dc0f54387c0aa97ddce803, type: 3}
+  - {fileID: 6849000971207801516, guid: d03a9bf545dc0f54387c0aa97ddce803, type: 3}
+  - {fileID: 3454463427483804521, guid: d03a9bf545dc0f54387c0aa97ddce803, type: 3}
+  - {fileID: -9025924221938161130, guid: d03a9bf545dc0f54387c0aa97ddce803, type: 3}
+  - {fileID: 1469530935887702552, guid: d03a9bf545dc0f54387c0aa97ddce803, type: 3}
+  - {fileID: 4505565762704251265, guid: d03a9bf545dc0f54387c0aa97ddce803, type: 3}
+  - {fileID: 2690253717885054663, guid: 75cb631020f73e547881c55d39a08c03, type: 3}
+  - {fileID: 2924794905738231760, guid: 75cb631020f73e547881c55d39a08c03, type: 3}
+  - {fileID: 5370983336735051837, guid: 75cb631020f73e547881c55d39a08c03, type: 3}
+  - {fileID: 1693071357061835176, guid: 75cb631020f73e547881c55d39a08c03, type: 3}
+  - {fileID: 9114445085233884029, guid: 75cb631020f73e547881c55d39a08c03, type: 3}
+  - {fileID: 316850838564518087, guid: 75cb631020f73e547881c55d39a08c03, type: 3}
+  - {fileID: 8488122073083714517, guid: 75cb631020f73e547881c55d39a08c03, type: 3}
+  - {fileID: 5990893648162083703, guid: 75cb631020f73e547881c55d39a08c03, type: 3}
+  - {fileID: 3716714184619309036, guid: 75cb631020f73e547881c55d39a08c03, type: 3}
+  - {fileID: 4370016764034053994, guid: 75cb631020f73e547881c55d39a08c03, type: 3}
+  - {fileID: 3334470025854700738, guid: 75cb631020f73e547881c55d39a08c03, type: 3}
+  - {fileID: -4594368018287875547, guid: 75cb631020f73e547881c55d39a08c03, type: 3}
+  - {fileID: 504143092588132386, guid: 75cb631020f73e547881c55d39a08c03, type: 3}
+  deathFrames:
+  - {fileID: 2221069426256087011, guid: 3e6f62314fe5aad40bc8760f43925109, type: 3}
+  - {fileID: -1686352667755371474, guid: 3e6f62314fe5aad40bc8760f43925109, type: 3}
+  - {fileID: -1652063477230099908, guid: 3e6f62314fe5aad40bc8760f43925109, type: 3}
+  - {fileID: -2828597431263079165, guid: 3e6f62314fe5aad40bc8760f43925109, type: 3}
+  hurtFrames:
+  - {fileID: -6768064800231839112, guid: dc130aefe25af4747bb852f2ce436ccd, type: 3}
+  - {fileID: -4463229762502221854, guid: dc130aefe25af4747bb852f2ce436ccd, type: 3}
+  - {fileID: 2161038538726658031, guid: dc130aefe25af4747bb852f2ce436ccd, type: 3}
+  - {fileID: 1091462072994205310, guid: dc130aefe25af4747bb852f2ce436ccd, type: 3}
   enemyId: 
   encounterId: 
   netInstanceId: 

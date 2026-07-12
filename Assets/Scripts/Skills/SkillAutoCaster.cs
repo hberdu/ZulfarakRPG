@@ -25,7 +25,16 @@ namespace ZulfarakRPG
             SkillCooldownHUD.Attach(this);
         }
 
-        bool InDungeon => SceneManager.GetActiveScene().name == "Dungeon";
+        // Skills auto-cast in EVERY dungeon phase, not just the first one — the phase-2/3/4
+        // scenes are named "Dungeon_2_1", "Dungeon_3_1", "Dungeon_4_1".
+        bool InDungeon
+        {
+            get
+            {
+                var n = SceneManager.GetActiveScene().name;
+                return n == "Dungeon" || n.StartsWith("Dungeon_");
+            }
+        }
 
         // Only TICKS the cooldowns (for the HUD). Casting is driven by the attack cadence
         // via TryCastReady(), so skills fire one at a time and replace the basic attack.
@@ -76,7 +85,7 @@ namespace ZulfarakRPG
             {
                 if (_player.Health >= _player.MaxHealthValue * 0.98f) return false;
                 float healAnim = _player.PlayCastAnimation(_player.transform.position);
-                StartCoroutine(ApplyHealAtCastApex(def, level, Mathf.Max(0.05f, healAnim * 0.5f)));
+                StartCoroutine(ApplyHealAtCastApex(def, level, Mathf.Max(0.03f, healAnim * 0.2f)));
                 return true;
             }
 
@@ -102,11 +111,12 @@ namespace ZulfarakRPG
 
                 case SkillShape.ArcherRain:
                 {
-                    // Swap to the baked aim-up pose (no reposition), play the white cast ring so it
-                    // reads as an ability, then quickly rain arrows from the sky.
-                    _player.HoldPose(AimUpSprite(), 0.45f);
+                    // Use the hero's NORMAL cast animation (its real, correctly-coloured sprite). The
+                    // old baked "aim up" sprite recoloured the whole hero and made it lean over; the
+                    // sky-aim read now comes from the falling arrows instead of a full-body pose.
+                    _player.PlayCastAnimation(e.transform.position);
                     SkillCastFX.Spawn(_player.transform.position, new Color(1f, 1f, 1f, 0.95f));
-                    StartCoroutine(ArrowRainAtApex(0.75f * atk, 0.06f));
+                    StartCoroutine(ArrowRainAtApex(0.75f * atk, 0.03f));
                     return true;
                 }
 
@@ -114,7 +124,7 @@ namespace ZulfarakRPG
                 {
                     float anim = _player.PlayCastAnimation(e.transform.position);
                     float dmg  = def.PowerAt(level) + atk * 0.5f;
-                    StartCoroutine(ApplyAreaAtApex(e.transform.position, def, dmg, Mathf.Max(0.05f, anim * 0.5f)));
+                    StartCoroutine(ApplyAreaAtApex(e.transform.position, def, dmg, Mathf.Max(0.03f, anim * 0.2f)));
                     return true;
                 }
 
@@ -122,7 +132,7 @@ namespace ZulfarakRPG
                 {
                     float anim = _player.PlayCastAnimation(e.transform.position);
                     float dmg  = def.PowerAt(level) + atk * 0.5f;
-                    StartCoroutine(ApplyDamageAtCastApex(e, def, dmg, Mathf.Max(0.05f, anim * 0.5f)));
+                    StartCoroutine(ApplyDamageAtCastApex(e, def, dmg, Mathf.Max(0.03f, anim * 0.2f)));
                     return true;
                 }
             }
@@ -171,11 +181,14 @@ namespace ZulfarakRPG
             return _snakeFrames;
         }
 
-        // Half the archer's on-screen height (used to size the serpent telegraph).
-        float ArcherHeight()
+        // The archer's VISIBLE on-screen height (alpha-trimmed, so the transparent 100px frame
+        // padding doesn't inflate it) — used to size the serpent telegraph.
+        float ArcherVisibleHeight()
         {
             var psr = _player != null ? _player.GetComponent<SpriteRenderer>() : null;
-            return (psr != null && psr.sprite != null) ? psr.bounds.size.y : 0.9f;
+            if (psr == null || psr.sprite == null) return 0.8f;
+            var ab = SpriteAlphaBounds.Get(psr.sprite);
+            return Mathf.Max(0.1f, (ab.topFromBottom - ab.bottomFromBottom) * Mathf.Abs(_player.transform.lossyScale.y));
         }
 
         // ── Archer: Tiro de Serpe ────────────────────────────────────────────
@@ -192,7 +205,7 @@ namespace ZulfarakRPG
                 snake = new GameObject("SerpentTelegraph");
                 ssr = snake.AddComponent<SpriteRenderer>();
                 ssr.sprite = frames[0]; ssr.sortingOrder = 60;
-                Arrow.ApplyWorldSize(snake.transform, frames[0], ArcherHeight() * 0.5f);  // half archer height
+                Arrow.ApplyWorldSize(snake.transform, frames[0], ArcherVisibleHeight() * 0.5f);  // half archer height
             }
             else
             {
@@ -201,7 +214,7 @@ namespace ZulfarakRPG
                 if (g != null) { g.color = new Color(0.35f, 1f, 0.4f, 0.85f); g.sortingOrder = 60; }
             }
 
-            const float charge = 0.3f;    // brief but long enough to read the slither
+            const float charge = 0.12f;   // very brief wind-up (snappy)
             float t = 0f;
             float baseSx = Mathf.Abs(snake.transform.localScale.x);
             while (t < charge)
@@ -224,7 +237,7 @@ namespace ZulfarakRPG
             // Draw pose + green cast ring, then loose the neon-outlined arrow quickly.
             float anim = _player.PlayCastAnimation(target.transform.position);
             SkillCastFX.Spawn(_player.transform.position, new Color(0.35f, 1f, 0.4f, 0.95f));
-            yield return new WaitForSeconds(Mathf.Max(0.04f, anim * 0.3f));
+            yield return new WaitForSeconds(Mathf.Max(0.02f, anim * 0.12f));
             if (target == null || !target.IsAlive) yield break;
 
             Vector3 origin = Muzzle(target.transform.position);
@@ -240,49 +253,80 @@ namespace ZulfarakRPG
             yield return new WaitForSeconds(delay);
             var enemies = SkeletonEnemy.AliveInRadius(_player.transform.position, 22f);
             if (enemies.Count == 0) yield break;
-            // Arrows are DIVIDED among the enemies: shuffle, then one arrow onto each DISTINCT
-            // enemy (up to 6), so the volley spreads across the battlefield instead of stacking.
             for (int i = enemies.Count - 1; i > 0; i--)
             {
                 int j = Random.Range(0, i + 1);
                 (enemies[i], enemies[j]) = (enemies[j], enemies[i]);
             }
-            int count = Mathf.Min(enemies.Count, 6);
-            for (int i = 0; i < count; i++)
+            // One arrow per DISTINCT enemy (up to 3) so two arrows never share a target — at range
+            // their arcs overlapped into one "duplicated" arrow. A lone target (e.g. a boss) still
+            // gets the full 3-arrow fan, which reads fine up close.
+            int arrows = enemies.Count == 1 ? 3 : Mathf.Min(3, enemies.Count);
+            for (int i = 0; i < arrows; i++)
             {
-                var tgt = enemies[i];
+                var tgt = enemies[i % enemies.Count];   // distinct targets when ≥2 enemies
                 if (tgt == null || !tgt.IsAlive) continue;
                 var col = tgt.GetComponent<Collider2D>();
-                Vector3 head = col != null ? new Vector3(col.bounds.center.x, col.bounds.max.y, tgt.transform.position.z)
-                                           : tgt.transform.position + Vector3.up * 0.9f;
-                Vector3 origin  = _player.transform.position + Vector3.up * 0.4f;   // launch from the archer
-                FallingArrow.Spawn(tgt, origin, perArrowDamage, i * 0.08f, CurrentArrowSprite());
-                MultiplayerSync.Instance?.BroadcastArrowFall(head);
+                Vector3 center = col != null ? col.bounds.center : tgt.transform.position + Vector3.up * 0.5f;
+                // Fan the volley: spread the launch point AND aim each arrow at a distinct spot
+                // around the target, so arrows that share an enemy (few enemies alive) never fly
+                // the same arc and overlap into one "duplicated" animation.
+                Vector3 origin    = _player.transform.position + Vector3.up * 0.4f + new Vector3((i - 1) * 0.30f, 0f, 0f);
+                Vector3 aimOffset = new Vector3((i - 1) * 0.28f, (i - 1) * 0.06f, 0f);
+                FallingArrow.Spawn(tgt, origin, perArrowDamage, i * 0.16f, Arrow.FlatSprite, aimOffset);
+                MultiplayerSync.Instance?.BroadcastArrowFall(center);
             }
         }
 
         // ── Archer: Tiro Concentrado ─────────────────────────────────────────
         System.Collections.IEnumerator ConcentratedShot(SkeletonEnemy target, float damage)
         {
-            // White charge aura growing at the hero for 2 seconds.
-            var aura = SkillCastFXWhite(_player.transform.position);
+            if (_player == null || target == null || !target.IsAlive) yield break;
+
+            // A white EAGLE forms and beats its wings IN FRONT of the hero (mirrors the Serpe's
+            // serpent telegraph), wrapped in a soft white aura, growing as the shot charges.
+            var frames = SkillEagle.Frames();
+            var eagle = new GameObject("EagleTelegraph");
+            var esr   = eagle.AddComponent<SpriteRenderer>();
+            esr.sprite = frames[0]; esr.sortingOrder = 61;
+
+            var aura = new GameObject("EagleAura");
+            var asr  = aura.AddComponent<SpriteRenderer>();
+            asr.sprite = SkillEagle.Aura(); asr.sortingOrder = 60;
+
+            float eagleH = ArcherVisibleHeight();
             float t = 0f;
-            const float charge = 1.1f;
+            const float charge = 0.5f;
             while (t < charge)
             {
-                if (_player == null) { if (aura) Destroy(aura); yield break; }
-                if (target == null || !target.IsAlive) { if (aura) Destroy(aura); yield break; }
+                if (_player == null || target == null || !target.IsAlive)
+                    { if (eagle) Destroy(eagle); if (aura) Destroy(aura); yield break; }
                 t += Time.deltaTime;
-                if (aura) { aura.transform.position = _player.transform.position + Vector3.up * 0.5f;
-                            aura.transform.localScale = Vector3.one * Mathf.Lerp(0.3f, 1.1f, t / charge); }
+                float k   = t / charge;   // 0..1 grow-in
+                float dir = target.transform.position.x < _player.transform.position.x ? -1f : 1f;
+                Vector3 pos = _player.transform.position + new Vector3(dir * 0.45f, 0.55f, 0f);
+
+                // Eagle: grow in, flap, face the target.
+                eagle.transform.position = pos;
+                Arrow.ApplyWorldSize(eagle.transform, esr.sprite, eagleH * Mathf.Lerp(0.35f, 0.95f, k));
+                var s = eagle.transform.localScale; s.x = Mathf.Abs(s.x) * dir; eagle.transform.localScale = s;
+                esr.sprite = frames[(int)(t / 0.09f) % frames.Length];
+                var ec = Color.white; ec.a = Mathf.Lerp(0.2f, 1f, k); esr.color = ec;
+
+                // Aura: soft white halo, a touch larger than the eagle, pulsing.
+                aura.transform.position = pos;
+                Arrow.ApplyWorldSize(aura.transform, asr.sprite, eagleH * Mathf.Lerp(0.6f, 1.6f, k));
+                asr.color = new Color(1f, 1f, 1f, Mathf.Lerp(0.1f, 0.5f, k) * (0.8f + 0.2f * Mathf.Sin(t * 18f)));
                 yield return null;
             }
-            if (aura) Destroy(aura);
+            if (eagle) Destroy(eagle);
+            if (aura)  Destroy(aura);
             if (target == null || !target.IsAlive) yield break;
 
-            // Release: draw pose, white burst, and a big fast white arrow (200% damage).
+            // Release: draw pose, white burst, then the arrow — natural art with a white outline
+            // (mirrors the Serpe arrow's neon-green outline).
             float anim = _player.PlayCastAnimation(target.transform.position);
-            yield return new WaitForSeconds(Mathf.Max(0.04f, anim * 0.4f));
+            yield return new WaitForSeconds(Mathf.Max(0.03f, anim * 0.15f));
             if (target == null || !target.IsAlive) yield break;
 
             Vector3 origin = Muzzle(target.transform.position);
@@ -291,16 +335,22 @@ namespace ZulfarakRPG
             var go = new GameObject("ConcentratedArrow");
             go.transform.position = origin;
             var arrow = go.AddComponent<Arrow>();
-            arrow.speed = 22f;
+            arrow.speed = 10f;   // slower concentrated shot
             arrow.Init(target, damage, false, null);
             var sr = go.GetComponent<SpriteRenderer>();
-            if (sr != null) { sr.color = Color.white; }
-            // Same size as every other arrow (Arrow.TargetWorldSize) — no per-skill scaling.
+            // White outline: a larger white silhouette of the same arrow, just behind it.
+            var outline = new GameObject("WhiteOutline");
+            outline.transform.SetParent(go.transform, false);
+            var osr = outline.AddComponent<SpriteRenderer>();
+            osr.sprite       = sr != null ? sr.sprite : Arrow.SharedSprite;
+            osr.color        = new Color(1f, 1f, 1f, 1f);
+            osr.sortingOrder = (sr != null ? sr.sortingOrder : 300) - 1;
+            outline.transform.localScale = Vector3.one * 1.4f;
 
             MultiplayerSync.Instance?.BroadcastConcentrated(origin, target.transform.position);
         }
 
-        // A soft white glow sprite used for the concentrated-shot charge aura.
+        // A soft white glow sprite — the Serpe telegraph's fallback when serpent_green is missing.
         GameObject SkillCastFXWhite(Vector3 pos)
         {
             var go = new GameObject("ConcentratedCharge");

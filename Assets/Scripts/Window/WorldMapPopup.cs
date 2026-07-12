@@ -31,6 +31,7 @@ namespace ZulfarakRPG
         {
             // Replace any other top popup (NPC dialog / invite) — only one at a time.
             TopPopups.CloseAllExcept(TopPopups.Kind.Map);
+            ResolveCurrentCity();
 #if UNITY_EDITOR
             // The native window can't render reliably while the editor owns
             // the Game view — fall back to the existing in-world WorldMapPanel
@@ -144,10 +145,14 @@ namespace ZulfarakRPG
         static IntPtr _brushPanel, _brushOutline, _brushBevHi, _brushBevLo, _brushRuby, _brushDivider, _brushTag;
         static IntPtr _brushPaper, _brushPaperDk;
         static IntPtr _brushCityActive, _brushCityLocked, _brushCityEdge, _brushGlow;
+        static IntPtr _brushFlag;        // waving red "you are here" pennant
         static IntPtr _penInk;
+        static int    _currentCity = -1; // index into Cities of the scene the player is in
+        static int    _flagTick;         // animation phase for the flag wave
         static IntPtr _fontTitle, _fontCity, _fontHint, _fontClose;
         const string ClassName = "ZulfarakWorldMapPopup";
         const string DragonRes = "UI/DragonFrame";
+        const string MapRes    = "UI/WorldMap";     // detailed pixel-art overworld painted onto the paper
         const int    HeaderH   = 34;
         const int    EmblemSz  = 24;
 
@@ -184,6 +189,7 @@ namespace ZulfarakRPG
             if (_brushCityLocked  == IntPtr.Zero) _brushCityLocked  = CreateSolidBrush(Bgr(0.22f, 0.20f, 0.22f));
             if (_brushCityEdge    == IntPtr.Zero) _brushCityEdge    = CreateSolidBrush(Bgr(0.30f, 0.20f, 0.08f));
             if (_brushGlow        == IntPtr.Zero) _brushGlow        = CreateSolidBrush(Bgr(1.00f, 0.78f, 0.30f));
+            if (_brushFlag        == IntPtr.Zero) _brushFlag        = CreateSolidBrush(Bgr(0.88f, 0.12f, 0.12f));
             if (_penInk           == IntPtr.Zero) _penInk           = CreatePen(PS_SOLID, 2, Bgr(0.30f, 0.18f, 0.05f));
             if (_fontTitle        == IntPtr.Zero) _fontTitle        = MakeFont(18, FW_BOLD);
             if (_fontCity         == IntPtr.Zero) _fontCity         = MakeFont(12, FW_BOLD);
@@ -238,7 +244,7 @@ namespace ZulfarakRPG
                     {
                         if (Cities[i].Locked || string.IsNullOrEmpty(Cities[i].Scene)) continue;
                         int dx = mx - (cx + Cities[i].X), dy = my - (cy + Cities[i].Y);
-                        if (dx * dx + dy * dy <= 12 * 12) { PendingScene = Cities[i].Scene; break; }
+                        if (dx * dx + dy * dy <= 18 * 18) { PendingScene = Cities[i].Scene; break; }
                     }
                     Hide();
                     return IntPtr.Zero;
@@ -293,6 +299,24 @@ namespace ZulfarakRPG
             var paper = new RECT { Left = paperLeft, Top = paperTop, Right = paperRight, Bottom = paperBottom };
             FillRect(hdc, ref paper, _brushPaper);
 
+            // Detailed pixel-art overworld filling the paper interior. COVER-crop (not stretch) a
+            // centred source band whose aspect matches the paper, so the map fills the wide frame
+            // with NO horizontal distortion. Falls back to the plain parchment if the PNG is
+            // missing/unreadable (BlitRegion is a no-op).
+            {
+                var map = NativeFrameImage.Get(MapRes);
+                int dW = paperRight - paperLeft, dH = paperBottom - paperTop;
+                if (map.Ready && map.Width > 0 && map.Height > 0 && dW > 0 && dH > 0)
+                {
+                    float dAsp = (float)dW / dH;
+                    int sW = map.Width, sH = map.Height;
+                    if ((float)sW / sH > dAsp) sW = Mathf.RoundToInt(sH * dAsp);   // crop sides
+                    else                       sH = Mathf.RoundToInt(sW / dAsp);   // crop top/bottom
+                    int sX = (map.Width - sW) / 2, sY = (map.Height - sH) / 2;
+                    map.BlitRegion(hdc, paperLeft, paperTop, dW, dH, sX, sY, sW, sH);
+                }
+            }
+
             int cx = (paperLeft + paperRight) / 2;
             int cy = (paperTop  + paperBottom) / 2;
 
@@ -342,6 +366,9 @@ namespace ZulfarakRPG
                 }
             }
 
+            // Animated red "you are here" flag over the player's current city.
+            DrawPlayerFlag(hdc, cx, cy);
+
             // Footer hint
             SelectObject(hdc, _fontHint);
             SetTextColor(hdc, Bgr(0.75f, 0.65f, 0.45f));
@@ -350,6 +377,54 @@ namespace ZulfarakRPG
                 DT_CENTER | DT_BOTTOM | DT_SINGLELINE | DT_NOPREFIX);
 
             SelectObject(hdc, prevFont);
+        }
+
+        // Finds which city the player is currently in (matches the active scene) so the flag
+        // marks "you are here". Runs on the Unity main thread (Show / pump).
+        static void ResolveCurrentCity()
+        {
+            _currentCity = -1;
+            var scene = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
+            for (int i = 0; i < Cities.Length; i++)
+                if (Cities[i].Scene == scene) { _currentCity = i; break; }
+        }
+
+        // The bounding rect of the flag above the current city — used to invalidate just that
+        // region each frame so the wave animates without repainting (and flickering) the whole map.
+        static bool CurrentFlagRect(out RECT rc)
+        {
+            rc = default;
+            if (_currentCity < 0 || _currentCity >= Cities.Length) return false;
+            int cx = PopupWidth / 2;
+            int cy = ((HeaderH + 12) + (PopupHeight - 30)) / 2;
+            int x = cx + Cities[_currentCity].X, y = cy + Cities[_currentCity].Y;
+            rc = new RECT { Left = x - 4, Top = y - 36, Right = x + 26, Bottom = y - 6 };
+            return true;
+        }
+
+        // A red pennant on a pole planted over the current city; the triangle tip sways with
+        // _flagTick so the flag reads as waving in the wind.
+        static void DrawPlayerFlag(IntPtr hdc, int cx, int cy)
+        {
+            if (_currentCity < 0 || _currentCity >= Cities.Length) return;
+            int x = cx + Cities[_currentCity].X;
+            int y = cy + Cities[_currentCity].Y;
+            int baseY = y - 9;          // just above the city dot
+            int topY  = baseY - 22;     // pole top
+
+            var pole = new RECT { Left = x - 1, Top = topY, Right = x + 1, Bottom = baseY };
+            FillRect(hdc, ref pole, _brushOutline);
+            var finial = new RECT { Left = x - 2, Top = topY - 2, Right = x + 2, Bottom = topY + 2 };
+            FillRect(hdc, ref finial, _brushGlow);
+
+            int wave = Mathf.RoundToInt(Mathf.Sin(_flagTick * 0.25f) * 3f);
+            var pts = new POINT[3];
+            pts[0] = new POINT { x = x + 1,               y = topY + 1  };
+            pts[1] = new POINT { x = x + 17 + wave,       y = topY + 6  };
+            pts[2] = new POINT { x = x + 1,               y = topY + 12 };
+            var prevBrush = SelectObject(hdc, _brushFlag);
+            Polygon(hdc, pts, 3);
+            SelectObject(hdc, prevBrush);
         }
 
         // Draws a hand-drawn-looking dashed line by chunking the segment into
@@ -387,6 +462,15 @@ namespace ZulfarakRPG
             }
         }
 
+        // Advances the flag wave and repaints just the flag's rect (no full-window redraw → no
+        // flicker). Called every frame from the pump while the map is open.
+        internal static void AnimateFlag()
+        {
+            if (_hwnd == IntPtr.Zero) return;
+            _flagTick++;
+            if (CurrentFlagRect(out var rc)) InvalidateRectR(_hwnd, ref rc, false);
+        }
+
         internal static void Pump()
         {
             if (_hwnd == IntPtr.Zero) return;
@@ -414,6 +498,8 @@ namespace ZulfarakRPG
         struct MSG { public IntPtr hwnd; public uint message; public IntPtr wParam; public IntPtr lParam; public uint time; public int pt_x; public int pt_y; }
         [StructLayout(LayoutKind.Sequential)]
         struct RECT { public int Left, Top, Right, Bottom; }
+        [StructLayout(LayoutKind.Sequential)]
+        struct POINT { public int x, y; }
         [StructLayout(LayoutKind.Sequential)]
         struct PAINTSTRUCT { public IntPtr hdc; public bool fErase; public RECT rcPaint; public bool fRestore; public bool fIncUpdate; [MarshalAs(UnmanagedType.ByValArray, SizeConst = 32)] public byte[] rgbReserved; }
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
@@ -465,6 +551,7 @@ namespace ZulfarakRPG
         [DllImport("user32.dll")] static extern bool DestroyWindow(IntPtr hWnd);
         [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
         [DllImport("user32.dll")] static extern bool InvalidateRect(IntPtr hWnd, IntPtr lpRect, bool bErase);
+        [DllImport("user32.dll", EntryPoint = "InvalidateRect")] static extern bool InvalidateRectR(IntPtr hWnd, ref RECT lpRect, bool bErase);
         [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr h, IntPtr ins, int x, int y, int w, int hgt, uint flags);
         [DllImport("user32.dll", EntryPoint = "DefWindowProcW")] static extern IntPtr DefWindowProcW(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
         [DllImport("user32.dll", EntryPoint = "PeekMessageW")] static extern int PeekMessageW(out MSG lpMsg, IntPtr hWnd, uint min, uint max, uint remove);
@@ -487,6 +574,7 @@ namespace ZulfarakRPG
         [DllImport("gdi32.dll", CharSet = CharSet.Unicode, EntryPoint = "CreateFontIndirectW")] static extern IntPtr CreateFontIndirectW(ref LOGFONT lf);
         [DllImport("gdi32.dll")] static extern bool   MoveToEx(IntPtr hdc, int x, int y, IntPtr lpPoint);
         [DllImport("gdi32.dll")] static extern bool   LineTo(IntPtr hdc, int x, int y);
+        [DllImport("gdi32.dll")] static extern bool   Polygon(IntPtr hdc, POINT[] pts, int count);
 
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode, EntryPoint = "GetModuleHandleW")]
         static extern IntPtr GetModuleHandleW(string name);
@@ -506,6 +594,7 @@ namespace ZulfarakRPG
         void Update()
         {
             WorldMapPopup.Pump();
+            WorldMapPopup.AnimateFlag();
             if (WorldMapPopup.IsOpen && Input.GetKeyDown(KeyCode.Escape))
                 WorldMapPopup.Hide();
         }

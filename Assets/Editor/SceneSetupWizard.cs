@@ -156,6 +156,16 @@ public static partial class SceneSetupWizard
     // ══════════════════════════════════════════════════════════
     // CHARACTER CREATION  (Mu Online style: class + name only)
     // ══════════════════════════════════════════════════════════
+    [MenuItem("Tools/ZulfarakRPG/Rebuild Character Creation (Hero Select)")]
+    public static void RebuildCharacterCreation()
+    {
+        EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo();
+        SetupCharacterCreationScene();
+        EditorUtility.DisplayDialog("Seleção de Herói",
+            "CharacterCreation recriada no estilo fogueira (3 heróis em volta do fogo). Clicar num " +
+            "herói inicia o jogo com o nome do Steam. Rode 'Import Character Sprites' se sairem invisíveis.", "OK");
+    }
+
     private static void SetupCharacterCreationScene()
     {
         var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
@@ -222,13 +232,13 @@ public static partial class SceneSetupWizard
         CreatePanel(canvas, "TitleLineBot", new Color(0.70f, 0.52f, 0.14f, 0.90f), Vec(0.02f, 0.930f), Vec(0.98f, 0.934f))
             .GetComponent<Image>().raycastTarget = false;
 
-        var titleTmp = CreateTMP(canvas, "TitleText", "CRIAR PERSONAGEM", 32, FontStyle.Bold)
+        var titleTmp = CreateTMP(canvas, "TitleText", "SELEÇÃO DE HERÓI", 32, FontStyle.Bold)
             .GetComponent<TextMeshProUGUI>();
         titleTmp.color = new Color(0.97f, 0.88f, 0.50f);
         titleTmp.alignment = TextAlignmentOptions.Center;
         Anchor(titleTmp.gameObject, Vec(0.05f, 0.930f), Vec(0.95f, 0.972f), Vector2.zero);
 
-        var subTmp = CreateTMP(canvas, "SubTitle", "Escolha sua classe e comece sua jornada", 13, FontStyle.Normal)
+        var subTmp = CreateTMP(canvas, "SubTitle", "Clique em um herói para começar sua jornada", 13, FontStyle.Normal)
             .GetComponent<TextMeshProUGUI>();
         subTmp.color = new Color(0.70f, 0.58f, 0.35f);
         subTmp.alignment = TextAlignmentOptions.Center;
@@ -261,214 +271,108 @@ public static partial class SceneSetupWizard
             archerIdle.Length > 0 ? archerIdle[0]  : null,
         };
 
-        // UI frame sprites
+        // UI frame sprite (pixel border reused as the selection ring).
         Sprite uiFrameSpr = LoadPixelArtSprite("UIFrame");
-        Sprite uiBtnSpr   = LoadPixelArtSprite("UIButton");
 
         // ══════════════════════════════════════════════════════════
-        // CLASS CARDS — large dark portrait cards
+        // HERO SELECTION — the three classes stand around the campfire
         // ══════════════════════════════════════════════════════════
-        float[] cardXMin  = { 0.015f, 0.345f, 0.675f };
-        float   cardW     = 0.315f;
-
-        string[] classNames = { "MAGO",    "GUERREIRO", "ARQUEIRO" };
-        string[] classRoles = { "Arcano",  "Combate",   "À Distância" };
-        string[] classDescs = {
-            "Mestre das artes arcanas. Lança feitiços destruidores de fogo, gelo e raio.",
-            "Campeão das batalhas. Força bruta e armadura pesada para proteger aliados.",
-            "Fantasma das sombras. Elimina inimigos antes de serem vistos ou ouvidos.",
+        string[] classNames = { "Mago", "Guerreiro", "Arqueiro" };
+        Color[]  classAccent =
+        {
+            new Color(0.30f, 0.45f, 0.90f, 1f),   // Mage
+            new Color(0.85f, 0.12f, 0.12f, 1f),   // Warrior
+            new Color(0.15f, 0.72f, 0.28f, 1f),   // Archer
         };
 
-        // Class color accent (border/glow color when selected)
-        Color[] classAccent = {
-            new Color(0.30f, 0.45f, 0.90f, 1.0f),   // sapphire blue  (Mage)
-            new Color(0.85f, 0.12f, 0.12f, 1.0f),   // blood crimson  (Warrior)
-            new Color(0.15f, 0.72f, 0.28f, 1.0f),   // emerald green  (Archer)
-        };
-        // Card base background
-        Color[] cardBg = {
-            new Color(0.04f, 0.04f, 0.10f, 0.98f),
-            new Color(0.10f, 0.03f, 0.03f, 0.98f),
-            new Color(0.03f, 0.08f, 0.04f, 0.98f),
-        };
-        // Accent tint inside portrait area
-        Color[] portraitTint = {
-            new Color(0.08f, 0.08f, 0.18f, 1.0f),
-            new Color(0.16f, 0.05f, 0.04f, 1.0f),
-            new Color(0.04f, 0.12f, 0.06f, 1.0f),
-        };
+        // Info panel (updated on hover): class name + description above the fire.
+        var infoName = CreateTMP(canvas, "InfoName", "Guerreiro", 26, FontStyle.Bold).GetComponent<TextMeshProUGUI>();
+        infoName.color = new Color(0.97f, 0.88f, 0.50f); infoName.alignment = TextAlignmentOptions.Center;
+        Anchor(infoName.gameObject, Vec(0.08f, 0.80f), Vec(0.92f, 0.885f), Vector2.zero);
 
-        var cardButtons  = new Button[3];
-        var cardBorders  = new Image[3];
-        var cardArts     = new Image[3];
-        var cardNameTxts = new TextMeshProUGUI[3];
-        var cardDescTxts = new TextMeshProUGUI[3];
+        var infoDesc = CreateTMP(canvas, "InfoDesc", "", 13, FontStyle.Normal).GetComponent<TextMeshProUGUI>();
+        infoDesc.color = new Color(0.78f, 0.68f, 0.48f); infoDesc.alignment = TextAlignmentOptions.Center;
+        infoDesc.enableWordWrapping = true;
+        Anchor(infoDesc.gameObject, Vec(0.14f, 0.695f), Vec(0.86f, 0.80f), Vector2.zero);
+
+        // Warm light pooled on the ground around the fire.
+        CreatePanel(canvas, "FireGlow", new Color(0.9f, 0.45f, 0.12f, 0.18f), Vec(0.26f, 0.07f), Vec(0.74f, 0.22f))
+            .GetComponent<Image>().raycastTarget = false;
+
+        // Campfire (behind the heroes), animated with the 4-frame camp sheet.
+        var cfObjs = AssetDatabase.LoadAllAssetsAtPath(ZulfArt + "campfire.png");
+        var cfList = new System.Collections.Generic.List<Sprite>();
+        foreach (var o in cfObjs) if (o is Sprite cs) cfList.Add(cs);
+        cfList.Sort((a, b) => string.Compare(a.name, b.name, System.StringComparison.Ordinal));
+        var campfireFrames = cfList.ToArray();
+
+        var fireGO = new GameObject("Campfire");
+        fireGO.transform.SetParent(canvas.transform, false);
+        SetAnchors(fireGO.AddComponent<RectTransform>(), Vec(0.42f, 0.09f), Vec(0.58f, 0.30f));
+        var fireImg = fireGO.AddComponent<Image>();
+        fireImg.raycastTarget = false; fireImg.preserveAspect = true;
+        if (campfireFrames.Length > 0)
+        {
+            fireImg.sprite = campfireFrames[0];
+            var fa = fireGO.AddComponent<UIFrameAnim>(); fa.frames = campfireFrames; fa.fps = 8f;
+        }
+        else fireImg.color = new Color(1f, 0.5f, 0.15f, 0.9f);
+
+        // Hero figures ringed around the fire: mage left, warrior centre-back, archer right.
+        Vector2[] figMin = { Vec(0.04f, 0.24f), Vec(0.37f, 0.33f), Vec(0.66f, 0.24f) };
+        Vector2[] figMax = { Vec(0.34f, 0.60f), Vec(0.63f, 0.70f), Vec(0.96f, 0.60f) };
+
+        var heroButtons = new Button[3];
+        var heroArts    = new Image[3];
+        var heroRings   = new Image[3];
 
         for (int i = 0; i < 3; i++)
         {
-            // ── Card root ──────────────────────────────────────
-            var card = new GameObject($"ClassCard_{classNames[i]}");
-            card.transform.SetParent(canvas.transform, false);
-            var cardRect = card.AddComponent<RectTransform>();
-            SetAnchors(cardRect, Vec(cardXMin[i], 0.155f), Vec(cardXMin[i] + cardW, 0.900f));
-            var cardBgImg = card.AddComponent<Image>();
-            cardBgImg.color = cardBg[i];
-            cardButtons[i] = card.AddComponent<Button>();
+            var fig = new GameObject($"Hero_{classNames[i]}");
+            fig.transform.SetParent(canvas.transform, false);
+            SetAnchors(fig.AddComponent<RectTransform>(), figMin[i], figMax[i]);
+            var clickImg = fig.AddComponent<Image>();       // invisible click area over the figure
+            clickImg.color = new Color(0f, 0f, 0f, 0f); clickImg.raycastTarget = true;
+            var btn = fig.AddComponent<Button>(); btn.transition = Selectable.Transition.None;
+            heroButtons[i] = btn;
 
-            // ── Selection glow border (rendered first = behind everything) ──
-            var selBorder = new GameObject("SelectionBorder");
-            selBorder.transform.SetParent(card.transform, false);
-            SetAnchors(selBorder.AddComponent<RectTransform>(), Vec(-0.02f, -0.008f), Vec(1.02f, 1.008f));
-            var borderImg = selBorder.AddComponent<Image>();
-            borderImg.color        = new Color(classAccent[i].r, classAccent[i].g, classAccent[i].b, 0f); // invisible until selected
-            borderImg.raycastTarget= false;
-            cardBorders[i] = borderImg;
+            var ring = new GameObject("Ring");
+            ring.transform.SetParent(fig.transform, false);
+            SetAnchors(ring.AddComponent<RectTransform>(), Vec(0.02f, 0.02f), Vec(0.98f, 0.94f));
+            var ringImg = ring.AddComponent<Image>();
+            if (uiFrameSpr != null) { ringImg.sprite = uiFrameSpr; ringImg.type = Image.Type.Sliced; }
+            ringImg.color = new Color(1f, 1f, 1f, 0f); ringImg.raycastTarget = false;
+            heroRings[i] = ringImg;
 
-            // ── Portrait background (tinted inner area) ───────
-            var portBg = new GameObject("PortraitBg");
-            portBg.transform.SetParent(card.transform, false);
-            SetAnchors(portBg.AddComponent<RectTransform>(), Vec(0, 0.27f), Vec(1, 1f));
-            portBg.AddComponent<Image>().color = portraitTint[i];
-            portBg.GetComponent<Image>().raycastTarget = false;
-
-            // ── Character portrait image (fills portrait area) ──
-            var artGO  = new GameObject("ArtImage");
-            artGO.transform.SetParent(card.transform, false);
-            var artRect= artGO.AddComponent<RectTransform>();
-            // Fill portrait area — anchored to card, leaves room below for name
-            SetAnchors(artRect, Vec(0.02f, 0.28f), Vec(0.98f, 0.99f));
-            var artImg = artGO.AddComponent<Image>();
-            if (initialSprites[i] != null)
-            {
-                artImg.sprite         = initialSprites[i];
-                artImg.preserveAspect = true;
-                artImg.color          = Color.white;
-            }
-            else
-            {
-                // No sprite yet — show class color placeholder
-                artImg.color = classAccent[i] * new Color(0.3f, 0.3f, 0.3f, 0.5f);
-            }
+            var art = new GameObject("Art");
+            art.transform.SetParent(fig.transform, false);
+            SetAnchors(art.AddComponent<RectTransform>(), Vec(0.0f, 0.10f), Vec(1.0f, 1.0f));
+            var artImg = art.AddComponent<Image>();
+            if (initialSprites[i] != null) { artImg.sprite = initialSprites[i]; artImg.preserveAspect = true; }
+            else artImg.color = classAccent[i] * new Color(0.4f, 0.4f, 0.4f, 0.6f);
             artImg.raycastTarget = false;
-            cardArts[i] = artImg;
+            heroArts[i] = artImg;
 
-            // ── Class color top accent bar ─────────────────────
-            var topBar = new GameObject("TopAccent");
-            topBar.transform.SetParent(card.transform, false);
-            SetAnchors(topBar.AddComponent<RectTransform>(), Vec(0, 0.975f), Vec(1, 1f));
-            topBar.AddComponent<Image>().color = classAccent[i];
-            topBar.GetComponent<Image>().raycastTarget = false;
-
-            // ── Name nameplate (semi-transparent bar between portrait and description) ──
-            var nameBand = new GameObject("NameBand");
-            nameBand.transform.SetParent(card.transform, false);
-            SetAnchors(nameBand.AddComponent<RectTransform>(), Vec(0, 0.245f), Vec(1, 0.285f));
-            nameBand.AddComponent<Image>().color = new Color(0f, 0f, 0f, 0.75f);
-            nameBand.GetComponent<Image>().raycastTarget = false;
-
-            // Class role label (small, above class name)
-            var roleTmp = CreateTMP(card, "ClassRole", classRoles[i].ToUpper(), 9, FontStyle.Normal)
-                .GetComponent<TextMeshProUGUI>();
-            roleTmp.color = new Color(classAccent[i].r, classAccent[i].g, classAccent[i].b, 0.85f);
-            roleTmp.alignment = TextAlignmentOptions.Center;
-            Anchor(roleTmp.gameObject, Vec(0.02f, 0.268f), Vec(0.98f, 0.296f), Vector2.zero);
-
-            // Main class name
-            var nameTmp = CreateTMP(card, "ClassName", classNames[i], 22, FontStyle.Bold)
-                .GetComponent<TextMeshProUGUI>();
-            nameTmp.color = new Color(0.97f, 0.88f, 0.52f);
-            nameTmp.alignment = TextAlignmentOptions.Center;
-            Anchor(nameTmp.gameObject, Vec(0.02f, 0.220f), Vec(0.98f, 0.268f), Vector2.zero);
-            cardNameTxts[i] = nameTmp;
-
-            // Thin accent line between name and description
-            var divLine = new GameObject("Divider");
-            divLine.transform.SetParent(card.transform, false);
-            SetAnchors(divLine.AddComponent<RectTransform>(), Vec(0.08f, 0.216f), Vec(0.92f, 0.221f));
-            divLine.AddComponent<Image>().color = new Color(classAccent[i].r, classAccent[i].g, classAccent[i].b, 0.50f);
-            divLine.GetComponent<Image>().raycastTarget = false;
-
-            // Description text
-            var descTmp = CreateTMP(card, "ClassDesc", classDescs[i], 9, FontStyle.Normal)
-                .GetComponent<TextMeshProUGUI>();
-            descTmp.color     = new Color(0.68f, 0.60f, 0.42f);
-            descTmp.alignment = TextAlignmentOptions.Center;
-            Anchor(descTmp.gameObject, Vec(0.04f, 0.01f), Vec(0.96f, 0.215f), Vector2.zero);
-            cardDescTxts[i] = descTmp;
-
-            // ── UIFrame pixel border (outermost, rendered last = on top) ─
-            if (uiFrameSpr != null)
-            {
-                var frameGO  = new GameObject("PixelFrame");
-                frameGO.transform.SetParent(card.transform, false);
-                SetAnchors(frameGO.AddComponent<RectTransform>(), Vec(0, 0), Vec(1, 1));
-                var frameImg = frameGO.AddComponent<Image>();
-                frameImg.sprite       = uiFrameSpr;
-                frameImg.type         = Image.Type.Sliced;
-                frameImg.color        = new Color(0.45f, 0.32f, 0.10f, 0.60f);
-                frameImg.raycastTarget= false;
-            }
+            var nameLbl = CreateTMP(fig, "Name", classNames[i], 13, FontStyle.Bold).GetComponent<TextMeshProUGUI>();
+            nameLbl.color = new Color(0.95f, 0.88f, 0.55f); nameLbl.alignment = TextAlignmentOptions.Center;
+            Anchor(nameLbl.gameObject, Vec(0f, -0.04f), Vec(1f, 0.10f), Vector2.zero);
         }
 
-        // ══════════════════════════════════════════════════════════
-        // NAME INPUT + CONFIRM
-        // ══════════════════════════════════════════════════════════
-        // Section label
-        CreatePanel(canvas, "InputDivTop", new Color(0.55f, 0.40f, 0.10f, 0.60f), Vec(0.05f, 0.148f), Vec(0.95f, 0.153f))
-            .GetComponent<Image>().raycastTarget = false;
-
-        var lblTmp = CreateTMP(canvas, "NameLabel", "◈  NOME DO PERSONAGEM  ◈", 12, FontStyle.Bold)
-            .GetComponent<TextMeshProUGUI>();
-        lblTmp.color = new Color(0.82f, 0.68f, 0.35f);
-        lblTmp.alignment = TextAlignmentOptions.Center;
-        Anchor(lblTmp.gameObject, Vec(0.15f, 0.128f), Vec(0.85f, 0.152f), Vector2.zero);
-
-        // Input field
-        var nameInputGO = CreateInputField(canvas, "NameInput", "Digite seu nome...",
-            Vec(0.12f, 0.065f), Vec(0.88f, 0.125f));
-        var nameInput = nameInputGO.GetComponent<TMP_InputField>();
-        nameInput.characterLimit = 24;
-
-        if (uiFrameSpr != null)
-        {
-            var ifFrm = new GameObject("InputFrame");
-            ifFrm.transform.SetParent(nameInputGO.transform, false);
-            SetAnchors(ifFrm.AddComponent<RectTransform>(), Vec(0, 0), Vec(1, 1));
-            var ifImg = ifFrm.AddComponent<Image>();
-            ifImg.sprite = uiFrameSpr; ifImg.type = Image.Type.Sliced;
-            ifImg.color = new Color(0.55f, 0.40f, 0.12f, 0.65f);
-            ifImg.raycastTarget = false;
-        }
-
-        // Error text
-        var errTmp = CreateTMP(canvas, "ErrorText", "", 11, FontStyle.Normal)
-            .GetComponent<TextMeshProUGUI>();
-        errTmp.color = new Color(1f, 0.30f, 0.30f);
-        Anchor(errTmp.gameObject, Vec(0.10f, 0.038f), Vec(0.90f, 0.065f), Vector2.zero);
-
-        // Confirm button
-        var confirmGO = CreateButton(canvas, "ConfirmButton", "CRIAR PERSONAGEM", new Color(0.50f, 0.32f, 0.07f));
-        Anchor(confirmGO, Vec(0.20f, 0.005f), Vec(0.80f, 0.040f), Vector2.zero);
-        if (uiBtnSpr != null)
-        {
-            var cbi = confirmGO.GetComponent<Image>();
-            cbi.sprite = uiBtnSpr; cbi.type = Image.Type.Sliced;
-        }
+        // Footer hint.
+        var hint = CreateTMP(canvas, "Hint", "Clique em um herói para começar", 11, FontStyle.Italic).GetComponent<TextMeshProUGUI>();
+        hint.color = new Color(0.62f, 0.52f, 0.34f); hint.alignment = TextAlignmentOptions.Center;
+        Anchor(hint.gameObject, Vec(0.1f, 0.028f), Vec(0.9f, 0.075f), Vector2.zero);
 
         // ══════════════════════════════════════════════════════════
         // WIRE CharacterCreationUI
         // ══════════════════════════════════════════════════════════
         var ui = canvas.AddComponent<CharacterCreationUI>();
-        ui.classButtons          = cardButtons;
-        ui.classArtImages        = cardArts;
-        ui.classSelectionBorders = cardBorders;
-        ui.classNameTexts        = cardNameTxts;
-        ui.classDescTexts        = cardDescTxts;
-        ui.nameInput             = nameInput;
-        ui.confirmButton         = confirmGO.GetComponent<Button>();
-        ui.confirmErrorText      = errTmp;
+        ui.classButtons          = heroButtons;
+        ui.classArtImages        = heroArts;
+        ui.classSelectionBorders = heroRings;
+        ui.infoNameText          = infoName;
+        ui.infoDescText          = infoDesc;
 
-        // Animation frames
         ui.mageIdleFrames    = wizIdle;
         ui.warriorIdleFrames = soldierIdle;
         ui.archerIdleFrames  = archerIdle;
@@ -715,6 +619,7 @@ public static partial class SceneSetupWizard
         var anim = go.AddComponent<SimpleIdleAnim>();
         anim.frames = frames;
         anim.fps    = 6f;
+        go.AddComponent<MatchHeightToPlayer>();   // normalize to the player's visible height
         // Intentionally no GroundSnap: SPAWN_Y matches the player's grounded Y;
         // alpha-based snap kept finding shadow/cloak bottoms and flying the NPC up-screen.
     }
@@ -734,6 +639,7 @@ public static partial class SceneSetupWizard
         master.warriorIdleFrames = CharacterSpriteImporter.GetFrames("Soldier", "Idle");
         master.mageIdleFrames    = CharacterSpriteImporter.GetFrames("Wizard",  "Idle");
         master.archerIdleFrames  = CharacterSpriteImporter.GetFrames("Archer",  "Idle");
+        go.AddComponent<MatchHeightToPlayer>();   // normalize to the player's visible height
         // Intentionally no GroundSnap: SPAWN_Y matches the player's grounded Y.
     }
 
@@ -797,67 +703,8 @@ public static partial class SceneSetupWizard
         gcol.size   = new Vector2(7.0f, GROUND_H);
         gcol.offset = Vector2.zero;
 
-        // ── Dungeon parallax — THREE layers behind the ground, procedurally re-spawned ──────────
-        // All layers spawn items on the SAME GROUND_TOP line, the wizard's PlaceDecoration /
-        // ParallaxLayer.SpawnNext call SpriteAlphaBounds.Get(...) to seat the VISIBLE art on
-        // the ground (no more floating). Each layer scrolls at its own speed.
-
-        // FAR layer (slowest, deepest) — castle/dune silhouettes.
-        var farLayerGO = new GameObject("ParallaxFar");
-        var farPL = farLayerGO.AddComponent<ParallaxLayer>();
-        farPL.speedFactor = 0.30f;
-        farPL.tint        = new Color(0.05f, 0.04f, 0.08f, 1f);
-        farPL.sprites = new[] {
-            ZulfarakTextureImporter.Load("TX Struct.png", "struct_building1"),
-            ZulfarakTextureImporter.Load("TX Struct.png", "struct_building3"),
-            ZulfarakTextureImporter.Load("TX Struct.png", "struct_building2"),
-            ZulfarakTextureImporter.Load("TX Plant.png",  "plant_bush3"),
-        };
-        farPL.minScale   = 0.55f;
-        farPL.maxScale   = 0.80f;
-        farPL.minSpacing = 1.8f;
-        farPL.maxSpacing = 3.0f;
-        farPL.sortOrder  = -10;
-        farPL.groundY    = GROUND_TOP;
-
-        // MID layer — stone walls + small structures, half-speed.
-        var midLayerGO = new GameObject("ParallaxMid");
-        var midPL = midLayerGO.AddComponent<ParallaxLayer>();
-        midPL.speedFactor = 0.65f;
-        midPL.tint        = new Color(0.10f, 0.08f, 0.14f, 1f);
-        midPL.sprites = new[] {
-            ZulfarakTextureImporter.Load("TX Tileset Wall.png", "wall_bldg1"),
-            ZulfarakTextureImporter.Load("TX Tileset Wall.png", "wall_bldg3"),
-            ZulfarakTextureImporter.Load("TX Tileset Wall.png", "wall_wide"),
-            ZulfarakTextureImporter.Load("TX Struct.png",       "struct_arch_sm"),
-            ZulfarakTextureImporter.Load("TX Props.png",        "prop_column"),
-        };
-        midPL.minScale   = 0.40f;
-        midPL.maxScale   = 0.55f;
-        midPL.minSpacing = 1.3f;
-        midPL.maxSpacing = 2.4f;
-        midPL.sortOrder  = -8;
-        midPL.groundY    = GROUND_TOP;
-
-        // NEAR layer (full speed, foreground silhouettes) — dead trees + rocks at base.
-        var nearLayerGO = new GameObject("ParallaxNear");
-        var nearPL = nearLayerGO.AddComponent<ParallaxLayer>();
-        nearPL.speedFactor = 1.0f;
-        nearPL.tint        = new Color(0.17f, 0.14f, 0.21f, 1f);
-        nearPL.sprites = new[] {
-            ZulfarakTextureImporter.Load("TX Plant.png", "plant_tree1"),
-            ZulfarakTextureImporter.Load("TX Plant.png", "plant_tree2"),
-            ZulfarakTextureImporter.Load("TX Plant.png", "plant_tree3"),
-            ZulfarakTextureImporter.Load("TX Props.png", "prop_rock_lg"),
-            ZulfarakTextureImporter.Load("TX Props.png", "prop_rock_sm"),
-            ZulfarakTextureImporter.Load("TX Props.png", "prop_pebbles"),
-        };
-        nearPL.minScale   = 0.32f;
-        nearPL.maxScale   = 0.50f;
-        nearPL.minSpacing = 0.9f;
-        nearPL.maxSpacing = 1.9f;
-        nearPL.sortOrder  = -6;
-        nearPL.groundY    = GROUND_TOP;
+        // ── No parallax prop layers — the arena is kept CLEAN; the only backdrop is the
+        //     layered scenic sky (BackgroundLayers) behind the ground. ───────────────────────
 
         // ── Player (left side of arena) ───────────────────────────────
         var playerGO = CreatePlayerGO(SPAWN_Y);
@@ -911,7 +758,7 @@ public static partial class SceneSetupWizard
         wm.necromancerPrefab     = necroPrefab;
         wm.spawnPoints           = spawnPts;
         wm.exitPortal            = exitPortal;
-        wm.parallaxLayers        = new[] { farPL, midPL, nearPL };
+        wm.parallaxLayers        = new ParallaxLayer[0];   // clean arena, no scrolling props
         wm.runScrollSpeed        = 4.0f;
         wm.runScrollDistance     = 12.0f;
 

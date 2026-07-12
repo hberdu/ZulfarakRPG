@@ -59,16 +59,16 @@ namespace ZulfarakRPG
         // band. The character's on-screen size is unaffected — it depends only on the
         // strip HEIGHT and GameplayCamOrtho, not the width (which just controls how much
         // world is visible left/right). CameraFollow2D scrolls to keep the hero centred.
-        public int windowWidth  = 960;
-        public int windowHeight = 260;
+        public int windowWidth  = 650;
+        public int windowHeight = 220;
 
         // Orthographic half-height applied to Camera.main during gameplay. The CITY and the
         // DUNGEON share this exact zoom so the world reads at the same scale in both.
-        // Tuned for the thin 960×260 TaskbarHero-style strip: ortho 1.0 crops the view to a
-        // narrow band that fits the ground + full character height with little sky. camY sits
-        // the ground near the bottom of the strip. Tweak in-editor.
-        public const float GameplayCamOrtho = 1.1f;
-        public const float GameplayCamY     = 0.55f;
+        // Tuned for the 650×220 strip (aspect ~2.95): ortho 0.9 → ~1.8 world tall (character +
+        // ground + a little sky), ~5.3 world wide — matching the ~5-wide play area so the walk
+        // range and enemy spawns fill the screen without big empty margins. Tweak in-editor.
+        public const float GameplayCamOrtho = 0.9f;
+        public const float GameplayCamY     = 0.45f;
 
         public static OverlayWindow Instance { get; private set; }
         public static int WinX { get; private set; } = 40;
@@ -139,8 +139,8 @@ namespace ZulfarakRPG
             // the game share the exact same window size (no resize on scene swap).
             bool gameplay = sceneName == "Zulfarak" || sceneName == "Dungeon" || sceneName == "Bootstrap"
                             || sceneName.StartsWith("Camp_") || sceneName.StartsWith("Dungeon_");
-            int newW = gameplay ? 960 : 380;
-            int newH = gameplay ? 260 : 640;
+            int newW = gameplay ? 650 : 380;
+            int newH = gameplay ? 220 : 640;
             windowWidth = newW;
             windowHeight = newH;
             if (gameplay && Camera.main != null)

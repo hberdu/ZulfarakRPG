@@ -36,7 +36,7 @@ public static partial class SceneSetupWizard
         MakeGameplayCamera(CAM_X, ORTHO, new Color(0.02f, 0.02f, 0.03f));   // near-black night sky
         AddDragStrip();
         MakeTiledGround(CAM_X, GROUND_CY, GROUND_W, GROUND_H, "ground_dark");
-        PlaceMountains(CAM_X, GROUND_TOP, MountainsDark);
+        // Distant mountains come from the layered BackgroundLayers backdrop now (no pixel-art prop).
 
         // Cemetery dressing — bigger/darker rocks, gravestones, a mausoleum, wagon + campfire.
         PlaceDecoration("Rock_L", EnsureProp(ZulfArt + "rock_big.png"), RockDark, 0.55f, GROUND_TOP, 2.6f, -6);
@@ -77,13 +77,13 @@ public static partial class SceneSetupWizard
         MakeGameplayCamera(CAM_X, ORTHO, new Color(0.015f, 0.015f, 0.025f));
         AddDragStrip();
         MakeTiledGround(CAM_X + 1.0f, GROUND_CY, 7.0f, GROUND_H, "ground_dark");
-        PlaceMountains(CAM_X, GROUND_TOP, MountainsDark);
+        // Distant mountains come from the layered BackgroundLayers backdrop now (no pixel-art prop).
 
         // Graves + a mausoleum + big dark rocks scattered along the path.
         PlaceDecoration("Grave1", EnsureProp(ZulfArt + "gravestone.png"), Color.white, 1.2f, GROUND_TOP, 1.9f, -3);
         PlaceDecoration("Mausoleum", EnsureProp(ZulfArt + "mausoleum.png"), Color.white, 2.6f, GROUND_TOP, 2.4f, -5);
         PlaceDecoration("Grave2", EnsureProp(ZulfArt + "gravestone.png"), Color.white, 4.3f, GROUND_TOP, 1.8f, -3);
-        PlaceDecoration("PathRock", EnsureProp(ZulfArt + "rock_big.png"), RockDark, 6.0f, GROUND_TOP, 2.6f, -4);
+        // Clean arena (no path props) — matches the first dungeon; only the layered backdrop shows.
         ScatterGroundDetail(0.5f, 7.0f, GROUND_TOP, 42,
             new[] { "rock_small.png", "rock_med.png", "gravestone.png" }, new Color(0.40f, 0.42f, 0.48f));
 
