@@ -21,10 +21,9 @@ namespace ZulfarakRPG
         static Sprite _impactSprite;
 
         // On-screen length of the arrow, in WORLD units (the sprite's longest side is scaled
-        // to span this). One tunable number so the projectile is sized consistently regardless
-        // of the source sprite's pixel size (pack arrows are 100 px, the fallback is 32 px).
-        // A hero character is ~1.7 world units tall, for reference.
-        public const float TargetWorldSize = 2.0f;
+        // to span this). ONE number used by the basic shot AND every skill projectile so all
+        // arrows are the exact same size. Kept small (~the archer's width) for a realistic shot.
+        public const float TargetWorldSize = 0.75f;
 
         // customSprite: a specific arrow from the pack's Arrow(Projectile) folder, cycled
         // by the archer so successive shots differ. Null → the shared default arrow.
@@ -38,7 +37,7 @@ namespace ZulfarakRPG
             Sprite sprite = customSprite != null ? customSprite : (_arrowSprite ??= LoadArrowSprite());
             _sr             = gameObject.AddComponent<SpriteRenderer>();
             _sr.sprite      = sprite;
-            _sr.sortingOrder = 100;  // above EVERYTHING so the arrow always overlaps player + enemies
+            _sr.sortingOrder = 300;  // foreground: arrow always overlaps player + enemies + FX
             ApplyWorldSize(transform, sprite, TargetWorldSize);
         }
 
@@ -74,6 +73,9 @@ namespace ZulfarakRPG
 
             if (dist < hitDistance)
             {
+                // Point-blank (enemy in melee): hover a moment so the arrow is actually SEEN
+                // before it strikes, instead of hitting + despawning on the very first frame.
+                if (Time.time - _spawnTime < 0.05f) return;
                 _target.TakeDamage(damage, _isCrit);
                 MultiplayerSync.Instance?.BroadcastDamage(_target.netInstanceId, damage, _isCrit);
                 SpawnImpact(targetPos);
@@ -99,18 +101,19 @@ namespace ZulfarakRPG
             go.AddComponent<ImpactEffect>();
         }
 
-        // Arrow03 from the Tiny RPG pack (Resources/Arrow03), points right like the
-        // procedural one, so the existing aim-rotation works unchanged. Falls back to
-        // the procedural sprite if the asset is missing.
+        // The pack's Arrow02 (Archer/Arrow(projectile)/Arrow02(32x32)) — the real arrow art,
+        // points right (+x). Cropped tight to its 19×7 body so TargetWorldSize sizes the visible
+        // arrow directly. Used by the basic shot AND every skill. Falls back to the procedural one.
         static Sprite LoadArrowSprite()
         {
-            var s = Resources.Load<Sprite>("Arrow03");
-            return s != null ? s : MakeArrowSprite();
+            var tex = Resources.Load<Texture2D>("Arrow02");
+            if (tex == null) return MakeArrowSprite();
+            // Unity sprite rects are bottom-up; the arrow bbox is x8..26, y13..19 (top-down).
+            return Sprite.Create(tex, new Rect(8, 12, 19, 8), new Vector2(0.5f, 0.5f), 100f);
         }
 
-        // ── Procedural sprites ────────────────────────────────────────────────
-        // 32×9 at 100 PPU so each arrow pixel matches a character-sprite pixel
-        // (every character PNG in the project is imported at 100 PPU, Point filter).
+        // ── Procedural sprite (flat, no shading) ──────────────────────────────
+        // 32×9 at 100 PPU so each arrow pixel matches a character-sprite pixel.
         static Sprite MakeArrowSprite()
         {
             const int W = 32, H = 9;
@@ -120,39 +123,26 @@ namespace ZulfarakRPG
                 for (int x = 0; x < W; x++)
                     t.SetPixel(x, y, Color.clear);
 
-            var shaft   = new Color(0.42f, 0.26f, 0.10f, 1f); // dark wood
-            var shaftHi = new Color(0.65f, 0.45f, 0.20f, 1f); // top-lit wood highlight
-            var headDk  = new Color(0.45f, 0.45f, 0.50f, 1f); // steel edge / base
-            var headLt  = new Color(0.82f, 0.84f, 0.88f, 1f); // steel face
-            var headHi  = new Color(1.00f, 1.00f, 1.00f, 1f); // specular highlight
-            var fletch  = new Color(0.85f, 0.20f, 0.20f, 1f); // feather red
-            var fletchD = new Color(0.55f, 0.10f, 0.10f, 1f); // feather shadow
+            var shaft  = new Color(0.42f, 0.26f, 0.10f, 1f); // flat wood
+            var head   = new Color(0.78f, 0.80f, 0.84f, 1f); // flat steel
+            var fletch = new Color(0.82f, 0.20f, 0.20f, 1f); // flat feather red
 
-            // Shaft: 3 px tall, columns 3..24
+            // Shaft: 3 px tall, columns 3..24 (single flat colour)
             for (int x = 3; x <= 24; x++)
-            {
-                t.SetPixel(x, 5, shaftHi);
-                t.SetPixel(x, 4, shaft);
-                t.SetPixel(x, 3, shaft);
-            }
+                for (int y = 3; y <= 5; y++) t.SetPixel(x, y, shaft);
 
-            // Arrowhead (leaf shape, tip on the right at x=31)
-            for (int y = 2; y <= 6; y++) t.SetPixel(25, y, headDk);
-            t.SetPixel(26, 1, headDk); t.SetPixel(26, 7, headDk);
-            for (int y = 2; y <= 6; y++) t.SetPixel(26, y, headLt);
-            for (int y = 2; y <= 6; y++) t.SetPixel(27, y, headLt);
-            for (int y = 3; y <= 5; y++) t.SetPixel(28, y, headLt);
-            t.SetPixel(28, 4, headHi);
-            for (int y = 3; y <= 5; y++) t.SetPixel(29, y, headLt);
-            t.SetPixel(30, 4, headLt);
-            t.SetPixel(31, 4, headHi);
+            // Arrowhead (flat leaf, tip on the right at x=31)
+            for (int y = 2; y <= 6; y++) t.SetPixel(25, y, head);
+            t.SetPixel(26, 1, head); t.SetPixel(26, 7, head);
+            for (int y = 2; y <= 6; y++) t.SetPixel(26, y, head);
+            for (int y = 2; y <= 6; y++) t.SetPixel(27, y, head);
+            for (int y = 3; y <= 5; y++) t.SetPixel(28, y, head);
+            for (int y = 3; y <= 5; y++) t.SetPixel(29, y, head);
+            t.SetPixel(30, 4, head); t.SetPixel(31, 4, head);
 
-            // Fletching: V-shape feathers on the back, columns 0..2
-            t.SetPixel(0, 0, fletchD); t.SetPixel(0, 8, fletchD);
-            for (int y = 1; y <= 7; y++) t.SetPixel(0, y, fletch);
-            t.SetPixel(1, 1, fletchD); t.SetPixel(1, 7, fletchD);
-            for (int y = 2; y <= 6; y++) t.SetPixel(1, y, fletch);
-            t.SetPixel(2, 2, fletchD); t.SetPixel(2, 6, fletchD);
+            // Fletching: flat V-shape feathers on the back, columns 0..2
+            for (int y = 0; y <= 8; y++) t.SetPixel(0, y, fletch);
+            for (int y = 1; y <= 7; y++) t.SetPixel(1, y, fletch);
             for (int y = 3; y <= 5; y++) t.SetPixel(2, y, fletch);
 
             t.Apply();

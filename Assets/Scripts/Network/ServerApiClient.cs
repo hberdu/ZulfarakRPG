@@ -199,17 +199,38 @@ namespace ZulfarakRPG
             return JsonConvert.DeserializeObject<CombatResultDto>(raw);
         }
 
-        public async Task<MonsterKillResultDto> RegisterMonsterKillAsync(string enemyId, string enemyName = null)
+        // Opens a server-issued combat encounter for a freshly-spawned batch of enemies.
+        // The returned encounterId is the token each kill must present (see RegisterMonsterKillAsync).
+        public async Task<EncounterDto> StartEncounterAsync(string[] enemyIds)
         {
-            if (string.IsNullOrWhiteSpace(enemyId))
+            if (enemyIds == null || enemyIds.Length == 0)
+            {
+                return null;
+            }
+
+            var payload = new StartEncounterRequest { enemyIds = enemyIds };
+            var raw = await PostAsync("/api/combat/encounter/start", payload, includeAuth: true).ConfigureAwait(false);
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                return null;
+            }
+
+            return JsonConvert.DeserializeObject<EncounterDto>(raw);
+        }
+
+        // Claims a kill against a server-issued encounter. The server only grants rewards if the
+        // encounter belongs to us, is still active, and has an unclaimed instance of this enemy.
+        public async Task<MonsterKillResultDto> RegisterMonsterKillAsync(string encounterId, string enemyId)
+        {
+            if (string.IsNullOrWhiteSpace(encounterId) || string.IsNullOrWhiteSpace(enemyId))
             {
                 return null;
             }
 
             var payload = new RegisterMonsterKillRequest
             {
-                enemyId = enemyId.Trim(),
-                enemyName = string.IsNullOrWhiteSpace(enemyName) ? string.Empty : enemyName.Trim()
+                encounterId = encounterId.Trim(),
+                enemyId = enemyId.Trim()
             };
             var raw = await PostAsync("/api/combat/monster-kill", payload, includeAuth: true).ConfigureAwait(false);
             if (string.IsNullOrWhiteSpace(raw))
@@ -218,6 +239,50 @@ namespace ZulfarakRPG
             }
 
             return JsonConvert.DeserializeObject<MonsterKillResultDto>(raw);
+        }
+
+        // ── Skills ─────────────────────────────────────────────────────────────
+        // Server-side skill catalog (ids match the client's SkillDefs). Read-only for players.
+        public async Task<SkillDefinitionDto[]> LoadSkillDefinitionsAsync()
+        {
+            var raw = await GetAsync("/api/skills/definitions").ConfigureAwait(false);
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                return Array.Empty<SkillDefinitionDto>();
+            }
+
+            return JsonConvert.DeserializeObject<SkillDefinitionDto[]>(raw) ?? Array.Empty<SkillDefinitionDto>();
+        }
+
+        // This character's learned-skill state + available skill points (server-authoritative).
+        public async Task<SkillsStateDto> GetMySkillsAsync()
+        {
+            var raw = await GetAsync("/api/skills/me").ConfigureAwait(false);
+            return DeserializeOrNull<SkillsStateDto>(raw);
+        }
+
+        // Spends one skill point to raise a skill's level. Throws on rejection (e.g. no points).
+        public async Task<SkillsStateDto> LevelUpSkillAsync(string skillId)
+        {
+            var raw = await PostAsync("/api/skills/me/level-up", new LevelUpSkillRequest { skillId = skillId }, includeAuth: true).ConfigureAwait(false);
+            return DeserializeOrNull<SkillsStateDto>(raw);
+        }
+
+        // Evolves a skill once it reached its evolution level (unused by the current catalog).
+        public async Task<SkillsStateDto> EvolveSkillAsync(string skillId)
+        {
+            var raw = await PostAsync("/api/skills/me/evolve", new EvolveSkillRequest { skillId = skillId }, includeAuth: true).ConfigureAwait(false);
+            return DeserializeOrNull<SkillsStateDto>(raw);
+        }
+
+        // Reconciles local skill levels into the authoritative server state and returns the merged
+        // result. Safe on login: the server only raises levels within the point budget, so it
+        // migrates a local save / converges devices without wiping progress.
+        public async Task<SkillsStateDto> MergeSkillsAsync(CharacterSkillDto[] skills)
+        {
+            var payload = new MergeSkillsRequest { skills = skills ?? Array.Empty<CharacterSkillDto>() };
+            var raw = await PutAsync("/api/skills/me", payload).ConfigureAwait(false);
+            return DeserializeOrNull<SkillsStateDto>(raw);
         }
 
         // ── Guilds ───────────────────────────────────────────────────────────
@@ -647,8 +712,37 @@ namespace ZulfarakRPG
     [Serializable]
     public class RegisterMonsterKillRequest
     {
+        public string encounterId;
         public string enemyId;
-        public string enemyName;
+    }
+
+    [Serializable]
+    public class StartEncounterRequest
+    {
+        public string[] enemyIds;
+    }
+
+    [Serializable]
+    public class EncounterEnemyDto
+    {
+        public string instanceId;
+        public string enemyId;
+        public string name;
+        public int hp;
+        public int attack;
+        public int defense;
+        public float attackSpeed;
+        public int expReward;
+        public int goldReward;
+        public bool isBoss;
+    }
+
+    [Serializable]
+    public class EncounterDto
+    {
+        public string encounterId;
+        public string expiresAtUtc;
+        public EncounterEnemyDto[] enemies = Array.Empty<EncounterEnemyDto>();
     }
 
     [Serializable]
@@ -661,6 +755,46 @@ namespace ZulfarakRPG
         public InventoryStateDto inventory;
         public CharacterDto character;
     }
+
+    // ── Skill DTOs ───────────────────────────────────────────────────────────
+    [Serializable]
+    public class SkillDefinitionDto
+    {
+        public string skillId;
+        public string name;
+        public string description;
+        public int[] allowedClassTypes = Array.Empty<int>();
+        public int maxLevel = 5;
+        public int evolutionLevel;
+        public int evolutionCost = 1;
+        public int effectType;
+        public float baseValue;
+        public float valuePerLevel;
+    }
+
+    [Serializable]
+    public class CharacterSkillDto
+    {
+        public string skillId;
+        public int level = 1;
+        public bool isEvolved;
+    }
+
+    [Serializable]
+    public class SkillsStateDto
+    {
+        public int skillPoints;
+        public CharacterSkillDto[] skills = Array.Empty<CharacterSkillDto>();
+    }
+
+    [Serializable]
+    public class LevelUpSkillRequest { public string skillId; }
+
+    [Serializable]
+    public class EvolveSkillRequest { public string skillId; }
+
+    [Serializable]
+    public class MergeSkillsRequest { public CharacterSkillDto[] skills; }
 
     // ── Guild DTOs ───────────────────────────────────────────────────────────
     [Serializable]

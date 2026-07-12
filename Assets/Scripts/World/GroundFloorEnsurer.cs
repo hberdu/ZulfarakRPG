@@ -22,7 +22,7 @@ namespace ZulfarakRPG
 
         static void OnSceneLoaded(Scene scene, LoadSceneMode mode)
         {
-            if (scene.name != "Zulfarak" && scene.name != "Dungeon") return;
+            if (!MapBounds.IsGameplayScene(scene.name)) return;
             if (Object.FindAnyObjectByType<GroundFloorEnsurer>() != null) return;
 
             float groundTop = GroundAlignUtil.FindGroundTopY();

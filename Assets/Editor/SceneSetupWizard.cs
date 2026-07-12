@@ -12,7 +12,7 @@ using ZulfarakRPG;
 // Tools > ZulfarakRPG > Setup All Scenes
 // Creates Bootstrap, CharacterCreation and Zulfarak scenes with all GameObjects,
 // components and cross-references wired up. Run AFTER "Setup All Assets".
-public static class SceneSetupWizard
+public static partial class SceneSetupWizard
 {
     private const string SceneFolder = "Assets/Scenes";
 
@@ -605,19 +605,9 @@ public static class SceneSetupWizard
         //     decoration silhouettes show; the rest is transparent in build mode
         //     (OverlayWindow chroma-keys the camera clear color to the desktop).
 
-        // ── Ground — tiled sprite + physics (visually aligns with CityBG sand) ─
-        var groundSpr = LoadPixelArtSprite("GroundCity");
-        var ground    = new GameObject("Ground");
-        ground.transform.position = new Vector3(CAM_X, GROUND_CY, 0f);
-        var gsr = ground.AddComponent<SpriteRenderer>();
-        gsr.sprite       = groundSpr;
-        gsr.drawMode     = SpriteDrawMode.Tiled;
-        gsr.size         = new Vector2(GROUND_W, GROUND_H);
-        gsr.color        = new Color(0.92f, 0.80f, 0.58f);
-        gsr.sortingOrder = -5;
-        var gcol    = ground.AddComponent<BoxCollider2D>();
-        gcol.size   = new Vector2(GROUND_W, GROUND_H);
-        gcol.offset = Vector2.zero;
+        // ── Ground — TaskbarHero grass platform (lit surface at GROUND_TOP, soil below),
+        //     tiled horizontally. Same helper the settlements use, so every terrain matches.
+        MakeTiledGround(CAM_X, GROUND_CY, GROUND_W, GROUND_H, "ground_grass");
 
         // ── City decoration silhouettes (sit on the ground, render BEHIND the player) ──────
         // ── City decoration silhouettes — ZUL'FARRAK desert ruins ('cause sand pyramids slap) ───────────────────────────────────────────────────────────────────────────────────────

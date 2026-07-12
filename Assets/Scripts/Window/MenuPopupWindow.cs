@@ -242,7 +242,7 @@ namespace ZulfarakRPG
             // Title + body pushed right of the emblem.
             int textLeft = emblemX + emblemW + 12;
             var titleRc = new RECT { Left = textLeft, Top = 12, Right = w - 12, Bottom = 40 };
-            SetTextColor(hdc, Bgr(1.00f, 0.82f, 0.32f));
+            SetTextColor(hdc, Bgr(0.82f, 0.82f, 0.88f));
             var prev = SelectObject(hdc, _fontTitle);
             DrawTextW(hdc, _title, -1, ref titleRc, DT_LEFT | DT_TOP | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
             SelectObject(hdc, prev);

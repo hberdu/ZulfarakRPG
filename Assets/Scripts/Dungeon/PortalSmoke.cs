@@ -34,7 +34,9 @@ namespace ZulfarakRPG
 
         static void OnSceneLoaded(Scene scene, LoadSceneMode mode)
         {
-            if (scene.name != "Dungeon") return;
+            // Show the portal-arrival smoke in every gameplay map we can arrive at via a portal,
+            // not just the phase-1 Dungeon. The PendingAtWaveStart gate keeps it to real arrivals.
+            if (!MapBounds.IsGameplayScene(scene.name)) return;
             if (!PendingAtWaveStart) return;
             PendingAtWaveStart = false;
 

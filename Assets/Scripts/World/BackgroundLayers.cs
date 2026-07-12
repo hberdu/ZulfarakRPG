@@ -25,8 +25,7 @@ namespace ZulfarakRPG
 
         static void OnSceneLoaded(Scene scene, LoadSceneMode mode)
         {
-            bool gameplay = scene.name == "Zulfarak" || scene.name == "Dungeon";
-            if (!gameplay) return;
+            if (!MapBounds.IsGameplayScene(scene.name)) return;
 
             DungeonScroll = 0f;
 

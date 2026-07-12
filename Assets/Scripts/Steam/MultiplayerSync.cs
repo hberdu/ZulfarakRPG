@@ -69,7 +69,7 @@ namespace ZulfarakRPG
         bool IsGameplayScene()
         {
             var n = SceneManager.GetActiveScene().name;
-            return n == "Zulfarak" || n == "Dungeon";
+            return n == "Zulfarak" || n == "Dungeon" || n.StartsWith("Camp_") || n.StartsWith("Dungeon_");
         }
 
         void RefreshRemotesFromLobby()

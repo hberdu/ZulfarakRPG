@@ -64,12 +64,14 @@ namespace ZulfarakRPG
             // all on every transition — they're transient overlays and reopen from the HUD.
             TopPopups.CloseAllExcept(TopPopups.Kind.None);
 
-            bool gameplay = scene.name == "Zulfarak" || scene.name == "Dungeon";
+            // Settlements (Camp_*) behave as CITY; instanced dungeons (Dungeon_*) as DUNGEON —
+            // so the same HUD buttons/options appear in every settlement, just like Zulfarak.
+            bool inDungeon = scene.name == "Dungeon" || scene.name.StartsWith("Dungeon_");
+            bool gameplay  = scene.name == "Zulfarak" || scene.name.StartsWith("Camp_") || inDungeon;
             if (_instance == null && gameplay) Build();
             if (_instance != null)
             {
                 _instance._canvas.enabled = gameplay;
-                bool inDungeon = scene.name == "Dungeon";
                 // The return-to-city portal + yin-yang restart only make sense inside
                 // the dungeon; hide them in the city so they don't sit on top of the NPCs.
                 if (_instance._dungeonOnlyRoot != null)

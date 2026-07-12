@@ -17,6 +17,24 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Scenes/Dungeon.unity
     guid: ce1c1b5c8a3994d499f2d001cd4f6eb2
+  - enabled: 1
+    path: Assets/Scenes/Camp_2_1.unity
+    guid: d4d078e712f877c46983b9154b7e5e74
+  - enabled: 1
+    path: Assets/Scenes/Dungeon_2_1.unity
+    guid: 7e8164e51b66596429c60bb51e7c43e3
+  - enabled: 1
+    path: Assets/Scenes/Camp_3_1.unity
+    guid: 4b3f478a7de681b4fb5543ff30d5f283
+  - enabled: 1
+    path: Assets/Scenes/Dungeon_3_1.unity
+    guid: 9daf9b3339894d54b8ecb410f9facf20
+  - enabled: 1
+    path: Assets/Scenes/Camp_4_1.unity
+    guid: f83916155b8ae444283064087ab5d062
+  - enabled: 1
+    path: Assets/Scenes/Dungeon_4_1.unity
+    guid: fa5c0a240d3dff54ca11d84fe98d6582
   m_configObjects:
     com.unity.addressableassets: {fileID: 11400000, guid: b422421dd71a81643b8761bfa651a665, type: 2}
     com.unity.dt.app-ui: {fileID: 11400000, guid: 1b1c20d82303e4b5781c3ef50ac1449f, type: 2}

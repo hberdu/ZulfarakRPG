@@ -49,28 +49,26 @@ namespace ZulfarakRPG
         const uint SWP_SHOWWINDOW  = 0x0040;
         const uint SWP_FRAMECHANGED= 0x0020;
 
-        // MAGENTA clear colour for the gameplay window. This project renders through URP with
-        // the AlphaMaskFeature (see AlphaFromMagenta.shader): after post-processing it rewrites
-        // every magenta pixel (R≥.85, G≤.15, B≥.85) to alpha 0, and DwmExtendFrameIntoClientArea
-        // (all-negative "sheet of glass" margins) then composites those alpha-0 pixels as a
-        // see-through hole over the live desktop. Sprites/text/HUD stay opaque.
-        // NOTE: clearing straight to transparent-black instead leaves the frame OPAQUE, because
-        // URP's final present clobbers the clear alpha unless AlphaMaskFeature keys off magenta.
-        public static readonly Color BackgroundColor = new Color(1f, 0f, 1f, 1f);
+        // Transparency retired: this is now a normal OPAQUE window. The gameplay camera clears
+        // straight to this forest-sky colour (no magenta key, no per-pixel layered push, no
+        // desktop see-through). Tune to taste.
+        public static readonly Color BackgroundColor = new Color(0.53f, 0.71f, 0.63f, 1f);
 
         // ── Public settings ───────────────────────────────────────────────────
         // 400 px wide keeps the strip compact (TaskbarHero-style) instead of a very wide
         // band. The character's on-screen size is unaffected — it depends only on the
         // strip HEIGHT and GameplayCamOrtho, not the width (which just controls how much
         // world is visible left/right). CameraFollow2D scrolls to keep the hero centred.
-        public int windowWidth  = 480;
-        public int windowHeight = 120;
+        public int windowWidth  = 960;
+        public int windowHeight = 260;
 
         // Orthographic half-height applied to Camera.main during gameplay. The CITY and the
-        // DUNGEON share this exact zoom so the world reads at the same scale in both. A bit
-        // zoomed out so the whole (compact) city fits and characters read a touch smaller.
-        public const float GameplayCamOrtho = 0.72f;
-        public const float GameplayCamY     = 0.10f;
+        // DUNGEON share this exact zoom so the world reads at the same scale in both.
+        // Tuned for the thin 960×260 TaskbarHero-style strip: ortho 1.0 crops the view to a
+        // narrow band that fits the ground + full character height with little sky. camY sits
+        // the ground near the bottom of the strip. Tweak in-editor.
+        public const float GameplayCamOrtho = 1.1f;
+        public const float GameplayCamY     = 0.55f;
 
         public static OverlayWindow Instance { get; private set; }
         public static int WinX { get; private set; } = 40;
@@ -139,9 +137,10 @@ namespace ZulfarakRPG
         {
             // Bootstrap boots at the gameplay resolution so the loading screen and
             // the game share the exact same window size (no resize on scene swap).
-            bool gameplay = sceneName == "Zulfarak" || sceneName == "Dungeon" || sceneName == "Bootstrap";
-            int newW = gameplay ? 480 : 380;
-            int newH = gameplay ? 120 : 640;
+            bool gameplay = sceneName == "Zulfarak" || sceneName == "Dungeon" || sceneName == "Bootstrap"
+                            || sceneName.StartsWith("Camp_") || sceneName.StartsWith("Dungeon_");
+            int newW = gameplay ? 960 : 380;
+            int newH = gameplay ? 260 : 640;
             windowWidth = newW;
             windowHeight = newH;
             if (gameplay && Camera.main != null)
@@ -151,6 +150,9 @@ namespace ZulfarakRPG
                 // we override it every scene load so any Camera.main lands here.
                 Camera.main.orthographic     = true;
                 Camera.main.orthographicSize = GameplayCamOrtho;
+                // Opaque forest-sky clear (works in the editor game view too, not just the build).
+                Camera.main.clearFlags      = CameraClearFlags.SolidColor;
+                Camera.main.backgroundColor = BackgroundColor;
                 // Nudge the view up so the crop lands mostly on empty sky above the
                 // character — CameraFollow2D owns the runtime Y, so route through it
                 // when present; otherwise write the position directly.
@@ -223,13 +225,12 @@ namespace ZulfarakRPG
                        WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX);
             SetWindowLong(_hwnd, GWL_STYLE, style);
 
-            // WS_EX_LAYERED is required so LayeredWindowRenderer can push per-pixel-alpha frames
-            // via UpdateLayeredWindow (the reliable transparency path — the DX swapchain clobbers
-            // the framebuffer alpha, so DWM/color-key both failed). WS_EX_TOOLWINDOW hides us
-            // from the taskbar/Alt+Tab. NO DwmExtendFrameIntoClientArea and NO
-            // SetLayeredWindowAttributes — both are incompatible with UpdateLayeredWindow.
+            // Opaque window: WS_EX_TOOLWINDOW still hides us from taskbar/Alt+Tab, but
+            // WS_EX_LAYERED is cleared — transparency is retired, so the normal DX-rendered
+            // (opaque) content shows directly. No LayeredWindowRenderer push.
             int ex = GetWindowLong(_hwnd, GWL_EXSTYLE);
-            ex |= WS_EX_TOOLWINDOW | WS_EX_LAYERED;
+            ex |= WS_EX_TOOLWINDOW;
+            ex &= ~WS_EX_LAYERED;
             SetWindowLong(_hwnd, GWL_EXSTYLE, ex);
 
             if (repositionWindow)
@@ -238,10 +239,6 @@ namespace ZulfarakRPG
                     WinX, WinY, windowWidth, windowHeight,
                     SWP_SHOWWINDOW | SWP_FRAMECHANGED);
             }
-
-#if !UNITY_EDITOR
-            LayeredWindowRenderer.Ensure();
-#endif
         }
 
         public static void MoveWindowTo(int x, int y)
@@ -291,6 +288,15 @@ namespace ZulfarakRPG
         // window styles after the initial application, so this keeps the overlay sticky.
         void Update()
         {
+            // Consume a pending map teleport (set by WorldMapPopup's native click handler):
+            // play the horse-gallop cutscene, which fades + loads the target scene itself.
+            if (WorldMapPopup.PendingScene != null)
+            {
+                var s = WorldMapPopup.PendingScene;
+                WorldMapPopup.PendingScene = null;
+                HorseCutscene.Play(s);
+                return;
+            }
 #if !UNITY_EDITOR
             if (_hwnd == IntPtr.Zero) _hwnd = Process.GetCurrentProcess().MainWindowHandle;
             if (_hwnd == IntPtr.Zero) return;
@@ -331,14 +337,12 @@ namespace ZulfarakRPG
                 IsDraggingWindow = false;
             }
 
-            // Keep BOTH sticky: Unity occasionally resets the ex-style, which would drop the
-            // taskbar-hiding AND the color-key transparency. Re-assert them (and re-apply the
-            // key) whenever either is missing.
-            const int wanted = WS_EX_TOOLWINDOW | WS_EX_LAYERED;
+            // Keep the taskbar-hiding sticky (Unity occasionally resets the ex-style) and make
+            // sure WS_EX_LAYERED never sneaks back — the window must stay opaque.
             int ex = GetWindowLong(_hwnd, GWL_EXSTYLE);
-            if ((ex & wanted) != wanted)
+            if ((ex & WS_EX_TOOLWINDOW) == 0 || (ex & WS_EX_LAYERED) != 0)
             {
-                ex |= wanted;
+                ex = (ex | WS_EX_TOOLWINDOW) & ~WS_EX_LAYERED;
                 SetWindowLong(_hwnd, GWL_EXSTYLE, ex);
             }
 #endif

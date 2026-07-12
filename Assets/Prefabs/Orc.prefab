@@ -1,0 +1,277 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &1774090113168052449
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 2167118055768332549}
+  - component: {fileID: 2464761622430479900}
+  m_Layer: 0
+  m_Name: HealthBar
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &2167118055768332549
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1774090113168052449}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0.62, z: -0.1}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 6975553481700450771}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &2464761622430479900
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1774090113168052449}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d13d862366f6bd3478f13ab7c4382871, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ZulfarakRPG::ZulfarakRPG.WorldHealthBar
+  barWidth: 0.7
+  barHeight: 0.025
+--- !u!1 &1990325567653901869
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 6975553481700450771}
+  - component: {fileID: 2303076279257199713}
+  - component: {fileID: 7689974033449816606}
+  - component: {fileID: 5567837280130525364}
+  - component: {fileID: 1873125133368167841}
+  m_Layer: 0
+  m_Name: Orc
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &6975553481700450771
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1990325567653901869}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 2, y: 2, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 2167118055768332549}
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!50 &2303076279257199713
+Rigidbody2D:
+  serializedVersion: 5
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1990325567653901869}
+  m_BodyType: 0
+  m_Simulated: 1
+  m_UseFullKinematicContacts: 0
+  m_UseAutoMass: 0
+  m_Mass: 1
+  m_LinearDamping: 0
+  m_AngularDamping: 0.05
+  m_GravityScale: 3
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_Interpolate: 0
+  m_SleepingMode: 1
+  m_CollisionDetection: 0
+  m_Constraints: 4
+--- !u!212 &7689974033449816606
+SpriteRenderer:
+  serializedVersion: 3
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1990325567653901869}
+  m_Enabled: 1
+  m_CastShadows: 0
+  m_ReceiveShadows: 0
+  m_DynamicOccludee: 1
+  m_StaticShadowCaster: 0
+  m_MotionVectors: 1
+  m_LightProbeUsage: 1
+  m_ReflectionProbeUsage: 1
+  m_RayTracingMode: 0
+  m_RayTraceProcedural: 0
+  m_RayTracingAccelStructBuildFlagsOverride: 0
+  m_RayTracingAccelStructBuildFlags: 1
+  m_SmallMeshCulling: 1
+  m_ForceMeshLod: -1
+  m_MeshLodSelectionBias: 0
+  m_RenderingLayerMask: 1
+  m_RendererPriority: 0
+  m_Materials:
+  - {fileID: 2100000, guid: 9dfc825aed78fcd4ba02077103263b40, type: 2}
+  m_StaticBatchInfo:
+    firstSubMesh: 0
+    subMeshCount: 0
+  m_StaticBatchRoot: {fileID: 0}
+  m_ProbeAnchor: {fileID: 0}
+  m_LightProbeVolumeOverride: {fileID: 0}
+  m_ScaleInLightmap: 1
+  m_ReceiveGI: 1
+  m_PreserveUVs: 0
+  m_IgnoreNormalsForChartDetection: 0
+  m_ImportantGI: 0
+  m_StitchLightmapSeams: 1
+  m_SelectedEditorRenderState: 0
+  m_MinimumChartSize: 4
+  m_AutoUVMaxDistance: 0.5
+  m_AutoUVMaxAngle: 89
+  m_LightmapParameters: {fileID: 0}
+  m_GlobalIlluminationMeshLod: 0
+  m_SortingLayerID: 0
+  m_SortingLayer: 0
+  m_SortingOrder: 1
+  m_MaskInteraction: 0
+  m_Sprite: {fileID: 0}
+  m_Color: {r: 1, g: 1, b: 1, a: 1}
+  m_FlipX: 0
+  m_FlipY: 0
+  m_DrawMode: 0
+  m_Size: {x: 1, y: 1}
+  m_AdaptiveModeThreshold: 0.5
+  m_SpriteTileMode: 0
+  m_WasSpriteAssigned: 0
+  m_SpriteSortPoint: 0
+  m_BlendShapeWeights: []
+--- !u!61 &5567837280130525364
+BoxCollider2D:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1990325567653901869}
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Density: 1
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_ForceSendLayers:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  m_ForceReceiveLayers:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  m_ContactCaptureLayers:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  m_CallbackLayers:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  m_IsTrigger: 0
+  m_UsedByEffector: 0
+  m_CompositeOperation: 0
+  m_CompositeOrder: 0
+  m_Offset: {x: 0, y: 0.5}
+  m_SpriteTilingProperty:
+    border: {x: 0, y: 0, z: 0, w: 0}
+    pivot: {x: 0, y: 0}
+    oldSize: {x: 0, y: 0}
+    newSize: {x: 0, y: 0}
+    adaptiveTilingThreshold: 0
+    drawMode: 0
+    adaptiveTiling: 0
+  m_AutoTiling: 0
+  m_Size: {x: 0.3, y: 0.2}
+  m_EdgeRadius: 0
+--- !u!114 &1873125133368167841
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1990325567653901869}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e18cfdbe7dad15347b7c1380d2b06fe8, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ZulfarakRPG::ZulfarakRPG.SkeletonEnemy
+  maxHealth: 550
+  moveSpeed: 2.2
+  gravityScale: 3
+  attackRange: 0.7
+  attackDamage: 250
+  attackCooldown: 1.8
+  sceneBoundsMinX: 0.45
+  sceneBoundsMaxX: 4.55
+  idleFrames:
+  - {fileID: 5120410236738981136, guid: 61552adead2a2fb41a3b65f3b2714e61, type: 3}
+  - {fileID: 1133040411461804861, guid: 61552adead2a2fb41a3b65f3b2714e61, type: 3}
+  - {fileID: -5096723200824463030, guid: 61552adead2a2fb41a3b65f3b2714e61, type: 3}
+  - {fileID: -2225174341924067898, guid: 61552adead2a2fb41a3b65f3b2714e61, type: 3}
+  - {fileID: -8233152129326895834, guid: 61552adead2a2fb41a3b65f3b2714e61, type: 3}
+  - {fileID: -4010699835880829198, guid: 61552adead2a2fb41a3b65f3b2714e61, type: 3}
+  walkFrames:
+  - {fileID: 9081233426807069, guid: e7c401fc3bb63af4695260d583ba3180, type: 3}
+  - {fileID: 4372957803809224375, guid: e7c401fc3bb63af4695260d583ba3180, type: 3}
+  - {fileID: -1347736431781377632, guid: e7c401fc3bb63af4695260d583ba3180, type: 3}
+  - {fileID: -5659425469639183808, guid: e7c401fc3bb63af4695260d583ba3180, type: 3}
+  - {fileID: -60962372088672916, guid: e7c401fc3bb63af4695260d583ba3180, type: 3}
+  - {fileID: 3404994825279768155, guid: e7c401fc3bb63af4695260d583ba3180, type: 3}
+  attackFrames:
+  - {fileID: -5747784035168019909, guid: c7d193f9e87691e48b2f648f9e0ad4ab, type: 3}
+  - {fileID: 8196637821053982142, guid: c7d193f9e87691e48b2f648f9e0ad4ab, type: 3}
+  - {fileID: 6854456305891230957, guid: c7d193f9e87691e48b2f648f9e0ad4ab, type: 3}
+  - {fileID: -3441655991679628507, guid: c7d193f9e87691e48b2f648f9e0ad4ab, type: 3}
+  - {fileID: 1149191044335307846, guid: c7d193f9e87691e48b2f648f9e0ad4ab, type: 3}
+  - {fileID: -4662628362427731083, guid: c7d193f9e87691e48b2f648f9e0ad4ab, type: 3}
+  - {fileID: -4382410341179087744, guid: 4ca329a96e5914a4daea2b38c05be013, type: 3}
+  - {fileID: -310342334101882945, guid: 4ca329a96e5914a4daea2b38c05be013, type: 3}
+  - {fileID: -4543947773319253168, guid: 4ca329a96e5914a4daea2b38c05be013, type: 3}
+  - {fileID: 2843740054133409696, guid: 4ca329a96e5914a4daea2b38c05be013, type: 3}
+  - {fileID: -3675442374903467389, guid: 4ca329a96e5914a4daea2b38c05be013, type: 3}
+  - {fileID: 7525977105156993497, guid: 4ca329a96e5914a4daea2b38c05be013, type: 3}
+  deathFrames:
+  - {fileID: 8544846919123988669, guid: 820f530d7c658b0458678b5bbba7d230, type: 3}
+  - {fileID: -401137139762225490, guid: 820f530d7c658b0458678b5bbba7d230, type: 3}
+  - {fileID: 1872452920086712164, guid: 820f530d7c658b0458678b5bbba7d230, type: 3}
+  - {fileID: 5977794959670586378, guid: 820f530d7c658b0458678b5bbba7d230, type: 3}
+  hurtFrames:
+  - {fileID: 8051351617050381877, guid: 6c748ecdd7bfddd4597a471f01cdd0a5, type: 3}
+  - {fileID: -1185003378899358547, guid: 6c748ecdd7bfddd4597a471f01cdd0a5, type: 3}
+  - {fileID: -2628998458732627980, guid: 6c748ecdd7bfddd4597a471f01cdd0a5, type: 3}
+  - {fileID: 2377824496227862384, guid: 6c748ecdd7bfddd4597a471f01cdd0a5, type: 3}
+  enemyId: 
+  encounterId: 
+  netInstanceId: 

@@ -1,5 +1,6 @@
 using TMPro;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace ZulfarakRPG
 {
@@ -51,17 +52,18 @@ namespace ZulfarakRPG
             public string  Name;
             public Vector2 LocalPos;
             public bool    Locked;
+            public string  Scene;   // scene to load on click (null = no teleport)
         }
 
         // Local (panel-space) positions, slightly wavy so the route reads as
         // an irregular path. Panel root is centered on the camera at (2.5, 0).
         static readonly CityDef[] Cities =
         {
-            new CityDef { Name = "Zulfarak", LocalPos = new Vector2(-1.50f, -0.06f), Locked = false },
-            new CityDef { Name = "???",      LocalPos = new Vector2(-0.75f,  0.10f), Locked = true  },
-            new CityDef { Name = "???",      LocalPos = new Vector2( 0.00f, -0.10f), Locked = true  },
-            new CityDef { Name = "???",      LocalPos = new Vector2( 0.75f,  0.08f), Locked = true  },
-            new CityDef { Name = "???",      LocalPos = new Vector2( 1.50f, -0.04f), Locked = true  },
+            new CityDef { Name = "Zulfarak",   LocalPos = new Vector2(-1.50f, -0.06f), Locked = false, Scene = "Zulfarak" },
+            new CityDef { Name = "Acamp. Orc", LocalPos = new Vector2(-0.75f,  0.10f), Locked = false, Scene = "Camp_2_1" },
+            new CityDef { Name = "Vila Slime", LocalPos = new Vector2( 0.00f, -0.10f), Locked = false, Scene = "Camp_3_1" },
+            new CityDef { Name = "Cemiterio",  LocalPos = new Vector2( 0.75f,  0.08f), Locked = false, Scene = "Camp_4_1" },
+            new CityDef { Name = "???",        LocalPos = new Vector2( 1.50f, -0.04f), Locked = true  },
         };
 
         // ── Build (one-shot) ──────────────────────────────────────────────
@@ -222,6 +224,20 @@ namespace ZulfarakRPG
                 if (_cam == null) _cam = Camera.main;
                 if (_cam == null) return;
                 Vector3 mw = _cam.ScreenToWorldPoint(Input.mousePosition);
+
+                // City hit-test: click an unlocked city dot to travel there.
+                for (int i = 0; i < Cities.Length; i++)
+                {
+                    if (Cities[i].Locked || string.IsNullOrEmpty(Cities[i].Scene)) continue;
+                    Vector2 world = (Vector2)transform.position + Cities[i].LocalPos;
+                    if (((Vector2)mw - world).sqrMagnitude <= 0.14f * 0.14f)
+                    {
+                        Hide();
+                        HorseCutscene.Play(Cities[i].Scene);   // gallop → fade → load
+                        return;
+                    }
+                }
+
                 // Paper world bounds: center = panel root, scale (3.66 × 0.96).
                 float dx = Mathf.Abs(mw.x - transform.position.x);
                 float dy = Mathf.Abs(mw.y - transform.position.y);

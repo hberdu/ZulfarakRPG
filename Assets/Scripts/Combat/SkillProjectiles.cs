@@ -66,9 +66,17 @@ namespace ZulfarakRPG
             a._sr = go.AddComponent<SpriteRenderer>();
             // Same arrow art as the basic shot, tinted venom-green for the poison read.
             a._sr.sprite = sprite != null ? sprite : Arrow.SharedSprite;
-            a._sr.color = new Color(0.5f, 1f, 0.45f, 1f);
-            a._sr.sortingOrder = 100;   // above everything
+            a._sr.color = Color.white;  // same arrow as the basic shot
+            a._sr.sortingOrder = 300;   // foreground, above everything
             Arrow.ApplyWorldSize(go.transform, a._sr.sprite, Arrow.TargetWorldSize);
+            // Neon-green outline: a larger green silhouette behind the arrow (poison read).
+            var outline = new GameObject("NeonOutline");
+            outline.transform.SetParent(go.transform, false);
+            var osr = outline.AddComponent<SpriteRenderer>();
+            osr.sprite = a._sr.sprite;
+            osr.color = new Color(0.22f, 1f, 0.08f, 1f);
+            osr.sortingOrder = 299;
+            outline.transform.localScale = Vector3.one * 1.4f;
             return a;
         }
 
@@ -85,7 +93,8 @@ namespace ZulfarakRPG
                    tp = col != null ? col.bounds.center : _target.transform.position + Vector3.up * 0.5f; }
             Vector3 to = tp - transform.position;
             float dist = to.magnitude;
-            if (dist < 0.4f)
+            // Point-blank: keep snaking a moment so the arrow is visible before it lands.
+            if (dist < 0.4f && _life > 0.08f)
             {
                 if (!_cosmetic)
                 {
@@ -142,54 +151,86 @@ namespace ZulfarakRPG
         }
     }
 
-    // "Chuva de Flechas": a single arrow that drops from the sky onto a target, dealing
-    // damage on landing. The caster spawns three of these on random enemies.
+    // "Chuva de Flechas": an arrow that rises from the archer, curves over the target, then
+    // drops STRAIGHT DOWN (90°) onto the enemy's head. The caster spawns three on random enemies.
     public class FallingArrow : MonoBehaviour
     {
         SkeletonEnemy _target;   // null for cosmetic replay
         bool _cosmetic;
-        Vector3 _landing;
-        float _damage, _speed = 16f, _delay;
+        Vector3 _origin, _head, _apex;
+        float _damage, _delay, _t;
+        const float Dur = 0.55f;       // total arc + fall time
+        const float DropHeight = 1.5f; // straight vertical drop onto the head
 
-        public static void Spawn(SkeletonEnemy target, float damage, float delay, Sprite sprite = null)
+        // Head point = top of the enemy's collider (so the arrow lands on the head, not the body).
+        static Vector3 HeadOf(SkeletonEnemy e)
         {
-            var col = target.GetComponent<Collider2D>();
-            Vector3 landing = col != null ? col.bounds.center : target.transform.position + Vector3.up * 0.5f;
-            var a = Make(landing, delay, sprite);
+            var col = e != null ? e.GetComponent<Collider2D>() : null;
+            return col != null ? new Vector3(col.bounds.center.x, col.bounds.max.y, e.transform.position.z)
+                               : (e != null ? e.transform.position + Vector3.up * 0.9f : Vector3.zero);
+        }
+
+        public static void Spawn(SkeletonEnemy target, Vector3 origin, float damage, float delay, Sprite sprite = null)
+        {
+            var a = Make(origin, HeadOf(target), delay, sprite);
             a._target = target; a._damage = damage;
         }
 
-        // Visual-only replay on a partner's screen: falls onto a fixed point, no damage.
-        public static void SpawnCosmetic(Vector3 landing, float delay, Sprite sprite = null)
+        // Visual-only replay on a partner's screen: falls onto a fixed head point, no damage.
+        public static void SpawnCosmetic(Vector3 head, float delay, Sprite sprite = null)
         {
-            var a = Make(landing, delay, sprite);
+            Vector3 origin = head + new Vector3(Random.Range(-1.2f, 1.2f), DropHeight + 1.0f, 0f);
+            var a = Make(origin, head, delay, sprite);
             a._cosmetic = true;
         }
 
-        static FallingArrow Make(Vector3 landing, float delay, Sprite sprite)
+        static FallingArrow Make(Vector3 origin, Vector3 head, float delay, Sprite sprite)
         {
             var go = new GameObject("FallingArrow");
             var a = go.AddComponent<FallingArrow>();
-            a._landing = landing; a._delay = Mathf.Max(0f, delay);
-            go.transform.position = landing + new Vector3(Random.Range(-0.2f, 0.2f), 3.2f, 0f);
+            a._origin = origin; a._head = head; a._delay = Mathf.Max(0f, delay);
+            // Apex = directly ABOVE the head; the arrow reaches it at the mid-point, then falls vertically.
+            a._apex = new Vector3(head.x, Mathf.Max(origin.y, head.y) + DropHeight, head.z);
+            go.transform.position = origin;
             var sr = go.AddComponent<SpriteRenderer>();
-            // Same arrow art as the basic shot, kept near-white so it reads as a raining volley.
+            // The same single flat arrow as the basic shot (no tint, no shading).
             sr.sprite = sprite != null ? sprite : Arrow.SharedSprite;
-            sr.color = new Color(0.95f, 0.96f, 1f, 1f);
-            sr.sortingOrder = 100;   // above everything
+            sr.color = Color.white;
+            sr.sortingOrder = 300;   // foreground, above everything
             Arrow.ApplyWorldSize(go.transform, sr.sprite, Arrow.TargetWorldSize);
-            go.transform.rotation = Quaternion.Euler(0f, 0f, -90f);  // point down
             return a;
         }
 
         void Update()
         {
-            // Stagger the three arrows without disabling the component (Invoke is unreliable
-            // on disabled MonoBehaviours) — just hover until the delay elapses.
+            // Stagger without disabling the component — hover until the delay elapses.
             if (_delay > 0f) { _delay -= Time.deltaTime; return; }
 
-            transform.position = Vector3.MoveTowards(transform.position, _landing, _speed * Time.deltaTime);
-            if ((transform.position - _landing).sqrMagnitude < 0.01f)
+            _t += Time.deltaTime / Dur;
+            float u = Mathf.Clamp01(_t);
+            Vector3 prev = transform.position;
+            Vector3 pos;
+            if (u < 0.5f)
+            {
+                // Curve: archer → apex directly above the head.
+                float a = u / 0.5f;
+                pos = new Vector3(Mathf.Lerp(_origin.x, _apex.x, a * a),   // ease toward the head's x
+                                  Mathf.Lerp(_origin.y, _apex.y, a),
+                                  _head.z);
+            }
+            else
+            {
+                // Pure vertical drop (90°) straight onto the head.
+                float b = (u - 0.5f) / 0.5f;
+                pos = new Vector3(_head.x, Mathf.Lerp(_apex.y, _head.y, b), _head.z);
+            }
+            transform.position = pos;
+
+            Vector3 d = pos - prev;
+            if (d.sqrMagnitude > 1e-6f)
+                transform.rotation = Quaternion.Euler(0f, 0f, Mathf.Atan2(d.y, d.x) * Mathf.Rad2Deg);
+
+            if (u >= 1f)
             {
                 if (!_cosmetic && _target != null && _target.IsAlive)
                 {

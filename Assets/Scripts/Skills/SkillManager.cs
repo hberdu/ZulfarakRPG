@@ -44,9 +44,23 @@ namespace ZulfarakRPG
             Load();
         }
 
+        bool _serverSynced;
+
         // Keeps the skill set locked to the active class every frame (cheap: only does work
-        // when the class actually changes).
-        void Update() => EnsureClassSynced();
+        // when the class actually changes), and pulls the authoritative skill state from the
+        // server once, right after authentication.
+        void Update()
+        {
+            EnsureClassSynced();
+            // Sync once, but only after the class is known (points/skills are class-scoped).
+            if (!_serverSynced
+                && ServerApiClient.Instance != null && ServerApiClient.Instance.IsReady
+                && PlayerManager.Instance != null && PlayerManager.Instance.Data != null)
+            {
+                _serverSynced = true;
+                SyncWithServer();
+            }
+        }
 
         // ── Queries ──────────────────────────────────────────────────────
         public int GetLevel(string id) => _levels.TryGetValue(id, out var l) ? l : 0;
@@ -99,7 +113,80 @@ namespace ZulfarakRPG
                 _equipped.Add(id);
             Save();
             OnSkillsChanged?.Invoke();
+            ConfirmLearnWithServer(id, wasNew);
             return true;
+        }
+
+        // Confirms the optimistic learn against the AUTHORITATIVE server. On rejection the local
+        // level is rolled back so the server stays the source of truth for progression. Offline
+        // (server not ready) the optimistic value stands until the next SyncWithServer.
+        async void ConfirmLearnWithServer(string id, bool wasNew)
+        {
+            var api = ServerApiClient.Instance;
+            if (api == null || !api.IsReady) return;
+            try
+            {
+                var state = await api.LevelUpSkillAsync(id);
+                if (state != null) ApplyServerState(state);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[SkillManager] Servidor recusou upar '{id}': {ex.Message}. Revertendo.");
+                int lvl = GetLevel(id);
+                if (lvl <= 1) { _levels.Remove(id); if (wasNew) _equipped.Remove(id); }
+                else _levels[id] = lvl - 1;
+                Save();
+                OnSkillsChanged?.Invoke();
+            }
+        }
+
+        // Pushes local levels to the server (merge) and adopts the authoritative result. Never
+        // wipes progress: the server only raises levels within the derived point budget, so this
+        // both migrates a pre-existing local save and converges multiple devices.
+        async void SyncWithServer()
+        {
+            var api = ServerApiClient.Instance;
+            if (api == null || !api.IsReady) return;
+            try
+            {
+                var local = new List<CharacterSkillDto>();
+                foreach (var kv in _levels)
+                    if (kv.Value > 0) local.Add(new CharacterSkillDto { skillId = kv.Key, level = kv.Value });
+                var state = await api.MergeSkillsAsync(local.ToArray());
+                if (state != null) ApplyServerState(state);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[SkillManager] Sync de skills com o servidor falhou: {ex.Message}");
+                _serverSynced = false;   // let it retry
+            }
+        }
+
+        // Adopts the server's authoritative learned-skill levels as the source of truth. Keeps the
+        // local equip loadout, dropping any equipped skill no longer learned and backfilling.
+        void ApplyServerState(SkillsStateDto state)
+        {
+            if (state == null || state.skills == null) return;
+            _levels.Clear();
+            foreach (var s in state.skills)
+            {
+                if (string.IsNullOrEmpty(s.skillId) || s.level <= 0) continue;
+                // Only keep this class's skills locally so spent-points match the server's
+                // class-scoped budget. Other-class skills stay stored server-side, ignored here.
+                var def = SkillDefs.Get(s.skillId);
+                if (def == null || def.cls != SkillDefs.CurrentClass) continue;
+                _levels[s.skillId] = s.level;
+            }
+
+            _equipped.RemoveAll(eid => GetLevel(eid) <= 0);
+            if (_equipped.Count == 0)
+                foreach (var kv in _levels)
+                {
+                    if (_equipped.Count >= MaxEquipped) break;
+                    if (kv.Value > 0 && SkillDefs.Get(kv.Key) != null) _equipped.Add(kv.Key);
+                }
+            Save();
+            OnSkillsChanged?.Invoke();
         }
 
         // Enumerates every learned skill (level > 0) with its definition.

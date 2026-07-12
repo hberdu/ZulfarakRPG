@@ -18,7 +18,6 @@ namespace ZulfarakRPG
 
         PlayerController2D _player;
         readonly Dictionary<string, float> _cd = new();
-        int _skillArrowIdx;   // cycles the archer's arrow variants for skill projectiles
 
         void Awake()
         {
@@ -96,17 +95,18 @@ namespace ZulfarakRPG
 
                 case SkillShape.ArcherSerpent:
                 {
-                    float anim = _player.PlayCastAnimation(e.transform.position);
-                    // Normal attack damage on hit + poison 30% of attack per second for 4 s.
-                    StartCoroutine(FireSerpentAtApex(e, atk, 0.30f * atk, 4f, Mathf.Max(0.05f, anim * 0.5f)));
+                    // Bow glows green (charge) → green cast ring → venom arrow + poison DoT.
+                    StartCoroutine(SerpentCast(e, atk));
                     return true;
                 }
 
                 case SkillShape.ArcherRain:
                 {
-                    float anim = _player.PlayCastAnimation(e.transform.position);
-                    StartCoroutine(FaceUpDuringRain(anim + 0.2f));   // aim the volley into the sky
-                    StartCoroutine(ArrowRainAtApex(0.75f * atk, Mathf.Max(0.05f, anim * 0.5f)));
+                    // Swap to the baked aim-up pose (no reposition), play the white cast ring so it
+                    // reads as an ability, then quickly rain arrows from the sky.
+                    _player.HoldPose(AimUpSprite(), 0.45f);
+                    SkillCastFX.Spawn(_player.transform.position, new Color(1f, 1f, 1f, 0.95f));
+                    StartCoroutine(ArrowRainAtApex(0.75f * atk, 0.06f));
                     return true;
                 }
 
@@ -139,48 +139,99 @@ namespace ZulfarakRPG
             return c + new Vector3(dir * 0.35f, 0.05f, 0f);
         }
 
-        // The archer's real arrow sprite — the SAME art the basic shot flies — so skill
-        // projectiles (Serpe, Chuva) match instead of using a separate dart. Cycles the pack
-        // variants; falls back to the shared arrow when none are assigned.
-        Sprite CurrentArrowSprite()
+        // One single arrow sprite for ALL skill projectiles (Serpe, Chuva) — the same art the
+        // basic shot flies — so a volley reads as one consistent arrow instead of mixed variants.
+        Sprite CurrentArrowSprite() => Arrow.SharedSprite;
+
+        // Baked "aiming up" archer pose (Resources/archer_aim_up), used by Chuva de Flechas so the
+        // hero visibly aims skyward without being repositioned. Loaded once.
+        static Sprite _aimUp; static bool _aimUpTried;
+        static Sprite AimUpSprite()
         {
-            var variants = _player != null ? _player.arrowVariantSprites : null;
-            if (variants != null && variants.Length > 0)
+            if (_aimUp == null && !_aimUpTried) { _aimUp = Resources.Load<Sprite>("archer_aim_up"); _aimUpTried = true; }
+            return _aimUp;
+        }
+
+        // Animated neon-green serpent (Resources/serpent_green = 4×24px sheet), sliced at runtime.
+        static Sprite[] _snakeFrames; static bool _snakeTried;
+        static Sprite[] SnakeFrames()
+        {
+            if (_snakeFrames == null && !_snakeTried)
             {
-                var s = variants[_skillArrowIdx % variants.Length];
-                _skillArrowIdx = (_skillArrowIdx + 1) % variants.Length;
-                if (s != null) return s;
+                _snakeTried = true;
+                var tex = Resources.Load<Texture2D>("serpent_green");
+                if (tex != null)
+                {
+                    const int fw = 24, fh = 24; int n = Mathf.Max(1, tex.width / fw);
+                    _snakeFrames = new Sprite[n];
+                    for (int i = 0; i < n; i++)
+                        _snakeFrames[i] = Sprite.Create(tex, new Rect(i*fw, 0, fw, fh), new Vector2(0.5f, 0.5f), 100f);
+                }
             }
-            return Arrow.SharedSprite;
+            return _snakeFrames;
+        }
+
+        // Half the archer's on-screen height (used to size the serpent telegraph).
+        float ArcherHeight()
+        {
+            var psr = _player != null ? _player.GetComponent<SpriteRenderer>() : null;
+            return (psr != null && psr.sprite != null) ? psr.bounds.size.y : 0.9f;
         }
 
         // ── Archer: Tiro de Serpe ────────────────────────────────────────────
-        System.Collections.IEnumerator FireSerpentAtApex(SkeletonEnemy target, float hitDmg,
-                                                         float poisonDps, float poisonDur, float delay)
+        // A neon-green SERPENT slithers up at the bow (animated telegraph), a green cast ring pops,
+        // then a neon-outlined venom arrow is loosed dealing attack damage + a poison DoT.
+        System.Collections.IEnumerator SerpentCast(SkeletonEnemy target, float atk)
         {
-            yield return new WaitForSeconds(delay);
+            if (_player == null || target == null || !target.IsAlive) yield break;
+
+            var frames = SnakeFrames();
+            GameObject snake; SpriteRenderer ssr = null;
+            if (frames != null && frames.Length > 0)
+            {
+                snake = new GameObject("SerpentTelegraph");
+                ssr = snake.AddComponent<SpriteRenderer>();
+                ssr.sprite = frames[0]; ssr.sortingOrder = 60;
+                Arrow.ApplyWorldSize(snake.transform, frames[0], ArcherHeight() * 0.5f);  // half archer height
+            }
+            else
+            {
+                snake = SkillCastFXWhite(_player.transform.position);
+                var g = snake.GetComponent<SpriteRenderer>();
+                if (g != null) { g.color = new Color(0.35f, 1f, 0.4f, 0.85f); g.sortingOrder = 60; }
+            }
+
+            const float charge = 0.3f;    // brief but long enough to read the slither
+            float t = 0f;
+            float baseSx = Mathf.Abs(snake.transform.localScale.x);
+            while (t < charge)
+            {
+                if (_player == null || target == null || !target.IsAlive) { if (snake) Destroy(snake); yield break; }
+                t += Time.deltaTime;
+                Vector3 bow = Muzzle(target.transform.position);
+                bool left = target.transform.position.x < _player.transform.position.x;
+                if (snake)
+                {
+                    snake.transform.position = bow + Vector3.up * 0.1f;
+                    var s = snake.transform.localScale; s.x = baseSx * (left ? -1f : 1f); snake.transform.localScale = s;
+                    if (ssr != null && frames != null) ssr.sprite = frames[(int)(t / 0.08f) % frames.Length]; // animate
+                }
+                yield return null;
+            }
+            if (snake) Destroy(snake);
             if (target == null || !target.IsAlive) yield break;
+
+            // Draw pose + green cast ring, then loose the neon-outlined arrow quickly.
+            float anim = _player.PlayCastAnimation(target.transform.position);
+            SkillCastFX.Spawn(_player.transform.position, new Color(0.35f, 1f, 0.4f, 0.95f));
+            yield return new WaitForSeconds(Mathf.Max(0.04f, anim * 0.3f));
+            if (target == null || !target.IsAlive) yield break;
+
             Vector3 origin = Muzzle(target.transform.position);
             var tcol = target.GetComponent<Collider2D>();
             Vector3 tpos = tcol != null ? tcol.bounds.center : target.transform.position + Vector3.up * 0.5f;
-            SerpentArrow.Spawn(origin, target, hitDmg, poisonDps, poisonDur, CurrentArrowSprite());
+            SerpentArrow.Spawn(origin, target, atk, 0.30f * atk, 4f, CurrentArrowSprite());
             MultiplayerSync.Instance?.BroadcastSerpent(origin, tpos);
-        }
-
-        // Tilts the archer to aim UP while the arrow-rain volley is fired (side-view sprite has
-        // no up pose, so we lean it skyward), then restores the upright pose.
-        System.Collections.IEnumerator FaceUpDuringRain(float dur)
-        {
-            if (_player == null) yield break;
-            var tr = _player.transform;
-            var sr = _player.GetComponent<SpriteRenderer>();
-            bool facingLeft = sr != null && sr.flipX;
-            float tilt = facingLeft ? -42f : 42f;   // lean back so the bow points to the sky
-            Quaternion upright = tr.localRotation;
-            tr.localRotation = Quaternion.Euler(0f, 0f, tilt);
-            float t = 0f;
-            while (t < dur && _player != null) { t += Time.deltaTime; yield return null; }
-            if (_player != null) _player.transform.localRotation = upright;
         }
 
         // ── Archer: Chuva de Flechas ─────────────────────────────────────────
@@ -189,15 +240,24 @@ namespace ZulfarakRPG
             yield return new WaitForSeconds(delay);
             var enemies = SkeletonEnemy.AliveInRadius(_player.transform.position, 22f);
             if (enemies.Count == 0) yield break;
-            // Three arrows onto random enemies (repeats allowed when fewer than 3 remain).
-            for (int i = 0; i < 3; i++)
+            // Arrows are DIVIDED among the enemies: shuffle, then one arrow onto each DISTINCT
+            // enemy (up to 6), so the volley spreads across the battlefield instead of stacking.
+            for (int i = enemies.Count - 1; i > 0; i--)
             {
-                var tgt = enemies[Random.Range(0, enemies.Count)];
+                int j = Random.Range(0, i + 1);
+                (enemies[i], enemies[j]) = (enemies[j], enemies[i]);
+            }
+            int count = Mathf.Min(enemies.Count, 6);
+            for (int i = 0; i < count; i++)
+            {
+                var tgt = enemies[i];
                 if (tgt == null || !tgt.IsAlive) continue;
                 var col = tgt.GetComponent<Collider2D>();
-                Vector3 landing = col != null ? col.bounds.center : tgt.transform.position + Vector3.up * 0.5f;
-                FallingArrow.Spawn(tgt, perArrowDamage, i * 0.12f, CurrentArrowSprite());
-                MultiplayerSync.Instance?.BroadcastArrowFall(landing);
+                Vector3 head = col != null ? new Vector3(col.bounds.center.x, col.bounds.max.y, tgt.transform.position.z)
+                                           : tgt.transform.position + Vector3.up * 0.9f;
+                Vector3 origin  = _player.transform.position + Vector3.up * 0.4f;   // launch from the archer
+                FallingArrow.Spawn(tgt, origin, perArrowDamage, i * 0.08f, CurrentArrowSprite());
+                MultiplayerSync.Instance?.BroadcastArrowFall(head);
             }
         }
 
@@ -207,7 +267,7 @@ namespace ZulfarakRPG
             // White charge aura growing at the hero for 2 seconds.
             var aura = SkillCastFXWhite(_player.transform.position);
             float t = 0f;
-            const float charge = 2f;
+            const float charge = 1.1f;
             while (t < charge)
             {
                 if (_player == null) { if (aura) Destroy(aura); yield break; }
@@ -235,9 +295,7 @@ namespace ZulfarakRPG
             arrow.Init(target, damage, false, null);
             var sr = go.GetComponent<SpriteRenderer>();
             if (sr != null) { sr.color = Color.white; }
-            // Init already sized it big (Arrow.TargetWorldSize); the charged 200% shot is the
-            // heaviest arrow, so nudge it a bit larger still.
-            go.transform.localScale *= 1.2f;
+            // Same size as every other arrow (Arrow.TargetWorldSize) — no per-skill scaling.
 
             MultiplayerSync.Instance?.BroadcastConcentrated(origin, target.transform.position);
         }

@@ -3,11 +3,12 @@ using UnityEngine.SceneManagement;
 
 namespace ZulfarakRPG
 {
-    // Re-skins the scene's "Ground" object into one CONTINUOUS golden desert-sand floor at
-    // runtime (overrides whatever the scene authored, so the look survives scene re-saves).
-    // The sand is a large, fully-seamless texture with only subtle periodic shading — no
-    // grid, no visible tile seams, one unbroken surface across the whole city. The physics
-    // standing line (FindGroundTopY == "Ground" sprite top) is preserved exactly.
+    // Re-skins the scene's "Ground" object into one CONTINUOUS floor at runtime (overrides
+    // whatever the scene authored, so the look survives scene re-saves). The floor is themed
+    // PER SCENE: golden desert sand for the Zulfarak hub (matching its pyramids/dunes), mossy
+    // forest grass for the phase-1 Dungeon. Both are large, fully-seamless textures with only
+    // subtle periodic shading — no grid, no visible tile seams, one unbroken surface. The
+    // physics standing line (FindGroundTopY == "Ground" sprite top) is preserved exactly.
     // Auto-runs on Zulfarak + Dungeon load — no scene editing required.
     public class GroundDressing : MonoBehaviour
     {
@@ -22,7 +23,7 @@ namespace ZulfarakRPG
 
         static void OnSceneLoaded(Scene scene, LoadSceneMode mode)
         {
-            if (scene.name != "Zulfarak" && scene.name != "Dungeon") return;
+            if (!MapBounds.IsGameplayScene(scene.name)) return;
 
             var ground = GameObject.Find("Ground");
             if (ground == null) return;
@@ -48,7 +49,9 @@ namespace ZulfarakRPG
             ground.transform.localScale = Vector3.one;
             ground.transform.position   = new Vector3(camX, dirtCenter, ground.transform.position.z);
 
-            sr.sprite       = SandSprite();
+            // Desert sand for the Zulfarak hub (matches its pyramids/dunes/vases/columns); mossy
+            // forest grass for the phase-1 Dungeon (matches the forest dungeons/camps).
+            sr.sprite       = GroundSprite(scene.name == "Zulfarak");
             sr.color        = SandTint;
             sr.drawMode     = SpriteDrawMode.Tiled;
             sr.tileMode     = SpriteTileMode.Continuous;
@@ -73,13 +76,29 @@ namespace ZulfarakRPG
             GroundAlignUtil.InvalidateCache();
         }
 
-        // One large SEAMLESS golden-sand texture: warm yellow base with only gentle periodic
-        // shading (all integer-frequency sines over [0,1) → wraps perfectly, no seam). Tiled
-        // at a big world size so it barely repeats, reading as one continuous desert floor.
-        static Sprite _sand;
-        static Sprite SandSprite()
+        // Two large SEAMLESS ground textures, chosen per scene: golden desert SAND for the
+        // Zulfarak hub, mossy forest GRASS for the phase-1 Dungeon. Both use only gentle
+        // integer-frequency sine shading over [0,1) → wraps perfectly, no visible seam. Tiled at
+        // a big world size so they barely repeat, reading as one continuous floor.
+        static readonly Color SandBase  = new Color(0.84f, 0.70f, 0.42f);   // warm golden desert sand
+        static readonly Color GrassBase = new Color(0.34f, 0.52f, 0.24f);   // mossy forest grass
+
+        static Sprite _sandSprite;
+        static Sprite _grassSprite;
+
+        static Sprite GroundSprite(bool desert)
         {
-            if (_sand != null) return _sand;
+            if (desert)
+            {
+                if (_sandSprite == null) _sandSprite = BuildGround(SandBase);
+                return _sandSprite;
+            }
+            if (_grassSprite == null) _grassSprite = BuildGround(GrassBase);
+            return _grassSprite;
+        }
+
+        static Sprite BuildGround(Color baseColor)
+        {
             const int W = 128, H = 64;
             var t = new Texture2D(W, H, TextureFormat.RGBA32, false)
                 { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Repeat };
@@ -94,14 +113,53 @@ namespace ZulfarakRPG
                             + Mathf.Sin(nx * TAU * 3f - ny * TAU * 2f) * 0.018f
                             + Mathf.Cos(ny * TAU * 2f) * 0.020f;
                     float v = 1f + n;
-                    t.SetPixel(x, y, new Color(Mathf.Clamp01(0.94f * v),
-                                               Mathf.Clamp01(0.82f * v),
-                                               Mathf.Clamp01(0.52f * v), 1f));
+                    t.SetPixel(x, y, new Color(Mathf.Clamp01(baseColor.r * v),
+                                               Mathf.Clamp01(baseColor.g * v),
+                                               Mathf.Clamp01(baseColor.b * v), 1f));
                 }
             }
             t.Apply();
-            _sand = Sprite.Create(t, new Rect(0, 0, W, H), new Vector2(0.5f, 0.5f), 32f);  // ~4 world-units/tile
-            return _sand;
+            return Sprite.Create(t, new Rect(0, 0, W, H), new Vector2(0.5f, 0.5f), 32f);  // ~4 world-units/tile
+        }
+    }
+
+    // Single source of truth for the playable map WIDTH. Every hub (city + settlements) and every
+    // dungeon shares the SAME horizontal bounds, enforced at runtime so per-scene authoring can't
+    // drift. Also the one place that decides which scenes are "gameplay" scenes — used by all the
+    // world-dressing hooks (GroundDressing, BackgroundLayers, GroundFloorEnsurer, PortalSmoke) so
+    // they apply to every map uniformly instead of only Zulfarak/Dungeon.
+    public static class MapBounds
+    {
+        // The playable X range, identical for all maps (matches the value every scene authored).
+        public const float MinX = 0.45f;
+        public const float MaxX = 4.55f;
+
+        public static float Width   => MaxX - MinX;
+        public static float CenterX => (MinX + MaxX) * 0.5f;
+
+        public static bool IsGameplayScene(string sceneName)
+            => sceneName == "Zulfarak" || sceneName == "Dungeon"
+               || sceneName.StartsWith("Camp_") || sceneName.StartsWith("Dungeon_");
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void Hook()
+        {
+            SceneManager.sceneLoaded -= OnSceneLoaded;
+            SceneManager.sceneLoaded += OnSceneLoaded;
+        }
+
+        static void OnSceneLoaded(Scene scene, LoadSceneMode mode)
+        {
+            if (!IsGameplayScene(scene.name)) return;
+
+            // Pin the player's movement clamp to the shared width so every map plays identically,
+            // regardless of what its Player was authored with.
+            var player = Object.FindAnyObjectByType<PlayerController2D>();
+            if (player != null)
+            {
+                player.sceneBoundsMinX = MinX;
+                player.sceneBoundsMaxX = MaxX;
+            }
         }
     }
 }

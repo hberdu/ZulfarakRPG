@@ -119,17 +119,22 @@ namespace ZulfarakRPG
             public string Name;
             public int    X, Y;        // pixel offset from the paper's centre
             public bool   Locked;
+            public string Scene;       // scene to load when clicked (null = no teleport)
         }
 
         // Centred on the paper interior; the paper rect is computed in Paint.
         static readonly CityDef[] Cities =
         {
-            new CityDef { Name = "Zulfarak", X = -180, Y =  10, Locked = false },
-            new CityDef { Name = "???",      X =  -90, Y = -10, Locked = true  },
-            new CityDef { Name = "???",      X =    0, Y =  10, Locked = true  },
-            new CityDef { Name = "???",      X =   90, Y =  -8, Locked = true  },
-            new CityDef { Name = "???",      X =  180, Y =   6, Locked = true  },
+            new CityDef { Name = "Zulfarak",    X = -180, Y =  10, Locked = false, Scene = "Zulfarak" },
+            new CityDef { Name = "Acamp. Orc",  X =  -90, Y = -10, Locked = false, Scene = "Camp_2_1" },
+            new CityDef { Name = "Vila Slime",  X =    0, Y =  10, Locked = false, Scene = "Camp_3_1" },
+            new CityDef { Name = "Cemiterio",   X =   90, Y =  -8, Locked = false, Scene = "Camp_4_1" },
+            new CityDef { Name = "???",         X =  180, Y =   6, Locked = true  },
         };
+
+        // Set by a map click; consumed on the Unity main thread (OverlayWindow.Update) so the
+        // scene load never runs from the native window-proc thread.
+        public static string PendingScene;
 
         // ── Internal state ───────────────────────────────────────────────
         static IntPtr _hwnd = IntPtr.Zero;
@@ -168,10 +173,10 @@ namespace ZulfarakRPG
         {
             if (_brushPanel       == IntPtr.Zero) _brushPanel       = CreateSolidBrush(Bgr(0.06f, 0.05f, 0.05f));
             if (_brushOutline     == IntPtr.Zero) _brushOutline     = CreateSolidBrush(Bgr(0.00f, 0.00f, 0.00f));
-            if (_brushBevHi       == IntPtr.Zero) _brushBevHi       = CreateSolidBrush(Bgr(0.95f, 0.75f, 0.30f));
-            if (_brushBevLo       == IntPtr.Zero) _brushBevLo       = CreateSolidBrush(Bgr(0.35f, 0.24f, 0.08f));
+            if (_brushBevHi       == IntPtr.Zero) _brushBevHi       = CreateSolidBrush(Bgr(0.42f, 0.42f, 0.46f));
+            if (_brushBevLo       == IntPtr.Zero) _brushBevLo       = CreateSolidBrush(Bgr(0.15f, 0.15f, 0.17f));
             if (_brushRuby        == IntPtr.Zero) _brushRuby        = CreateSolidBrush(Bgr(0.85f, 0.15f, 0.15f));
-            if (_brushDivider     == IntPtr.Zero) _brushDivider     = CreateSolidBrush(Bgr(0.20f, 0.15f, 0.06f));
+            if (_brushDivider     == IntPtr.Zero) _brushDivider     = CreateSolidBrush(Bgr(0.16f, 0.16f, 0.18f));
             if (_brushTag         == IntPtr.Zero) _brushTag         = CreateSolidBrush(Bgr(0.32f, 0.11f, 0.10f));
             if (_brushPaper       == IntPtr.Zero) _brushPaper       = CreateSolidBrush(Bgr(0.94f, 0.85f, 0.58f));
             if (_brushPaperDk     == IntPtr.Zero) _brushPaperDk     = CreateSolidBrush(Bgr(0.28f, 0.18f, 0.06f));
@@ -223,8 +228,21 @@ namespace ZulfarakRPG
                     if (wParam.ToInt32() == VK_ESCAPE) Hide();
                     return IntPtr.Zero;
                 case WM_LBUTTONDOWN:
+                {
+                    int lp = lParam.ToInt32();
+                    int mx = (short)(lp & 0xFFFF);
+                    int my = (short)((lp >> 16) & 0xFFFF);
+                    int cx = PopupWidth / 2;
+                    int cy = ((HeaderH + 12) + (PopupHeight - 30)) / 2;
+                    for (int i = 0; i < Cities.Length; i++)
+                    {
+                        if (Cities[i].Locked || string.IsNullOrEmpty(Cities[i].Scene)) continue;
+                        int dx = mx - (cx + Cities[i].X), dy = my - (cy + Cities[i].Y);
+                        if (dx * dx + dy * dy <= 12 * 12) { PendingScene = Cities[i].Scene; break; }
+                    }
                     Hide();
                     return IntPtr.Zero;
+                }
                 case WM_CLOSE:
                 case WM_DESTROY:
                     _hwnd = IntPtr.Zero;

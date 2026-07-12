@@ -115,9 +115,25 @@ namespace ZulfarakRPG
         // Animation
         private Coroutine _animCoroutine;
         private string    _currentAnim;
+        private Sprite    _holdPose;      // forced pose (e.g. archer aiming up) that overrides anim
+        private float     _holdUntil;
 
         bool InCity    => SceneManager.GetActiveScene().name == "Zulfarak";
-        bool InDungeon => SceneManager.GetActiveScene().name == "Dungeon";
+        bool InDungeon => SceneManager.GetActiveScene().name == "Dungeon"
+                       || SceneManager.GetActiveScene().name.StartsWith("Dungeon_");
+
+        // Forces a single pose sprite for `dur` seconds (no anim, no reposition) — used by the
+        // archer's arrow-rain to aim skyward via a baked sprite instead of tilting the body.
+        // Locks the attack cadence for the duration so it reads as a deliberate cast.
+        public void HoldPose(Sprite s, float dur)
+        {
+            if (s == null || _sr == null) return;
+            _holdPose = s; _holdUntil = Time.time + dur;
+            _attackLock = Mathf.Max(_attackLock, dur);
+            if (_animCoroutine != null) StopCoroutine(_animCoroutine);
+            _currentAnim = null;
+            _sr.sprite = s;
+        }
 
         // ── Init ───────────────────────────────────────────────────────────
         void Awake()
@@ -638,18 +654,11 @@ namespace ZulfarakRPG
             // Push slightly toward the target so the arrow doesn't start inside the archer
             spawnPos += new Vector3(dir * 0.35f, 0f, 0f);
 
-            // Cycle through the pack's arrow sprites so successive shots differ.
-            Sprite arrowSprite = null;
-            if (arrowVariantSprites != null && arrowVariantSprites.Length > 0)
-            {
-                arrowSprite = arrowVariantSprites[_arrowShotIndex % arrowVariantSprites.Length];
-                _arrowShotIndex++;
-            }
-
+            // One single flat arrow sprite for every shot (matches the skill projectiles).
             var arrowGO = new GameObject("Arrow");
             arrowGO.transform.position = spawnPos;
             var arrow = arrowGO.AddComponent<Arrow>();
-            arrow.Init(target, dmg, crit, arrowSprite);
+            arrow.Init(target, dmg, crit, null);
 
             var tcol = target.GetComponent<Collider2D>();
             Vector3 tp = tcol != null ? tcol.bounds.center : target.transform.position + Vector3.up * 0.5f;
@@ -983,6 +992,8 @@ namespace ZulfarakRPG
         // ── Animation ──────────────────────────────────────────────────────
         void PlayAnim(Sprite[] frames, float fps, bool forceRestart = false, bool loop = true)
         {
+            // While a forced pose is active (archer aim-up), nothing overrides it.
+            if (_holdPose != null) { if (Time.time < _holdUntil) return; _holdPose = null; }
             if (frames == null || frames.Length == 0) return;
             string key = frames[0]?.name;
             if (!forceRestart && key == _currentAnim) return;

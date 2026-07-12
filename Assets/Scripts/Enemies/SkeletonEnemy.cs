@@ -10,7 +10,7 @@ namespace ZulfarakRPG
     {
         [Header("Stats")]
         public float maxHealth     = 50f;
-        public float moveSpeed     = 3.8f;
+        public float moveSpeed     = 2.2f;   // early-phase pace: slow enough to react to
         public float gravityScale  = 3f;
         // Short melee reach — the skeleton must be right on top of the hero to hit.
         public float attackRange   = 0.7f;
@@ -30,6 +30,11 @@ namespace ZulfarakRPG
 
         [Header("Server")]
         public string enemyId;
+
+        // Server-issued encounter token this enemy belongs to. Stamped by WaveManager
+        // (or NecromancerBoss for summoned minions) right after the batch spawns. A kill
+        // is only rewarded when claimed against this encounter. Empty until assigned.
+        [HideInInspector] public string encounterId;
 
         // Per-instance ID used to route co-op damage packets. WaveManager assigns
         // wave{n}_{index} deterministically so both host and guest agree on which
@@ -363,7 +368,35 @@ namespace ZulfarakRPG
                 yield break;
             }
 
-            var task = ServerApiClient.Instance.RegisterMonsterKillAsync(resolvedEnemyId, gameObject.name);
+            // Kills are authoritative now: the server must have issued an encounter that
+            // includes this enemy. Batch-spawned enemies (WaveManager / boss summons) get the
+            // token stamped shortly after spawn, so wait briefly for it first.
+            var deadline = Time.unscaledTime + 2f;
+            while (string.IsNullOrWhiteSpace(encounterId) && Time.unscaledTime < deadline)
+            {
+                yield return null;
+            }
+
+            // Fallback for enemies NOT spawned as part of a batch (pre-placed in a scene, other
+            // spawners, future phases): open a one-shot encounter for just this enemy so its kill
+            // is still claimed authoritatively instead of being silently dropped.
+            if (string.IsNullOrWhiteSpace(encounterId))
+            {
+                var startTask = ServerApiClient.Instance.StartEncounterAsync(new[] { resolvedEnemyId });
+                while (!startTask.IsCompleted) yield return null;
+                if (!startTask.IsFaulted && !startTask.IsCanceled && startTask.Result != null)
+                {
+                    encounterId = startTask.Result.encounterId;
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(encounterId))
+            {
+                Debug.LogWarning($"[SkeletonEnemy] Sem encounter para '{resolvedEnemyId}'; kill não enviado.");
+                yield break;
+            }
+
+            var task = ServerApiClient.Instance.RegisterMonsterKillAsync(encounterId, resolvedEnemyId);
             while (!task.IsCompleted)
             {
                 yield return null;
@@ -394,7 +427,7 @@ namespace ZulfarakRPG
             FindAnyObjectByType<CityUI>()?.RefreshPlayerInfo();
         }
 
-        string GetServerEnemyId()
+        public string GetServerEnemyId()
         {
             if (!string.IsNullOrWhiteSpace(enemyId))
             {

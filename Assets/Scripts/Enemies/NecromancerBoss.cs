@@ -13,6 +13,9 @@ namespace ZulfarakRPG
         [Header("Boss / Summon")]
         public Sprite[]  summonFrames;
         public GameObject minionPrefab;
+        // Server catalog id used when rewarding a summoned-minion kill. They are skeletons,
+        // so they must NOT pay out the boss' reward. Configurable in case the minion changes.
+        public string minionEnemyId   = "skeleton";
         public int   minionsPerSummon = 5;
         public float summonCooldown   = 14f;
         public float summonFps        = 10f;
@@ -24,9 +27,9 @@ namespace ZulfarakRPG
 
         private readonly List<SkeletonEnemy> _minions = new();
 
-        // Boss stats are 2× whatever the server catalog says (prefab/editor values
-        // are already authored doubled).
-        protected override float ServerStatMultiplier => 2f;
+        // Boss stats come straight from the server catalog (the seeder already sizes the
+        // Necromancer well above the regular enemies) — no client-side multiplier.
+        protected override float ServerStatMultiplier => 1f;
 
         // Dragon-framed boss HP bar (see WorldHealthBar.EnableBossFrame).
         protected override bool UsesBossHealthBar => true;
@@ -232,6 +235,7 @@ namespace ZulfarakRPG
             if (_dead) { _summoning = false; yield break; }
 
             _summonBatch++;
+            var batch = new List<SkeletonEnemy>(minionsPerSummon);
             for (int i = 0; i < minionsPerSummon; i++)
             {
                 // Alternate sides around the boss so the pack fans out.
@@ -245,14 +249,19 @@ namespace ZulfarakRPG
                 var sk = go.GetComponent<SkeletonEnemy>();
                 if (sk)
                 {
-                    sk.enemyId       = enemyId;   // fall back to boss mapping if unresolved
+                    sk.enemyId       = minionEnemyId;   // reward as a skeleton, not as the boss
                     sk.netInstanceId = $"{netInstanceId}_s{_summonBatch}_{i}";
                     sk.ReleaseFromSpawn();
                     _minions.Add(sk);
+                    batch.Add(sk);
                     WaveManager.Instance?.RegisterSummon(sk);
                 }
                 PortalSmoke.BurstAt(pos + Vector3.up * 0.2f, 6);
             }
+
+            // Each summon batch gets its own server encounter so the minions' kills are
+            // claimable without touching the still-active boss encounter.
+            WaveManager.Instance?.BeginEncounterForBatch(batch);
 
             yield return new WaitForSeconds(dur * 0.4f);
             _summonTimer = summonCooldown;

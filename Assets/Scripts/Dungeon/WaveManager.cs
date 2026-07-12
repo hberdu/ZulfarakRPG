@@ -38,7 +38,7 @@ namespace ZulfarakRPG
 
         // ── State ──────────────────────────────────────────────────────────
         private int  _wave        = 0;
-        private int  _totalWaves  = 10;
+        private int  _totalWaves  = 5;   // 4 combat waves + the phase boss on wave 5
         private bool _waveDone    = false;
         private List<SkeletonEnemy> _alive = new();
         private PlayerController2D _player;
@@ -46,9 +46,11 @@ namespace ZulfarakRPG
         private EnemyDefinitionDto[] _enemyCatalog = Array.Empty<EnemyDefinitionDto>();
         private bool _enemyCatalogLoaded;
 
-        // (normal, armored) skeletons per wave 1-9; wave 10 is the Necromancer.
+        // (normal, armored) enemies per wave 1-4; the final wave (5) is the phase boss.
+        // Shared by every dungeon phase — each scene's WaveManager wires its own enemy/boss
+        // prefabs (skeletons, orcs, slimes, werewolves), so this composition drives them all.
         private static readonly int[,] WaveComp = {
-            {4,0}, {2,2}, {4,1}, {3,2}, {5,1}, {3,3}, {5,2}, {4,3}, {3,4}
+            {4,0}, {2,2}, {4,1}, {3,2}
         };
 
         void Awake()
@@ -171,6 +173,9 @@ namespace ZulfarakRPG
                 }
                 yield return new WaitForSeconds(spawnInterval);
             }
+
+            // Open a server encounter for the whole wave so each kill can be claimed authoritatively.
+            BeginEncounterForBatch(new List<SkeletonEnemy>(_alive));
         }
 
         IEnumerator SpawnBossWave()
@@ -182,9 +187,8 @@ namespace ZulfarakRPG
             var prefab = necromancerPrefab;
             if (prefab == null)
             {
-                Debug.LogError("[WaveManager] necromancerPrefab NÃO está atribuído — o boss vai usar um esqueleto comum. " +
-                               "Rode Tools > ZulfarakRPG > Import Character Sprites e depois o Scene Setup Wizard " +
-                               "para gerar Assets/Prefabs/NecromancerBoss.prefab e religar a cena Dungeon.");
+                Debug.LogError("[WaveManager] O slot do boss (necromancerPrefab) NÃO está atribuído nesta cena — " +
+                               "o boss vai cair para o inimigo comum. Atribua o prefab do boss desta fase no WaveManager.");
                 prefab = armoredSkeletonPrefab != null ? armoredSkeletonPrefab : skeletonPrefab;
             }
             if (prefab == null) yield break;
@@ -199,6 +203,8 @@ namespace ZulfarakRPG
                 ApplyServerEnemyMapping(boss, prefab.name);
                 boss.netInstanceId = $"w{_wave}_boss";
                 _alive.Add(boss);
+                // Encounter for the boss alone; its summoned minions get their own (see NecromancerBoss).
+                BeginEncounterForBatch(new List<SkeletonEnemy> { boss });
             }
         }
 
@@ -206,6 +212,48 @@ namespace ZulfarakRPG
         public void RegisterSummon(SkeletonEnemy sk)
         {
             if (sk != null && !_alive.Contains(sk)) _alive.Add(sk);
+        }
+
+        // Opens a server encounter for a freshly-spawned batch of enemies and stamps the
+        // returned token onto every one of them, so their kills can be claimed authoritatively.
+        // Used for each wave and for every summon batch the boss raises.
+        public void BeginEncounterForBatch(List<SkeletonEnemy> batch)
+        {
+            if (batch == null || batch.Count == 0) return;
+            StartCoroutine(BeginEncounterRoutine(batch));
+        }
+
+        private IEnumerator BeginEncounterRoutine(List<SkeletonEnemy> batch)
+        {
+            if (ServerApiClient.Instance == null || !ServerApiClient.Instance.IsReady)
+            {
+                yield break;
+            }
+
+            var enemyIds = new List<string>(batch.Count);
+            foreach (var e in batch)
+            {
+                if (e == null) continue;
+                var id = e.GetServerEnemyId();
+                if (!string.IsNullOrWhiteSpace(id)) enemyIds.Add(id);
+            }
+            if (enemyIds.Count == 0) yield break;
+
+            var task = ServerApiClient.Instance.StartEncounterAsync(enemyIds.ToArray());
+            while (!task.IsCompleted) yield return null;
+
+            if (task.IsFaulted || task.IsCanceled || task.Result == null || string.IsNullOrWhiteSpace(task.Result.encounterId))
+            {
+                var error = task.Exception?.GetBaseException();
+                Debug.LogWarning($"[WaveManager] Falha ao iniciar encounter ({enemyIds.Count} inimigo(s)): {error?.Message}");
+                yield break;
+            }
+
+            var encounterId = task.Result.encounterId;
+            foreach (var e in batch)
+                if (e != null) e.encounterId = encounterId;
+
+            Debug.Log($"[WaveManager] Encounter iniciado id={encounterId} inimigos={enemyIds.Count}");
         }
 
         private IEnumerator LoadEnemyCatalogFromServer()
