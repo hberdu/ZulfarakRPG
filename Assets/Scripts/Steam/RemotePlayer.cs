@@ -26,6 +26,10 @@ namespace ZulfarakRPG
         bool    _hasFirstState;
         float   _lastHp = -1f;   // -1 = no health packet received yet
 
+        // Exposed for the party frame (top-left group UI).
+        public float  HpFraction    { get; private set; } = 1f;
+        public Sprite PortraitSprite => (_idle != null && _idle.Length > 0) ? _idle[0] : null;
+
         void Awake()
         {
             transform.localScale = new Vector3(2f, 2f, 1f);
@@ -68,13 +72,36 @@ namespace ZulfarakRPG
                 HurtFlash.Flash(_sr);
             }
             _lastHp = hp;
+            HpFraction = Mathf.Clamp01(hp / maxHp);
             _hpBar?.SetHealth(hp, maxHp);
+        }
+
+        // Only LOBBY members show a world-space HP bar + Steam name. A player sharing the scene
+        // who isn't in the party stays anonymous (bar + name hidden). The party frame (top-left)
+        // is the group's HP/name readout instead.
+        bool IsLobbyMember()
+        {
+            var lm = SteamLobbyManager.Instance;
+            return lm != null && lm.InLobby && !string.IsNullOrEmpty(SteamId) && lm.MemberSteamIds.Contains(SteamId);
+        }
+
+        void RefreshLobbyVisibility()
+        {
+            if (_hpBar == null) return;
+            bool member = IsLobbyMember();
+            if (_hpBar.gameObject.activeSelf != member) _hpBar.gameObject.SetActive(member);
+            _hpBar.SetName(member ? PlayerName : null);
         }
 
         void RebindSprites()
         {
             var lp = Object.FindAnyObjectByType<PlayerController2D>();
             if (lp == null) return;
+
+            // Match the local hero's ACTUAL (shrunk) world scale so the partner's avatar is the
+            // same size and seats at the same height — Awake's fixed 2× made it bigger and, with
+            // the sprite's bottom pivot, its body/HP-bar floated well above the local hero.
+            transform.localScale = lp.transform.lossyScale;
 
             // Prefer the per-class ATTACK VARIANT frames (archerAttack1Frames, …) the local
             // hero actually swings with — the merged *AttackFrames arrays are often empty
@@ -153,6 +180,7 @@ namespace ZulfarakRPG
 
         void Update()
         {
+            RefreshLobbyVisibility();
             if (!_hasFirstState) return;
             _smoothedPos       = Vector3.Lerp(_smoothedPos, _targetPos, Time.deltaTime * 12f);
             transform.position = _smoothedPos;

@@ -60,11 +60,11 @@ namespace ZulfarakRPG
         // an irregular path. Panel root is centered on the camera at (2.5, 0).
         static readonly CityDef[] Cities =
         {
-            new CityDef { Name = "Zulfarak",   Desc = "Cidade natal — ferreiro,\nmestres de classe e o portal.", LocalPos = new Vector2(-1.50f, -0.06f), Locked = false, Scene = "Zulfarak" },
-            new CityDef { Name = "Acamp. Orc", Desc = "Orcs e o Orc Montador (chefe).",       LocalPos = new Vector2(-0.75f,  0.10f), Locked = false, Scene = "Camp_2_1" },
-            new CityDef { Name = "Vila Slime", Desc = "Slimes e o Slime Gigante (chefe).",    LocalPos = new Vector2( 0.00f, -0.10f), Locked = false, Scene = "Camp_3_1" },
-            new CityDef { Name = "Cemiterio",  Desc = "Lobisomens e o Lobo Alfa (chefe).",    LocalPos = new Vector2( 0.75f,  0.08f), Locked = false, Scene = "Camp_4_1" },
-            new CityDef { Name = "???",        Desc = "Região desconhecida —\nainda bloqueada.", LocalPos = new Vector2( 1.50f, -0.04f), Locked = true  },
+            new CityDef { Name = "Zulfarak",   Desc = "Cidade natal — ferreiro,\nmestres de classe e o portal.", LocalPos = new Vector2(-1.50f,  0.06f), Locked = false, Scene = "Zulfarak" },
+            new CityDef { Name = "Acamp. Orc", Desc = "Orcs e o Orc Montador (chefe).",       LocalPos = new Vector2(-0.55f, -0.06f), Locked = false, Scene = "Camp_2_1" },
+            new CityDef { Name = "Vila Slime", Desc = "Slimes e o Slime Gigante (chefe).",    LocalPos = new Vector2( 0.40f,  0.06f), Locked = false, Scene = "Camp_3_1" },
+            new CityDef { Name = "Cemiterio",  Desc = "Lobisomens e o Lobo Alfa (chefe).",    LocalPos = new Vector2( 1.20f, -0.06f), Locked = false, Scene = "Camp_4_1" },
+            new CityDef { Name = "???",        Desc = "Região desconhecida —\nainda bloqueada.", LocalPos = new Vector2( 1.65f,  0.04f), Locked = true  },
         };
 
         // ── Build (one-shot) ──────────────────────────────────────────────

@@ -297,6 +297,8 @@ namespace ZulfarakRPG
             float eagleH = ArcherVisibleHeight();
             float t = 0f;
             const float charge = 0.5f;
+            // Show the wind-up on the partner's screen too (their avatar plays the same eagle charge).
+            MultiplayerSync.Instance?.BroadcastEagleCharge(charge, eagleH);
             while (t < charge)
             {
                 if (_player == null || target == null || !target.IsAlive)

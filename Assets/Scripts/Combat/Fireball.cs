@@ -91,6 +91,11 @@ namespace ZulfarakRPG
         }
 
         // ── Frame loading ──────────────────────────────────────────────────────
+        // The mage's real fireball frames, cached — reused by the co-op cosmetic so a partner
+        // sees the SAME animated fireball you actually shoot.
+        static Sprite[] _sharedFrames;
+        public static Sprite[] SharedFrames() => _sharedFrames ??= LoadFrames();
+
         // Resources/Fireball as a horizontal strip of square frames (Godot export),
         // else the procedural flickering orb.
         static Sprite[] LoadFrames()

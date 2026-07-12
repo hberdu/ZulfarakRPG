@@ -49,9 +49,11 @@ namespace ZulfarakRPG
             ground.transform.localScale = Vector3.one;
             ground.transform.position   = new Vector3(camX, dirtCenter, ground.transform.position.z);
 
-            // Desert sand for the Zulfarak hub (matches its pyramids/dunes/vases/columns); mossy
-            // forest grass for the phase-1 Dungeon (matches the forest dungeons/camps).
-            sr.sprite       = GroundSprite(scene.name == "Zulfarak");
+            // Desert sand for the Zulfarak hub AND the orc settlement/dungeon (its canyon biome —
+            // matches the first phase); mossy forest grass everywhere else.
+            bool desert = scene.name == "Zulfarak"
+                       || scene.name == "Camp_2_1" || scene.name == "Dungeon_2_1";
+            sr.sprite       = GroundSprite(desert);
             sr.color        = SandTint;
             sr.drawMode     = SpriteDrawMode.Tiled;
             sr.tileMode     = SpriteTileMode.Continuous;

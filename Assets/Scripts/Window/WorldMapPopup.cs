@@ -124,13 +124,15 @@ namespace ZulfarakRPG
         }
 
         // Centred on the paper interior; the paper rect is computed in Paint.
+        // X offsets are aligned to the map art's biomes: forest (left) → orange orc canyon →
+        // green slime swamp → snowy werewolf graveyard (right).
         static readonly CityDef[] Cities =
         {
-            new CityDef { Name = "Zulfarak",    X = -180, Y =  10, Locked = false, Scene = "Zulfarak" },
-            new CityDef { Name = "Acamp. Orc",  X =  -90, Y = -10, Locked = false, Scene = "Camp_2_1" },
-            new CityDef { Name = "Vila Slime",  X =    0, Y =  10, Locked = false, Scene = "Camp_3_1" },
-            new CityDef { Name = "Cemiterio",   X =   90, Y =  -8, Locked = false, Scene = "Camp_4_1" },
-            new CityDef { Name = "???",         X =  180, Y =   6, Locked = true  },
+            new CityDef { Name = "Zulfarak",    X = -158, Y =   8, Locked = false, Scene = "Zulfarak" },
+            new CityDef { Name = "Acamp. Orc",  X =  -62, Y =  -6, Locked = false, Scene = "Camp_2_1" },
+            new CityDef { Name = "Vila Slime",  X =   42, Y =   8, Locked = false, Scene = "Camp_3_1" },
+            new CityDef { Name = "Cemiterio",   X =  140, Y =  -6, Locked = false, Scene = "Camp_4_1" },
+            new CityDef { Name = "???",         X =  190, Y =   4, Locked = true  },
         };
 
         // Set by a map click; consumed on the Unity main thread (OverlayWindow.Update) so the
@@ -417,7 +419,7 @@ namespace ZulfarakRPG
             var finial = new RECT { Left = x - 2, Top = topY - 2, Right = x + 2, Bottom = topY + 2 };
             FillRect(hdc, ref finial, _brushGlow);
 
-            int wave = Mathf.RoundToInt(Mathf.Sin(_flagTick * 0.25f) * 3f);
+            int wave = Mathf.RoundToInt(Mathf.Sin(_flagTick * 0.06f) * 3f);   // gentle ~0.5 Hz wave
             var pts = new POINT[3];
             pts[0] = new POINT { x = x + 1,               y = topY + 1  };
             pts[1] = new POINT { x = x + 17 + wave,       y = topY + 6  };

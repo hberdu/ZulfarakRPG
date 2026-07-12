@@ -339,18 +339,35 @@ namespace ZulfarakRPG
     public class CosmeticProjectile : MonoBehaviour
     {
         Vector3 _to; float _speed; float _life; SpriteRenderer _sr;
+        Sprite[] _frames; float _animT; int _fi; bool _rotate;
 
         public static void Spawn(Vector3 from, Vector3 to, bool fireball)
         {
             var go = new GameObject("CosmeticProjectile");
             go.transform.position = from;
             var p = go.AddComponent<CosmeticProjectile>();
-            p._to = to; p._speed = fireball ? 11f : 15f;
+            p._to = to;
             p._sr = go.AddComponent<SpriteRenderer>();
-            p._sr.sprite = SkillDart.Get();
-            p._sr.color = fireball ? new Color(1f, 0.5f, 0.16f, 1f) : new Color(0.95f, 0.95f, 1f, 1f);
-            p._sr.sortingOrder = 6;
-            go.transform.localScale = Vector3.one * (fireball ? 0.7f : 0.6f);
+            p._sr.color        = Color.white;
+            p._sr.sortingOrder = 300;   // same foreground layer as the real Arrow / Fireball
+
+            if (fireball)
+            {
+                // The SAME animated fireball the mage really shoots (radial → no rotation).
+                p._frames = Fireball.SharedFrames();
+                p._sr.sprite = (p._frames != null && p._frames.Length > 0) ? p._frames[0] : SkillDart.Get();
+                p._speed  = 6f;
+                p._rotate = false;
+                Arrow.ApplyWorldSize(go.transform, p._sr.sprite, 0.5f);
+            }
+            else
+            {
+                // The SAME arrow the archer really shoots, sized/rotated identically.
+                p._sr.sprite = Arrow.SharedSprite;
+                p._speed  = 5f;
+                p._rotate = true;
+                Arrow.ApplyWorldSize(go.transform, p._sr.sprite, Arrow.TargetWorldSize);
+            }
         }
 
         void Update()
@@ -358,10 +375,98 @@ namespace ZulfarakRPG
             _life += Time.deltaTime;
             Vector3 to = _to - transform.position;
             float d = to.magnitude;
-            if (_life > 2f || d < 0.18f) { Destroy(gameObject); return; }
+            if (_life > 2.5f || d < 0.18f) { Destroy(gameObject); return; }
             Vector3 dir = to / d;
             transform.position += dir * _speed * Time.deltaTime;
-            transform.rotation = Quaternion.Euler(0f, 0f, Mathf.Atan2(dir.y, dir.x) * Mathf.Rad2Deg);
+            if (_rotate)
+                transform.rotation = Quaternion.Euler(0f, 0f, Mathf.Atan2(dir.y, dir.x) * Mathf.Rad2Deg);
+            if (_frames != null && _frames.Length > 1)
+            {
+                _animT += Time.deltaTime;
+                if (_animT >= 0.06f) { _animT = 0f; _fi = (_fi + 1) % _frames.Length; _sr.sprite = _frames[_fi]; }
+            }
+        }
+    }
+
+    // Replays the archer's Tiro Concentrado EAGLE charge telegraph on a partner's screen, following
+    // their remote avatar for `dur` seconds — so you see the full skill wind-up, not just the shot
+    // (the archer's basic shot has no wind-up, so this brings skills to the same visible sync).
+    public class RemoteCharge : MonoBehaviour
+    {
+        Transform _follow; float _t, _dur, _height; SpriteRenderer _eagle, _aura; Sprite[] _frames;
+
+        public static void Spawn(Transform follow, float dur, float height)
+        {
+            if (follow == null) return;
+            var go = new GameObject("RemoteEagleCharge");
+            var rc = go.AddComponent<RemoteCharge>();
+            rc._follow = follow; rc._dur = Mathf.Max(0.1f, dur); rc._height = Mathf.Max(0.3f, height);
+            rc._frames = SkillEagle.Frames();
+
+            var eg = new GameObject("Eagle"); eg.transform.SetParent(go.transform, false);
+            rc._eagle = eg.AddComponent<SpriteRenderer>(); rc._eagle.sprite = rc._frames[0]; rc._eagle.sortingOrder = 61;
+            var au = new GameObject("Aura");  au.transform.SetParent(go.transform, false);
+            rc._aura  = au.AddComponent<SpriteRenderer>(); rc._aura.sprite = SkillEagle.Aura(); rc._aura.sortingOrder = 60;
+        }
+
+        void Update()
+        {
+            if (_follow == null || _frames == null) { Destroy(gameObject); return; }
+            _t += Time.deltaTime;
+            float k = Mathf.Clamp01(_t / _dur);
+            Vector3 pos = _follow.position + new Vector3(0.45f, 0.55f, 0f);
+
+            _eagle.transform.position = pos;
+            _eagle.sprite = _frames[(int)(_t / 0.09f) % _frames.Length];
+            _eagle.color  = new Color(1f, 1f, 1f, Mathf.Lerp(0.2f, 1f, k));
+            Arrow.ApplyWorldSize(_eagle.transform, _eagle.sprite, _height * Mathf.Lerp(0.35f, 0.95f, k));
+
+            _aura.transform.position = pos;
+            _aura.color = new Color(1f, 1f, 1f, Mathf.Lerp(0.1f, 0.5f, k) * (0.8f + 0.2f * Mathf.Sin(_t * 18f)));
+            Arrow.ApplyWorldSize(_aura.transform, _aura.sprite, _height * Mathf.Lerp(0.6f, 1.6f, k));
+
+            if (_t >= _dur) Destroy(gameObject);
+        }
+    }
+
+    // A quick steel-white slash spark at a melee hit point. Spawned by the warrior's basic attack
+    // on BOTH clients (locally + from the partner's "melee" packet) so the swing lands identically
+    // on every screen — the melee counterpart to the ranged classes' synced projectiles.
+    public class MeleeHit : MonoBehaviour
+    {
+        public static void Spawn(Vector3 pos, bool crit)
+        {
+            var go = new GameObject("MeleeHit");
+            go.transform.position   = pos;
+            go.transform.localScale = Vector3.one * 0.5f;
+            var sr = go.AddComponent<SpriteRenderer>();
+            sr.sprite       = Spark();
+            sr.color        = crit ? new Color(1f, 0.85f, 0.30f, 1f) : new Color(0.95f, 0.97f, 1f, 1f);
+            sr.sortingOrder = 20;
+            go.AddComponent<ImpactEffect>();   // expand + fade (defined in Arrow.cs)
+        }
+
+        static Sprite _spark;
+        static Sprite Spark()
+        {
+            if (_spark != null) return _spark;
+            const int N = 24;
+            var t = new Texture2D(N, N, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point };
+            for (int y = 0; y < N; y++) for (int x = 0; x < N; x++) t.SetPixel(x, y, Color.clear);
+            int c = N / 2;
+            for (int i = 2; i < N - 2; i++)   // strong horizontal + vertical
+            {
+                t.SetPixel(i, c, Color.white); t.SetPixel(i, c - 1, Color.white);
+                t.SetPixel(c, i, Color.white); t.SetPixel(c - 1, i, Color.white);
+            }
+            for (int i = 5; i < N - 5; i++)   // faint diagonals
+            {
+                t.SetPixel(i, i, new Color(1f, 1f, 1f, 0.55f));
+                t.SetPixel(i, N - 1 - i, new Color(1f, 1f, 1f, 0.55f));
+            }
+            t.Apply();
+            _spark = Sprite.Create(t, new Rect(0, 0, N, N), new Vector2(0.5f, 0.5f), 100f);
+            return _spark;
         }
     }
 

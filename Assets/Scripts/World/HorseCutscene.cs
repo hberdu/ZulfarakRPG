@@ -61,11 +61,13 @@ namespace ZulfarakRPG
                 playerH = Mathf.Max(0.2f, (ab.topFromBottom - ab.bottomFromBottom) * Mathf.Abs(player.transform.lossyScale.y));
             }
             const float horseFrameWorldH = 21f / 100f;          // 21px frame @100PPU
-            // Clamp the horse to a sane on-screen height so a bad playerH read can't make it tiny
-            // (invisible) or huge (fills the screen, unrecognisable).
-            float horseWorldH = Mathf.Clamp(playerH * 1.15f, 0.7f, 1.3f);
+            // Horse a touch SMALLER than the hero, clamped so a bad playerH read can't make it tiny
+            // (invisible) or huge (fills the screen). ponytail: visual knobs — nudge if it reads off.
+            float horseWorldH = Mathf.Clamp(playerH * 0.85f, 0.5f, 0.85f);
             float horseScale  = horseWorldH / horseFrameWorldH;
-            float backY = horseWorldH * 0.52f;   // where the rider sits above the horse's feet
+            // Rider sits DOWN on the horse's back — legs overlap the body, upper body above — like the
+            // Lancer's mounted pose, instead of standing tall on top with a gap under it.
+            float backY = horseWorldH * 0.35f;
 
             var cam = Camera.main;
             float halfW = cam != null ? cam.orthographicSize * cam.aspect : 4f;

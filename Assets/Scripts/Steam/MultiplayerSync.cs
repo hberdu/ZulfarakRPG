@@ -49,6 +49,10 @@ namespace ZulfarakRPG
 
         // ── Scene + lobby state ──────────────────────────────────────────
         readonly Dictionary<string, RemotePlayer> _remotes = new Dictionary<string, RemotePlayer>();
+
+        // The remote avatar for a lobby member's Steam ID (or null) — used by the party frame.
+        public RemotePlayer GetRemote(string steamId)
+            => (steamId != null && _remotes.TryGetValue(steamId, out var rp)) ? rp : null;
         PlayerController2D _localPlayer;
         float              _nextBroadcastAt;
 
@@ -157,6 +161,7 @@ namespace ZulfarakRPG
                 name  = pd?.playerName ?? SteamIntegration.Instance?.SteamName ?? "Player",
                 hp    = _localPlayer.Health,
                 maxHp = _localPlayer.MaxHealthValue,
+                scene = SceneManager.GetActiveScene().name,   // survivors hide partners in other scenes
             };
             SendToAllExceptMe(msg);
         }
@@ -166,6 +171,11 @@ namespace ZulfarakRPG
             SendToAllExceptMe(new P2PMessage { op = "portal", dest = destinationScene });
         }
 
+        // Party aggro order changed (a portrait was dragged) — share it so every client's enemies
+        // focus the same "player #1".
+        public void BroadcastPartyOrder(List<string> ids)
+            => SendToAllExceptMe(new P2PMessage { op = "order", order = string.Join(",", ids) });
+
         // Co-op VISUAL sync: when the local ranged hero shoots (arrow / fireball), tell the
         // others so a cosmetic projectile flies from this avatar toward the target on their
         // screens — the partner can actually SEE the shot. Damage syncs via BroadcastDamage.
@@ -173,6 +183,11 @@ namespace ZulfarakRPG
         {
             SendToAllExceptMe(new P2PMessage { op = "shoot", cls = (int)cls, tx = targetPos.x, ty = targetPos.y });
         }
+
+        // Warrior's melee hit — replayed as a slash spark at the impact point so the swing lands
+        // visibly on every screen (the melee counterpart to the ranged classes' "shoot").
+        public void BroadcastMelee(Vector3 hitPos, bool crit)
+            => SendToAllExceptMe(new P2PMessage { op = "melee", tx = hitPos.x, ty = hitPos.y, crit = crit });
 
         // Co-op combat sync: whenever the local player lands a hit (melee, arrow,
         // fireball), broadcast the damage so the remote client applies the same hit
@@ -208,6 +223,11 @@ namespace ZulfarakRPG
         // Archer's charged white shot (Tiro Concentrado).
         public void BroadcastConcentrated(Vector3 from, Vector3 to)
             => SendToAllExceptMe(new P2PMessage { op = "vfx", vfx = "concentrated", ox = from.x, oy = from.y, tx = to.x, ty = to.y });
+
+        // Tiro Concentrado's eagle CHARGE telegraph (wind-up) — replayed on the partner's avatar so
+        // the whole skill cast is visible, not just the shot. scale = duration, oy = archer height.
+        public void BroadcastEagleCharge(float dur, float height)
+            => SendToAllExceptMe(new P2PMessage { op = "vfx", vfx = "eagle_charge", scale = dur, oy = height });
 
         // One falling arrow of the archer's Chuva de Flechas.
         public void BroadcastArrowFall(Vector3 landing)
@@ -257,9 +277,18 @@ namespace ZulfarakRPG
                     }
                     if (rp != null)
                     {
-                        rp.Configure((ClassType)msg.cls, msg.name);
-                        rp.ApplyState(msg.x, msg.y, msg.flipX, msg.anim);
-                        rp.SetHealth(msg.hp, msg.maxHp);
+                        // Only show a partner who is in the SAME scene. A player who died (or took a
+                        // portal) is now in another scene — hide their avatar so they leave the
+                        // dungeon cleanly for the survivors instead of ghosting at stale coords.
+                        bool sameScene = string.IsNullOrEmpty(msg.scene)
+                                      || msg.scene == SceneManager.GetActiveScene().name;
+                        if (rp.gameObject.activeSelf != sameScene) rp.gameObject.SetActive(sameScene);
+                        if (sameScene)
+                        {
+                            rp.Configure((ClassType)msg.cls, msg.name);
+                            rp.ApplyState(msg.x, msg.y, msg.flipX, msg.anim);
+                            rp.SetHealth(msg.hp, msg.maxHp);
+                        }
                     }
                     break;
 
@@ -267,6 +296,12 @@ namespace ZulfarakRPG
                     // A leader triggered the group transit — follow them.
                     if (!string.IsNullOrEmpty(msg.dest))
                         SceneManager.LoadScene(msg.dest);
+                    break;
+
+                case "order":
+                    // A partner re-sorted the party aggro order — adopt it (enemies re-focus).
+                    if (!string.IsNullOrEmpty(msg.order))
+                        PartyOrder.Receive(msg.order.Split(','));
                     break;
 
                 case "shoot":
@@ -279,6 +314,11 @@ namespace ZulfarakRPG
                         Vector3 to   = new Vector3(msg.tx, msg.ty, 0f);
                         CosmeticProjectile.Spawn(from, to, fireball);
                     }
+                    break;
+
+                case "melee":
+                    // A partner's warrior swing landed — show the same slash spark at the hit point.
+                    MeleeHit.Spawn(new Vector3(msg.tx, msg.ty, 0f), msg.crit);
                     break;
 
                 case "damage":
@@ -301,7 +341,13 @@ namespace ZulfarakRPG
                 case "vfx":
                     // A partner's skill effect — replay it here (COSMETIC; damage syncs via
                     // "damage" packets) so both players see each other's magic.
-                    ReplayVfx(msg);
+                    if (msg.vfx == "eagle_charge")
+                    {
+                        // Charge telegraph follows the caster's avatar, so it needs the sender.
+                        if (_remotes.TryGetValue(senderId, out var caster) && caster != null)
+                            RemoteCharge.Spawn(caster.transform, msg.scale, msg.oy);
+                    }
+                    else ReplayVfx(msg);
                     break;
             }
         }
@@ -326,7 +372,7 @@ namespace ZulfarakRPG
                     CosmeticProjectile.Spawn(a, b, false);
                     break;
                 case "rain":
-                    FallingArrow.SpawnCosmetic(b, 0f);
+                    FallingArrow.SpawnCosmetic(b, 0f, Arrow.FlatSprite);   // same flat arrow as local
                     break;
             }
         }
@@ -341,7 +387,9 @@ namespace ZulfarakRPG
             public string anim;
             public int    cls;
             public string name;
+            public string scene;   // sender's active scene ("state" op) — hide out-of-scene avatars
             public string dest;
+            public string order;   // comma-joined party aggro order ("order" op)
             public string netId;   // per-instance enemy id for damage packets
             public float  dmg;     // damage amount for "damage" op
             public bool   crit;    // crit flag for "damage" op

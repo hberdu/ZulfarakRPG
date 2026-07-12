@@ -229,17 +229,27 @@ namespace ZulfarakRPG
 
         protected void AcquireNearestTarget()
         {
+            // Focus the FIRST LIVING player in the party aggro order (the drag-sorted portraits),
+            // not the nearest — "player #1" tanks until they fall, then #2, and so on. Solo → the
+            // local hero. Damage still only lands on the local player (see TickAI / _targetIsLocal).
+            string myId = SteamIntegration.Instance?.SteamId;
+            foreach (var id in PartyOrder.Get())
+            {
+                if (id == myId)
+                {
+                    if (_player != null && _player.Health > 0f)
+                    { _targetTf = _player.transform; _targetIsLocal = true; return; }
+                }
+                else
+                {
+                    var rp = MultiplayerSync.Instance?.GetRemote(id);
+                    if (rp != null && rp.gameObject.activeSelf && rp.HpFraction > 0f)
+                    { _targetTf = rp.transform; _targetIsLocal = false; return; }
+                }
+            }
+            // Fallback: the local hero (solo, or everyone ahead is gone).
             _targetTf      = _player != null ? _player.transform : null;
             _targetIsLocal = true;
-            float best = _targetTf != null
-                       ? Mathf.Abs(_targetTf.position.x - transform.position.x)
-                       : float.MaxValue;
-            foreach (var rp in FindObjectsByType<RemotePlayer>(FindObjectsSortMode.None))
-            {
-                if (rp == null) continue;
-                float d = Mathf.Abs(rp.transform.position.x - transform.position.x);
-                if (d < best) { best = d; _targetTf = rp.transform; _targetIsLocal = false; }
-            }
         }
 
         protected virtual void TickAI()

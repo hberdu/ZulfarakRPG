@@ -94,6 +94,15 @@ namespace ZulfarakRPG
         public float Health    => _hp;
         public float MaxHealthValue => maxHealth;
         public float HealthFraction => maxHealth > 0f ? Mathf.Clamp01(_hp / maxHealth) : 0f;
+        // Party-frame portrait: the current class's first idle frame (local hero).
+        public Sprite PortraitSprite => (_idle != null && _idle.Length > 0) ? _idle[0] : null;
+        public ClassType ClassTypeValue => _classType;
+        public Sprite IdleSpriteForClass(ClassType c)
+        {
+            var a = c == ClassType.Mage ? wizardIdleFrames
+                  : c == ClassType.Archer ? archerIdleFrames : soldierIdleFrames;
+            return (a != null && a.Length > 0) ? a[0] : null;
+        }
         // True while the attack animation is playing — used by MultiplayerSync so
         // the remote avatar mirrors attack swings instead of only idle/walk.
         public bool IsAttacking => _attackLock > 0f;
@@ -625,7 +634,11 @@ namespace ZulfarakRPG
             else
             {
                 target.TakeDamage(dmg, crit);
+                var mcol = target.GetComponent<Collider2D>();
+                Vector3 hitPos = mcol != null ? mcol.bounds.center : target.transform.position + Vector3.up * 0.4f;
+                MeleeHit.Spawn(hitPos, crit);   // synced slash spark (local + partner see it identically)
                 MultiplayerSync.Instance?.BroadcastDamage(target.netInstanceId, dmg, crit);
+                MultiplayerSync.Instance?.BroadcastMelee(hitPos, crit);
             }
 
             _atkTimer   = interval;
