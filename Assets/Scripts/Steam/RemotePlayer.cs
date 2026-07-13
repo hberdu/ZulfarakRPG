@@ -1,4 +1,6 @@
 using System.Collections;
+using System.Collections.Generic;
+using System.Globalization;
 using UnityEngine;
 
 namespace ZulfarakRPG
@@ -16,7 +18,7 @@ namespace ZulfarakRPG
 
         SpriteRenderer  _sr;
         WorldHealthBar  _hpBar;
-        Sprite[]        _idle, _walk, _atk;
+        Sprite[]        _idle, _walk, _atk, _hurt, _death;
         string          _animKey = "idle";
         Coroutine       _animCo;
 
@@ -24,7 +26,22 @@ namespace ZulfarakRPG
         Vector3 _smoothedPos;
         bool    _flipX;
         bool    _hasFirstState;
+        bool    _dead;           // playing/held on the death anim (revives when HP > 0 again)
+        bool    _cdHud;          // cooldown HUD attached once
         float   _lastHp = -1f;   // -1 = no health packet received yet
+
+        // Skill cooldown fill fractions (0 = just cast, 1 = ready), synced from the owner — drawn
+        // above this avatar by SkillCooldownHUD.AttachRemote so you see partners' cooldowns too.
+        public readonly List<float> CooldownFractions = new List<float>();
+
+        public void SetCooldowns(string csv)
+        {
+            CooldownFractions.Clear();
+            if (string.IsNullOrEmpty(csv)) return;
+            foreach (var s in csv.Split(','))
+                if (float.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out var f))
+                    CooldownFractions.Add(f);
+        }
 
         // Exposed for the party frame (top-left group UI).
         public float  HpFraction    { get; private set; } = 1f;
@@ -59,6 +76,8 @@ namespace ZulfarakRPG
                 if (_lastHp < 0f) _hpBar.SetHealth(1, 1);   // full until first health packet
                 _hpBar.SetName(PlayerName);
             }
+
+            if (!_cdHud) { _cdHud = true; SkillCooldownHUD.AttachRemote(this); }   // partner cooldown bars
         }
 
         // Health arrives with every STATE packet. When HP drops, flash + red popup
@@ -66,14 +85,24 @@ namespace ZulfarakRPG
         public void SetHealth(float hp, float maxHp)
         {
             if (maxHp <= 0f) return;
-            if (_lastHp >= 0f && hp < _lastHp - 0.01f)
-            {
-                DamagePopup.Spawn(transform, _lastHp - hp, new Color(1f, 0.25f, 0.25f, 1f));
-                HurtFlash.Flash(_sr);
-            }
+            float dmg = (_lastHp >= 0f && hp < _lastHp - 0.01f) ? _lastHp - hp : 0f;
             _lastHp = hp;
             HpFraction = Mathf.Clamp01(hp / maxHp);
             _hpBar?.SetHealth(hp, maxHp);
+
+            if (hp <= 0f)
+            {
+                if (!_dead) { _dead = true; PlayOneShot(_death, 12f, hold: true); }   // death anim, held
+                return;
+            }
+            if (_dead) { _dead = false; SwitchAnim(_animKey, true); }                 // revived
+
+            if (dmg > 0f)
+            {
+                DamagePopup.Spawn(transform, dmg, new Color(1f, 0.25f, 0.25f, 1f));
+                HurtFlash.Flash(_sr);
+                PlayOneShot(_hurt, 14f, hold: false);   // hurt reaction anim (then resume)
+            }
         }
 
         // Only LOBBY members show a world-space HP bar + Steam name. A player sharing the scene
@@ -103,6 +132,11 @@ namespace ZulfarakRPG
             // the sprite's bottom pivot, its body/HP-bar floated well above the local hero.
             transform.localScale = lp.transform.lossyScale;
 
+            // Copy the hero's sorting layer + material so the partner renders in the same URP 2D
+            // pass (a runtime SpriteRenderer's default material can be dropped by the 2D renderer).
+            var lpSr0 = lp.GetComponent<SpriteRenderer>();
+            if (_sr != null && lpSr0 != null) { _sr.sortingLayerID = lpSr0.sortingLayerID; _sr.sharedMaterial = lpSr0.sharedMaterial; }
+
             // Prefer the per-class ATTACK VARIANT frames (archerAttack1Frames, …) the local
             // hero actually swings with — the merged *AttackFrames arrays are often empty
             // once the variant system is used, which is why the partner's swing/cast wasn't
@@ -129,6 +163,11 @@ namespace ZulfarakRPG
             if (_walk == null || _walk.Length == 0) _walk = _idle;
             if (_atk  == null || _atk.Length  == 0) _atk  = _idle;
 
+            _hurt  = ClassType == ClassType.Mage   ? lp.wizardHurtFrames
+                   : ClassType == ClassType.Archer ? lp.archerHurtFrames  : lp.soldierHurtFrames;
+            _death = ClassType == ClassType.Mage   ? lp.wizardDeathFrames
+                   : ClassType == ClassType.Archer ? lp.archerDeathFrames : lp.soldierDeathFrames;
+
             if (_sr != null && _idle != null && _idle.Length > 0)
                 _sr.sprite = _idle[0];
 
@@ -149,8 +188,32 @@ namespace ZulfarakRPG
                 transform.position = _targetPos;
                 _hasFirstState     = true;
             }
-            if (anim != _animKey) SwitchAnim(anim, force: false);
+            if (!_dead && anim != _animKey) SwitchAnim(anim, force: false);   // dead holds its death pose
             _animKey = anim;
+        }
+
+        // Plays a one-shot clip (hurt / death). hold=true freezes on the last frame (death);
+        // otherwise it resumes the looping state anim afterwards (hurt → idle/walk).
+        void PlayOneShot(Sprite[] frames, float fps, bool hold)
+        {
+            if (frames == null || frames.Length == 0)
+            {
+                if (!hold && !_dead) SwitchAnim(_animKey, true);
+                return;
+            }
+            if (_animCo != null) StopCoroutine(_animCo);
+            _animCo = StartCoroutine(OneShot(frames, fps, hold));
+        }
+
+        IEnumerator OneShot(Sprite[] frames, float fps, bool hold)
+        {
+            float dt = 1f / Mathf.Max(1f, fps);
+            foreach (var f in frames)
+            {
+                if (_sr != null) _sr.sprite = f;
+                yield return new WaitForSeconds(dt);
+            }
+            if (!hold && !_dead) SwitchAnim(_animKey, true);
         }
 
         void SwitchAnim(string key, bool force)

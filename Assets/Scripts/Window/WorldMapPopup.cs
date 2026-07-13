@@ -350,16 +350,23 @@ namespace ZulfarakRPG
                 }
             }
 
-            // City labels below the circles
+            // City labels below the circles — each in a BLACK tooltip with WHITE text so the name
+            // pops off the busy map (the old parchment-coloured text washed out).
             SelectObject(hdc, _fontCity);
             for (int i = 0; i < Cities.Length; i++)
             {
                 int x = cx + Cities[i].X, y = cy + Cities[i].Y;
-                SetTextColor(hdc, Cities[i].Locked
-                    ? Bgr(0.55f, 0.50f, 0.40f)
-                    : Bgr(0.20f, 0.10f, 0.02f));
-                var lblRc = new RECT { Left = x - 50, Top = y + 14, Right = x + 50, Bottom = y + 30 };
-                DrawTextW(hdc, Cities[i].Name, -1, ref lblRc, DT_CENTER | DT_TOP | DT_SINGLELINE | DT_NOPREFIX);
+                string label = Cities[i].Name;
+                int tw = label.Length * 7 + 12;                 // approx text width + padding
+                int lx = x - tw / 2, rx = x + tw / 2, ty = y + 13, by = y + 29;
+                var tip = new RECT { Left = lx, Top = ty, Right = rx, Bottom = by };
+                FillRect(hdc, ref tip, _brushOutline);          // solid black balloon
+                var border = new RECT { Left = lx - 1, Top = ty - 1, Right = rx + 1, Bottom = by + 1 };
+                FrameRect(hdc, ref border, _brushGlow);         // thin gold edge
+
+                SetTextColor(hdc, Cities[i].Locked ? Bgr(0.72f, 0.70f, 0.66f) : Bgr(1f, 1f, 1f));
+                var lblRc = new RECT { Left = lx, Top = ty, Right = rx, Bottom = by };
+                DrawTextW(hdc, label, -1, ref lblRc, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
                 if (Cities[i].Locked)
                 {
                     SetTextColor(hdc, Bgr(0.65f, 0.60f, 0.50f));
@@ -532,6 +539,7 @@ namespace ZulfarakRPG
         const uint DT_TOP         = 0x00000000;
         const uint DT_LEFT        = 0x00000000;
         const uint DT_CENTER      = 0x00000001;
+        const uint DT_VCENTER     = 0x00000004;
         const uint DT_BOTTOM      = 0x00000008;
         const uint DT_SINGLELINE  = 0x00000020;
         const uint DT_NOPREFIX    = 0x00000800;

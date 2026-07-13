@@ -20,8 +20,13 @@ namespace ZulfarakRPG
         // ── Cache: one DIB per resource path for the app lifetime ────────────────
         static readonly Dictionary<string, NativeFrameImage> _cache = new();
 
+        static NativeFrameImage _empty;
         public static NativeFrameImage Get(string resourcePath)
         {
+            // The Red-Eyes-Black-Dragon emblem was removed from every popup — never load it, so the
+            // header emblem box stays empty (dragon.Ready == false at every call site).
+            if (resourcePath != null && resourcePath.Contains("Dragon"))
+                return _empty ??= new NativeFrameImage();
             if (_cache.TryGetValue(resourcePath, out var img)) return img;
             img = new NativeFrameImage();
             img.Load(resourcePath);
@@ -241,6 +246,8 @@ namespace ZulfarakRPG
         public static void PixelCornerStuds(IntPtr hdc, int x, int y, int w, int h,
                                             IntPtr brush, int inset = 4, int size = 3)
         {
+            return;   // red corner "gem" studs removed from every popup/modal per request
+#pragma warning disable CS0162
             if (w < inset * 2 + size || h < inset * 2 + size) return;
             var tl = new RECT { Left = x + inset,         Top = y + inset,         Right = x + inset + size,         Bottom = y + inset + size };
             var tr = new RECT { Left = x + w - inset - size, Top = y + inset,      Right = x + w - inset,            Bottom = y + inset + size };

@@ -40,6 +40,10 @@ namespace ZulfarakRPG
                     var go = sr.gameObject;
                     if (go.transform.parent != null) continue;
                     if (go.GetComponent<Collider2D>() != null || go.GetComponent<Rigidbody2D>() != null) continue;
+                    // Don't strip the party: the bot is DontDestroyOnLoad (persistent scene) and
+                    // remote teammates are avatars, not scenery — they'd vanish on dungeon entry.
+                    if (go.scene.buildIndex < 0) continue;
+                    if (go.GetComponent<BotPlayer>() != null || go.GetComponent<RemotePlayer>() != null) continue;
                     Destroy(go);
                 }
 

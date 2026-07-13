@@ -80,10 +80,10 @@ namespace ZulfarakRPG
             var inter = go.AddComponent<Interactable2D>();
             inter.tooltipText   = "Ferreiro";
             inter.tooltipOffset = new Vector2(0f, 0.35f);
-            inter.popupTitle    = "Ferreiro";
-            inter.popupBody     =
-                "Forja em construção.\n\n" +
-                "Em breve você poderá aprimorar suas armas e armaduras aqui.";
+            // Click opens ONLY the forge modal (a native top popup, like the inventory/map windows).
+            inter.popupTitle    = "";
+            inter.popupBody     = "";
+            inter.onClick       = () => ForgePopupWindow.Show();
 
             // No floating name tag — the name shows on hover (Interactable2D tooltip).
 

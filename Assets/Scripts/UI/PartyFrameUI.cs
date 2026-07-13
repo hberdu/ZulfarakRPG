@@ -49,7 +49,7 @@ namespace ZulfarakRPG
             _root.anchoredPosition = new Vector2(6f, -6f);
         }
 
-        const float RowH = 38f, RowW = 158f, Gap = 4f;
+        const float RowH = 28f, RowW = 126f, Gap = 3f;
 
         void Update()
         {
@@ -89,27 +89,28 @@ namespace ZulfarakRPG
             row.portrait.sprite = null; row.portrait.preserveAspect = true;
 
             // Aggro-order number (1..N) badge on the portrait's top-left corner.
-            AddImage(rt, "NumBg", new Color(0f, 0f, 0f, 0.72f), new Vector2(3, -3), new Vector2(13, 13))
+            AddImage(rt, "NumBg", new Color(0f, 0f, 0f, 0.72f), new Vector2(2, -2), new Vector2(10, 10))
                 .raycastTarget = false;
-            var numRT = NewRect("Num", rt, new Vector2(3, -3), new Vector2(13, 13));
+            var numRT = NewRect("Num", rt, new Vector2(2, -2), new Vector2(10, 10));
             var num = numRT.gameObject.AddComponent<TextMeshProUGUI>();
             num.text = (index + 1).ToString();
-            num.fontSize = 11; num.fontStyle = FontStyles.Bold;
+            num.fontSize = 8; num.fontStyle = FontStyles.Bold;
             num.color = new Color(1f, 0.92f, 0.42f, 1f);
             num.alignment = TextAlignmentOptions.Center;
             num.raycastTarget = false;
 
-            float textX = pf + 8f;
-            var nameRT = NewRect("Name", rt, new Vector2(textX, -3), new Vector2(RowW - textX - 4, 16));
+            float textX = pf + 5f;
+            var nameRT = NewRect("Name", rt, new Vector2(textX, -2), new Vector2(RowW - textX - 3, 12));
             row.name = nameRT.gameObject.AddComponent<TextMeshProUGUI>();
-            row.name.fontSize = 12; row.name.fontStyle = FontStyles.Bold;
+            row.name.fontSize = 10; row.name.fontStyle = FontStyles.Bold;
             row.name.color = leader ? new Color(1f, 0.9f, 0.55f) : Color.white;
             row.name.enableWordWrapping = false; row.name.overflowMode = TextOverflowModes.Ellipsis;
             row.name.alignment = TextAlignmentOptions.Left;
 
-            float barX = textX, barW = RowW - textX - 6;
-            AddImage(rt, "HpBg", new Color(0.14f, 0.03f, 0.03f, 1f), new Vector2(barX, -21), new Vector2(barW, 10));
-            row.hpFill = AddImage(rt, "HpFill", new Color(0.28f, 0.82f, 0.30f, 1f), new Vector2(barX, -21), new Vector2(barW, 10));
+            // Thin minimalist HP bar sat just under the name.
+            float barX = textX, barW = (RowW - textX - 4), barH = 4f, barY = -18f;
+            AddImage(rt, "HpBg", new Color(0.14f, 0.03f, 0.03f, 1f), new Vector2(barX, barY), new Vector2(barW, barH));
+            row.hpFill = AddImage(rt, "HpFill", new Color(0.28f, 0.82f, 0.30f, 1f), new Vector2(barX, barY), new Vector2(barW, barH));
             row.hpFill.type = Image.Type.Filled; row.hpFill.fillMethod = Image.FillMethod.Horizontal;
             row.hpFill.fillOrigin = 0; row.hpFill.fillAmount = 1f;
 
@@ -176,12 +177,18 @@ namespace ZulfarakRPG
             }
             else
             {
-                var rp = MultiplayerSync.Instance?.GetRemote(row.steamId);
-                var pc = Object.FindAnyObjectByType<PlayerController2D>();
+                var rp  = MultiplayerSync.Instance?.GetRemote(row.steamId);
+                var bot = BotPlayer.Get(row.steamId);
+                var pc  = Object.FindAnyObjectByType<PlayerController2D>();
                 if (rp != null)
                 {
                     nm = rp.PlayerName; cls = rp.ClassType; hp = rp.HpFraction;
                     portrait = rp.PortraitSprite ?? (pc != null ? pc.IdleSpriteForClass(cls) : null);
+                }
+                else if (bot != null)
+                {
+                    nm = bot.PlayerName; cls = bot.ClassType; hp = bot.HpFraction;
+                    portrait = bot.PortraitSprite ?? (pc != null ? pc.IdleSpriteForClass(cls) : null);
                 }
                 else { nm = "Aliado"; cls = ClassType.Warrior; hp = 1f; portrait = pc != null ? pc.IdleSpriteForClass(cls) : null; }
             }
@@ -214,8 +221,8 @@ namespace ZulfarakRPG
                 float visH  = topPx - botPx;
                 if (visH > 6f)
                 {
-                    float headH = visH * 0.52f;                     // top half ≈ head + shoulders
-                    float headW = Mathf.Min(ab.width * ppu * 1.15f, headH * 1.2f);
+                    float headH = visH * 0.82f;                     // head + torso — show MORE of the character
+                    float headW = Mathf.Min(ab.width * ppu * 1.25f, headH);
                     float cx    = ab.centerXFromLeft * ppu;
                     float x = Mathf.Clamp(r.x + cx - headW * 0.5f, r.x, r.x + r.width - 1f);
                     float y = Mathf.Clamp(r.y + topPx - headH,     r.y, r.y + r.height - 1f);

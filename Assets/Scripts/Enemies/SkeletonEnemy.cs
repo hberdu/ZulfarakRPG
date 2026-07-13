@@ -101,7 +101,11 @@ namespace ZulfarakRPG
             RestOnGroundAtSpawn();
 
             _hpBar?.AttachAbove(_sr);
-            if (UsesBossHealthBar) _hpBar?.EnableBossFrame();
+            if (UsesBossHealthBar)
+            {
+                _hpBar?.EnableBossFrame();
+                // Boss name above the bar removed per request.
+            }
             _hpBar?.SetHealth(_hp, maxHealth);
             PlayAnim(idleFrames, 8f);
             StartCoroutine(ResolveEnemyFromServer());
@@ -226,12 +230,15 @@ namespace ZulfarakRPG
         // through the state packets (popup + flash on RemotePlayer.SetHealth).
         protected Transform _targetTf;
         protected bool      _targetIsLocal = true;
+        protected BotPlayer _targetBot;
 
         protected void AcquireNearestTarget()
         {
-            // Focus the FIRST LIVING player in the party aggro order (the drag-sorted portraits),
-            // not the nearest — "player #1" tanks until they fall, then #2, and so on. Solo → the
-            // local hero. Damage still only lands on the local player (see TickAI / _targetIsLocal).
+            // Focus the FIRST LIVING member in the party aggro order (the drag-sorted portraits),
+            // not the nearest — "player #1" tanks until they FALL, then #2, and so on. Works for the
+            // local hero, remote players AND the local test bot. Damage lands on whoever is the target
+            // (local player or bot; remote victims resolve on their own client — see TickAI).
+            _targetBot = null;
             string myId = SteamIntegration.Instance?.SteamId;
             foreach (var id in PartyOrder.Get())
             {
@@ -242,6 +249,10 @@ namespace ZulfarakRPG
                 }
                 else
                 {
+                    var bot = BotPlayer.Get(id);
+                    if (bot != null && bot.IsAlive)
+                    { _targetTf = bot.transform; _targetIsLocal = false; _targetBot = bot; return; }
+
                     var rp = MultiplayerSync.Instance?.GetRemote(id);
                     if (rp != null && rp.gameObject.activeSelf && rp.HpFraction > 0f)
                     { _targetTf = rp.transform; _targetIsLocal = false; return; }
@@ -273,8 +284,10 @@ namespace ZulfarakRPG
                 if (Mathf.Abs(dir) > 0.001f) _sr.flipX = dir < 0;
                 if (_atkTimer <= 0)
                 {
-                    // Swing at whoever is in front; only the local hero loses HP here.
+                    // Swing at whoever is in front: the local hero or the local test bot loses HP
+                    // here (a remote victim resolves the hit on its own client).
                     if (_targetIsLocal) _player.TakeDamage(attackDamage);
+                    else if (_targetBot != null) _targetBot.TakeDamage(attackDamage);
                     _atkTimer   = attackCooldown;
                     _attackLock = attackFrames != null && attackFrames.Length > 0
                                   ? attackFrames.Length / 12f : 0.5f;

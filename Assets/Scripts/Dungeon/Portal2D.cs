@@ -246,6 +246,8 @@ namespace ZulfarakRPG
             if (_rings != null) foreach (var r in _rings) if (r) r.gameObject.SetActive(false);
             if (_tooltipRoot) _tooltipRoot.SetActive(false);
 
+            // Every party member flashes the surprised "!" as the boss challenge opens.
+            MultiplayerSync.Instance?.EmoteAll();
             PixelBanner.Show("PORTAL RANK A", new Color(0.95f, 0.20f, 0.16f));
             yield return new WaitForSeconds(1.5f);
 
@@ -267,6 +269,21 @@ namespace ZulfarakRPG
             //     fades back in cleanly (no visible Unity scene-load flicker).
             // Returning to the city lingers noticeably longer than diving into the
             // dungeon, so the trip home reads as a slow, deliberate fade-out.
+            // ── Co-op: GATHER the whole party at the portal first ──────────────────────────────
+            // Everyone walks to the portal; the transition only starts once ALL have arrived (or a
+            // 6 s safety timeout), so nobody gets left behind / warped mid-fight.
+            var lobbyG = SteamLobbyManager.Instance;
+            bool grouped = lobbyG != null && lobbyG.InLobby && lobbyG.MemberSteamIds.Count >= 2;
+            if (grouped)
+            {
+                float portalX = transform.position.x;
+                MultiplayerSync.Instance?.BroadcastGather(portalX);
+                UnityEngine.Object.FindAnyObjectByType<PlayerController2D>()?.AutoWalkToX(portalX);
+                float deadline = Time.time + 6f;
+                while (Time.time < deadline && !MultiplayerSync.AllPartyNearX(portalX, 0.6f))
+                    yield return null;
+            }
+
             bool returningToCity = string.Equals(destinationScene, "Zulfarak", StringComparison.OrdinalIgnoreCase);
             float absorb = returningToCity ? 2.4f : 1.2f;
 

@@ -46,8 +46,9 @@ namespace ZulfarakRPG
             _sr.sprite       = _frames[0];
             _sr.sortingOrder = 6;   // above the arrow (5) so a mixed party still reads clearly
             // Basic attack projectile — kept SMALL so skills (big PixelEffect casts) clearly
-            // out-read the basic attack.
-            transform.localScale = Vector3.one * (_usingArt ? 0.5f : 0.95f);
+            // out-read the basic attack. The spell-art sheet fills its 100px frame, so it needs
+            // a much smaller scale than the tiny procedural orb or it reads oversized.
+            transform.localScale = Vector3.one * (_usingArt ? 0.32f : 0.95f);
             if (_usingArt && _target != null)
                 _sr.flipX = _target.transform.position.x < transform.position.x;
         }
@@ -91,33 +92,39 @@ namespace ZulfarakRPG
         }
 
         // ── Frame loading ──────────────────────────────────────────────────────
-        // The mage's real fireball frames, cached — reused by the co-op cosmetic so a partner
-        // sees the SAME animated fireball you actually shoot.
-        static Sprite[] _sharedFrames;
-        public static Sprite[] SharedFrames() => _sharedFrames ??= LoadFrames();
+        // The mage's REAL spell projectile art — Wizard_Attack02_Effect (Resources/WizardMagic,
+        // a 700×100 = 7-frame square strip). Passing these as the fireball's frames makes it
+        // read as an animated spell (flip toward target, NO rotation) instead of the procedural
+        // orb, which — being rotated to face travel — looked like a flying arrow. null if absent.
+        static Sprite[] _wizardMagic;
+        public static Sprite[] WizardMagicFrames() => _wizardMagic ??= LoadStrip("WizardMagic");
 
-        // Resources/Fireball as a horizontal strip of square frames (Godot export),
-        // else the procedural flickering orb.
-        static Sprite[] LoadFrames()
+        // Shared frames for the co-op cosmetic + bot fireballs, cached — prefer the real spell
+        // art so every screen sees the SAME animated spell, else the procedural orb.
+        static Sprite[] _sharedFrames;
+        public static Sprite[] SharedFrames() => _sharedFrames ??= (WizardMagicFrames() ?? LoadFrames());
+
+        // Slices a horizontal strip of SQUARE frames (frame size = texture height) from a
+        // Resources texture; null if absent or mis-shaped.
+        static Sprite[] LoadStrip(string res)
         {
-            var tex = Resources.Load<Texture2D>("Fireball");
+            var tex = Resources.Load<Texture2D>(res);
             if (tex == null)
             {
-                var s = Resources.Load<Sprite>("Fireball");
+                var s = Resources.Load<Sprite>(res);
                 if (s != null) tex = s.texture;
             }
-            if (tex != null && tex.height > 0 && tex.width >= tex.height)
-            {
-                int fh    = tex.height;
-                int count = Mathf.Max(1, tex.width / fh);
-                var frames = new Sprite[count];
-                for (int i = 0; i < count; i++)
-                    frames[i] = Sprite.Create(tex, new Rect(i * fh, 0, fh, fh),
-                                              new Vector2(0.5f, 0.5f), 100f);
-                return frames;
-            }
-            return MakeProceduralFrames(4);
+            if (tex == null || tex.height <= 0 || tex.width < tex.height) return null;
+            int fh    = tex.height;
+            int count = Mathf.Max(1, tex.width / fh);
+            var frames = new Sprite[count];
+            for (int i = 0; i < count; i++)
+                frames[i] = Sprite.Create(tex, new Rect(i * fh, 0, fh, fh), new Vector2(0.5f, 0.5f), 100f);
+            return frames;
         }
+
+        // Resources/Fireball strip if present, else the procedural flickering orb.
+        static Sprite[] LoadFrames() => LoadStrip("Fireball") ?? MakeProceduralFrames(4);
 
         void SpawnImpact(Vector3 pos)
         {

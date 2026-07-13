@@ -84,7 +84,7 @@ namespace ZulfarakRPG
             var myId   = SteamIntegration.Instance?.SteamId;
             var wanted = new HashSet<string>();
             foreach (var id in lobby.MemberSteamIds)
-                if (id != myId) wanted.Add(id);
+                if (id != myId && !lobby.IsBot(id)) wanted.Add(id);   // bots drive their own local avatar
 
             // Spawn newcomers.
             foreach (var id in wanted)
@@ -149,6 +149,21 @@ namespace ZulfarakRPG
             else if (rb != null && Mathf.Abs(rb.linearVelocity.x) > 0.05f) anim = "walk";
             else if (_localPlayer.IsRunning) anim = "walk";
 
+            // Skill cooldown fill fractions → partners draw my cooldown bars above my avatar.
+            string cd = "";
+            var caster = _localPlayer.GetComponent<SkillAutoCaster>();
+            if (caster != null)
+            {
+                var fills = caster.CooldownFills();
+                var sb = new StringBuilder();
+                for (int i = 0; i < fills.Count; i++)
+                {
+                    if (i > 0) sb.Append(',');
+                    sb.Append(fills[i].ToString("0.00", System.Globalization.CultureInfo.InvariantCulture));
+                }
+                cd = sb.ToString();
+            }
+
             var pd = PlayerManager.Instance?.Data;
             var msg = new P2PMessage
             {
@@ -162,6 +177,7 @@ namespace ZulfarakRPG
                 hp    = _localPlayer.Health,
                 maxHp = _localPlayer.MaxHealthValue,
                 scene = SceneManager.GetActiveScene().name,   // survivors hide partners in other scenes
+                cd    = cd,
             };
             SendToAllExceptMe(msg);
         }
@@ -171,10 +187,56 @@ namespace ZulfarakRPG
             SendToAllExceptMe(new P2PMessage { op = "portal", dest = destinationScene });
         }
 
+        // Co-op: tell every follower to walk to the portal so the whole party gathers before the
+        // transition (the leader waits for AllPartyNearX before actually transiting).
+        public void BroadcastGather(float x)
+            => SendToAllExceptMe(new P2PMessage { op = "gather", tx = x });
+
+        // True when the local hero AND every visible remote avatar are within `threshold` of x.
+        public static bool AllPartyNearX(float x, float threshold)
+        {
+            var lp = UnityEngine.Object.FindAnyObjectByType<PlayerController2D>();
+            if (lp != null && Mathf.Abs(lp.transform.position.x - x) > threshold) return false;
+            if (Instance != null)
+                foreach (var rp in Instance._remotes.Values)
+                    if (rp != null && rp.gameObject.activeSelf &&
+                        Mathf.Abs(rp.transform.position.x - x) > threshold) return false;
+            return true;
+        }
+
+        // Followers replay the SAME portal transition (absorb halo + fade) as the leader instead of
+        // snapping into the next scene instantly.
+        System.Collections.IEnumerator FollowerTransition(string dest)
+        {
+            var player = UnityEngine.Object.FindAnyObjectByType<PlayerController2D>();
+            bool toCity = string.Equals(dest, "Zulfarak", StringComparison.OrdinalIgnoreCase);
+            float absorb = toCity ? 2.4f : 1.2f;
+            if (player != null) player.StartPortalAbsorb(absorb);
+            yield return new WaitForSeconds(absorb - 0.3f);
+            SceneFader.FadeToBlack(0.3f);
+            yield return new WaitForSeconds(0.3f);
+            SceneManager.LoadScene(dest);
+        }
+
         // Party aggro order changed (a portrait was dragged) — share it so every client's enemies
         // focus the same "player #1".
         public void BroadcastPartyOrder(List<string> ids)
             => SendToAllExceptMe(new P2PMessage { op = "order", order = string.Join(",", ids) });
+
+        // Every party member flashes the surprised "!" emote (e.g. the RANK A portal opening a boss).
+        public void EmoteAll()
+        {
+            SpawnEmoteLocal();
+            SendToAllExceptMe(new P2PMessage { op = "emote" });
+        }
+
+        void SpawnEmoteLocal()
+        {
+            var lp = UnityEngine.Object.FindAnyObjectByType<PlayerController2D>();
+            if (lp != null) SurpriseBalloon.Spawn(lp.transform);
+            foreach (var rp in _remotes.Values)
+                if (rp != null && rp.gameObject.activeSelf) SurpriseBalloon.Spawn(rp.transform);
+        }
 
         // Co-op VISUAL sync: when the local ranged hero shoots (arrow / fireball), tell the
         // others so a cosmetic projectile flies from this avatar toward the target on their
@@ -241,7 +303,7 @@ namespace ZulfarakRPG
             var data = Encoding.UTF8.GetBytes(json);
             foreach (var id in SteamLobbyManager.Instance.MemberSteamIds)
             {
-                if (id == myId) continue;
+                if (id == myId || SteamLobbyManager.Instance.IsBot(id)) continue;   // bots have no P2P endpoint
                 SteamP2P.Instance.SendTo(id, data);
             }
         }
@@ -288,20 +350,32 @@ namespace ZulfarakRPG
                             rp.Configure((ClassType)msg.cls, msg.name);
                             rp.ApplyState(msg.x, msg.y, msg.flipX, msg.anim);
                             rp.SetHealth(msg.hp, msg.maxHp);
+                            rp.SetCooldowns(msg.cd);
                         }
                     }
                     break;
 
                 case "portal":
-                    // A leader triggered the group transit — follow them.
+                    // A leader triggered the group transit — replay the SAME transition animation
+                    // (absorb + fade) instead of snapping into the next scene instantly.
                     if (!string.IsNullOrEmpty(msg.dest))
-                        SceneManager.LoadScene(msg.dest);
+                        StartCoroutine(FollowerTransition(msg.dest));
+                    break;
+
+                case "gather":
+                    // Leader is gathering the party at a portal — walk our hero there too.
+                    UnityEngine.Object.FindAnyObjectByType<PlayerController2D>()?.AutoWalkToX(msg.tx);
                     break;
 
                 case "order":
                     // A partner re-sorted the party aggro order — adopt it (enemies re-focus).
                     if (!string.IsNullOrEmpty(msg.order))
                         PartyOrder.Receive(msg.order.Split(','));
+                    break;
+
+                case "emote":
+                    // A partner triggered the group surprised "!" (e.g. RANK A portal boss).
+                    SpawnEmoteLocal();
                     break;
 
                 case "shoot":
@@ -372,7 +446,7 @@ namespace ZulfarakRPG
                     CosmeticProjectile.Spawn(a, b, false);
                     break;
                 case "rain":
-                    FallingArrow.SpawnCosmetic(b, 0f, Arrow.FlatSprite);   // same flat arrow as local
+                    FallingArrow.SpawnCosmetic(b, 0f, Arrow.SharedSprite);   // same arrow as the basic shot
                     break;
             }
         }
@@ -388,6 +462,7 @@ namespace ZulfarakRPG
             public int    cls;
             public string name;
             public string scene;   // sender's active scene ("state" op) — hide out-of-scene avatars
+            public string cd;      // skill cooldown fill fractions (csv, "state" op)
             public string dest;
             public string order;   // comma-joined party aggro order ("order" op)
             public string netId;   // per-instance enemy id for damage packets

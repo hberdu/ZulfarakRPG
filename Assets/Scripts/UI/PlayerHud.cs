@@ -164,6 +164,7 @@ namespace ZulfarakRPG
             // city. When ON in the city it auto-walks back into the dungeon portal.
             _repeatOn = PlayerPrefs.GetInt("dungeon_repeat", 0) == 1;
             BuildRepeatButton(canvas.transform, slot: 4);
+            BuildBotButton(canvas.transform);   // beside the repeat ("idle") button
 
             BuildWindowButtons(canvas.transform);
             _instance.BuildDungeonButtons(canvas.transform);
@@ -218,6 +219,48 @@ namespace ZulfarakRPG
             ApplyRepeatVisual(cover, gi);
             AttachTooltip(go, "Repetir desafio (loop)");
             return go;
+        }
+
+        // Toggle a local test BOT (mage) in/out of the lobby — sits beside the repeat ("idle")
+        // button. Green cover while the bot is active.
+        static void BuildBotButton(Transform parent)
+        {
+            var go = new GameObject("BotButton", typeof(RectTransform));
+            go.transform.SetParent(parent, false);
+            var rt = (RectTransform)go.transform;
+            rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0f, 0f);
+            rt.anchoredPosition = new Vector2(ButtonColumnX + SIZE + 1f, ButtonColumnBottomY + 4 * (SIZE + GAP));
+            rt.sizeDelta = new Vector2(SIZE, SIZE);
+
+            var chassis = go.AddComponent<Image>();
+            chassis.sprite = RpgUiSprites.ButtonBlankLight(); chassis.type = Image.Type.Sliced; chassis.raycastTarget = true;
+
+            var coverGO = new GameObject("Cover", typeof(RectTransform));
+            coverGO.transform.SetParent(go.transform, false);
+            var crt = (RectTransform)coverGO.transform;
+            crt.anchorMin = Vector2.zero; crt.anchorMax = Vector2.one;
+            crt.offsetMin = new Vector2(4f, 4f); crt.offsetMax = new Vector2(-4f, -4f);
+            var cover = coverGO.AddComponent<Image>();
+            cover.sprite = SolidPixel(); cover.raycastTarget = false;
+
+            var lblGO = new GameObject("Label", typeof(RectTransform));
+            lblGO.transform.SetParent(coverGO.transform, false);
+            var lrt = (RectTransform)lblGO.transform;
+            lrt.anchorMin = Vector2.zero; lrt.anchorMax = Vector2.one; lrt.offsetMin = lrt.offsetMax = Vector2.zero;
+            var lbl = lblGO.AddComponent<TMPro.TextMeshProUGUI>();
+            lbl.text = "BOT"; lbl.fontSize = 8; lbl.alignment = TMPro.TextAlignmentOptions.Center;
+            lbl.fontStyle = TMPro.FontStyles.Bold; lbl.raycastTarget = false;
+
+            void Paint() {
+                bool on = BotPlayer.Active;
+                cover.color = on ? new Color(0.20f, 0.55f, 0.30f, 1f) : new Color(0.17f, 0.13f, 0.17f, 1f);
+                lbl.color   = on ? new Color(0.85f, 1f, 0.85f, 1f)    : new Color(1f, 0.94f, 0.78f, 1f);
+            }
+            var btn = go.AddComponent<Button>();
+            btn.targetGraphic = chassis;
+            btn.onClick.AddListener(() => { BotPlayer.Toggle(); Paint(); });
+            Paint();
+            AttachTooltip(go, "BOT mago entra/sai do lobby (teste co-op)");
         }
 
         static void ApplyRepeatVisual(Image cover, Image glyph)

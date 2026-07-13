@@ -32,11 +32,17 @@ namespace ZulfarakRPG
             _t += Time.deltaTime;
             if (_t >= Life || _target == null) { Destroy(gameObject); return; }
 
-            // Sit just above the target's visible head, close to the sprite.
-            float headTop = _target.position.y + 0.9f;
-            var tsr = _target.GetComponent<SpriteRenderer>();
-            if (tsr != null && tsr.sprite != null) headTop = tsr.bounds.max.y;
-            transform.position = new Vector3(_target.position.x, headTop + 0.05f, 0f);
+            // Sit to the RIGHT of the character's VISIBLE body, near head height. Use the
+            // COLLIDER (visible-body bounds) — the SpriteRenderer bounds span the whole 100px
+            // frame, whose empty top padding otherwise floated the emote far above the hero
+            // ("no alto do jogo"). Fall back to a fixed offset if there's no collider.
+            var col = _target.GetComponent<Collider2D>();
+            Vector3 pos;
+            if (col != null)
+                pos = new Vector3(col.bounds.max.x + 0.10f, col.bounds.max.y - 0.18f, 0f);
+            else
+                pos = new Vector3(_target.position.x + 0.38f, _target.position.y + 0.60f, 0f);
+            transform.position = pos;
 
             // Pop-in (overshoot) → hold → fade out.
             float baseScale = BaseScale;

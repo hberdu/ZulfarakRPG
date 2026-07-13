@@ -75,14 +75,25 @@ namespace ZulfarakRPG
             float rightX = camX + halfW + 1.5f;            // start just off the right edge
 
             var horse = new GameObject("CutsceneHorse");
+            if (player != null) horse.layer = player.gameObject.layer;   // match the hero's render layer
             var sr = horse.AddComponent<SpriteRenderer>();
-            sr.sortingOrder = 250;
+            // Match the hero's SpriteRenderer settings exactly so the horse renders on the same
+            // layer/material the visible hero does (not a stray default that gets culled/hidden).
+            if (psr != null) { sr.sortingLayerID = psr.sortingLayerID; sr.material = psr.sharedMaterial; }
+            sr.sortingOrder = 255;                         // behind the rider (260), in front of the scene
+            sr.color   = Color.white;
+            sr.enabled = true;
             sr.sprite  = frames[0];
             sr.flipX   = true;                             // art faces RIGHT; flip to gallop LEFT toward the hero
             horse.transform.position   = new Vector3(rightX, ppos.y, 0f);
             horse.transform.localScale = Vector3.one * horseScale;
 
             int fi = 0; float animT = 0f, bobT = 0f;
+
+            Debug.LogWarning($"[HorseCutscene] horse frames={frames.Length} sprite={(sr.sprite != null ? sr.sprite.name : "NULL")} " +
+                $"pos={horse.transform.position} scale={horseScale:F2} order={sr.sortingOrder} sortLayerId={sr.sortingLayerID} " +
+                $"goLayer={horse.layer} mat={(sr.sharedMaterial != null ? sr.sharedMaterial.name : "NULL")} " +
+                $"playerH={playerH:F2} camX={camX:F2} halfW={halfW:F2} rightX={rightX:F2}");
 
             // ── 1) Gallop in from the right, stop just beside the hero ──────────────
             // Keep the stop point INSIDE the visible frame. Map-travel is usually triggered at the
@@ -120,7 +131,6 @@ namespace ZulfarakRPG
             }
 
             // ── 3) Ride off to the left; fade to black partway; load the settlement ─
-            PortalSmoke.BurstAt(new Vector3(horse.transform.position.x, ppos.y + 0.1f, 0f), 6);
             bool faded = false;
             float rideT = 0f;
             const float rideDur = 1.15f, rideSpeed = 6.5f;

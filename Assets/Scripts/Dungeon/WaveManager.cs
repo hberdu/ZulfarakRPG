@@ -388,11 +388,11 @@ namespace ZulfarakRPG
         {
             if (clearText) clearText.gameObject.SetActive(false);
 
-            // Open the exit portal at a FIXED spot on the far left — just past the left-edge HUD
-            // buttons — instead of on top of where the boss died. The hero then walks left into it.
+            // Open the exit portal at the FAR-LEFT edge — well BEHIND the party (who fought to the
+            // right), so everyone visibly walks LEFT to it instead of it popping on top of them.
             if (exitPortal != null)
             {
-                float portalX = MapBounds.MinX + 0.4f;
+                float portalX = MapBounds.MinX;
                 var pp = exitPortal.transform.position;
                 exitPortal.transform.position = new Vector3(portalX, pp.y, pp.z);
             }
@@ -431,7 +431,13 @@ namespace ZulfarakRPG
             var go = new GameObject("RankAPortal");
             go.transform.position   = new Vector3(x, pp.y, pp.z);
             go.transform.localScale = Vector3.one * 0.8f;   // same size as every portal
+            // Give it a glow-core SpriteRenderer like the authored portals — without one Portal2D
+            // only drew the outer rings, so the red portal read as empty/half-missing.
+            var core = go.AddComponent<SpriteRenderer>();
+            core.sortingOrder = 2;
+            core.color        = new Color(1f, 0.45f, 0.40f, 1f);   // red-hot core (rings add the glow)
             var p = go.AddComponent<Portal2D>();            // RequireComponent adds the trigger collider
+            p.glowSprite    = core;                          // Start fills its sprite + shows it
             p.rankA         = true;
             p.openOnStart   = true;
             p.destinationScene = "";

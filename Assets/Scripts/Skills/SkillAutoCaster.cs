@@ -16,6 +16,16 @@ namespace ZulfarakRPG
         public struct ActiveSkill { public SkillDef def; public int level; public float remaining; public float total; }
         public readonly List<ActiveSkill> Active = new();
 
+        // Fill fractions (0 = just cast, 1 = ready) per equipped skill — broadcast to partners so
+        // their avatars can draw my cooldown bars too.
+        public List<float> CooldownFills()
+        {
+            var fills = new List<float>(Active.Count);
+            foreach (var a in Active)
+                fills.Add(a.total > 0f ? 1f - Mathf.Clamp01(a.remaining / a.total) : 1f);
+            return fills;
+        }
+
         PlayerController2D _player;
         readonly Dictionary<string, float> _cd = new();
 
@@ -115,7 +125,9 @@ namespace ZulfarakRPG
                     // old baked "aim up" sprite recoloured the whole hero and made it lean over; the
                     // sky-aim read now comes from the falling arrows instead of a full-body pose.
                     _player.PlayCastAnimation(e.transform.position);
-                    SkillCastFX.Spawn(_player.transform.position, new Color(1f, 1f, 1f, 0.95f));
+                    // Red skill telegraph: a RED serpent (same art as Tiro de Serpe) + a red cast ring.
+                    SkillCastFX.Spawn(_player.transform.position, new Color(0.95f, 0.16f, 0.14f, 0.95f));
+                    StartCoroutine(RedSnakeTelegraph(0.5f));
                     StartCoroutine(ArrowRainAtApex(0.75f * atk, 0.03f));
                     return true;
                 }
@@ -179,6 +191,31 @@ namespace ZulfarakRPG
                 }
             }
             return _snakeFrames;
+        }
+
+        // RED serpent telegraph for Chuva de Flechas — the SAME snake art as Tiro de Serpe, tinted
+        // red, slithering up at the archer for a beat as the volley is called.
+        System.Collections.IEnumerator RedSnakeTelegraph(float dur)
+        {
+            var frames = SnakeFrames();
+            if (frames == null || frames.Length == 0 || _player == null) yield break;
+            var go = new GameObject("RainSnakeTelegraph");
+            var sr = go.AddComponent<SpriteRenderer>();
+            sr.sprite       = frames[0];
+            sr.color        = new Color(0.95f, 0.16f, 0.14f, 1f);   // red serpent
+            sr.sortingOrder = 60;
+            Arrow.ApplyWorldSize(go.transform, frames[0], ArcherVisibleHeight() * 0.6f);
+
+            float t = 0f;
+            while (t < dur && _player != null)
+            {
+                t += Time.deltaTime;
+                go.transform.position = _player.transform.position + Vector3.up * 0.5f;
+                sr.sprite = frames[(int)(t / 0.08f) % frames.Length];
+                var c = sr.color; c.a = t > dur - 0.15f ? Mathf.Clamp01((dur - t) / 0.15f) : 1f; sr.color = c;
+                yield return null;
+            }
+            if (go) Destroy(go);
         }
 
         // The archer's VISIBLE on-screen height (alpha-trimmed, so the transparent 100px frame
@@ -273,7 +310,7 @@ namespace ZulfarakRPG
                 // the same arc and overlap into one "duplicated" animation.
                 Vector3 origin    = _player.transform.position + Vector3.up * 0.4f + new Vector3((i - 1) * 0.30f, 0f, 0f);
                 Vector3 aimOffset = new Vector3((i - 1) * 0.28f, (i - 1) * 0.06f, 0f);
-                FallingArrow.Spawn(tgt, origin, perArrowDamage, i * 0.16f, Arrow.FlatSprite, aimOffset);
+                FallingArrow.Spawn(tgt, origin, perArrowDamage, i * 0.16f, Arrow.SharedSprite, aimOffset);
                 MultiplayerSync.Instance?.BroadcastArrowFall(center);
             }
         }
@@ -375,9 +412,9 @@ namespace ZulfarakRPG
                 e.TakeDamage(dmg, false);
                 MultiplayerSync.Instance?.BroadcastDamage(e.netInstanceId, dmg, false);
             }
-            // One large effect over the blast so the area read is obvious.
-            SkillEffectAnim.Spawn(center, def.fxSheet, def.fxCols, def.fxRows, def.color, 3.8f);
-            MultiplayerSync.Instance?.BroadcastSkillBurst(center, def.fxSheet, def.fxCols, def.fxRows, def.color, 3.8f);
+            // Effect over the blast — sized so it reads without covering the screen.
+            SkillEffectAnim.Spawn(center, def.fxSheet, def.fxCols, def.fxRows, def.color, 2.2f);
+            MultiplayerSync.Instance?.BroadcastSkillBurst(center, def.fxSheet, def.fxCols, def.fxRows, def.color, 2.2f);
         }
 
         // Waits until the player's raised-staff apex before landing the effect + damage,
@@ -397,9 +434,8 @@ namespace ZulfarakRPG
 
             target.TakeDamage(dmg, false);
             MultiplayerSync.Instance?.BroadcastDamage(target.netInstanceId, dmg, false);
-            // Skills read BIG and super visible (much larger than the basic-attack projectiles).
-            SkillEffectAnim.Spawn(target.transform.position, def.fxSheet, def.fxCols, def.fxRows, def.color, 3.2f);
-            MultiplayerSync.Instance?.BroadcastSkillBurst(target.transform.position, def.fxSheet, def.fxCols, def.fxRows, def.color, 3.2f);
+            SkillEffectAnim.Spawn(target.transform.position, def.fxSheet, def.fxCols, def.fxRows, def.color, 2.0f);
+            MultiplayerSync.Instance?.BroadcastSkillBurst(target.transform.position, def.fxSheet, def.fxCols, def.fxRows, def.color, 2.0f);
         }
 
         IEnumerator ApplyHealAtCastApex(SkillDef def, int level, float delay)

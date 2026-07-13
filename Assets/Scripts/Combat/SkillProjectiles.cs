@@ -245,18 +245,19 @@ namespace ZulfarakRPG
         }
     }
 
-    // "Chuva de Flechas": an arrow that LOBS in a parabolic arc from the archer and comes down
-    // DIAGONALLY onto the target's centre (not a 90° drop). Slow/subtle. Spawned on several enemies.
+    // "Chuva de Flechas": arrows RAIN STRAIGHT DOWN from the sky onto each target — the same arrow
+    // art as the basic shot, with a RED contour (no drop shadow). Cosmetic replays (a partner's
+    // screen) fall onto a fixed point and deal no damage (damage syncs via "damage" packets).
     public class FallingArrow : MonoBehaviour
     {
-        SkeletonEnemy _target;   // null for cosmetic replay
-        bool _cosmetic;
-        Vector3 _origin, _landing, _aimOffset;
-        float _damage, _delay, _t;
-        const float Dur = 0.95f;       // slow, subtle arc
-        const float ArcHeight = 1.8f;  // apex above the straight line
+        SkeletonEnemy _target;   // null for a cosmetic replay
+        bool    _cosmetic;
+        float   _damage, _delay, _landY;
+        Vector3 _aimOffset;
 
-        // Impact point = the enemy's collider CENTRE (body centre, not the head).
+        const float FallHeight = 2.4f;   // how high above the target the arrow starts
+        const float FallSpeed  = 9f;     // units/second downward
+
         static Vector3 CenterOf(SkeletonEnemy e)
         {
             var col = e != null ? e.GetComponent<Collider2D>() : null;
@@ -264,64 +265,66 @@ namespace ZulfarakRPG
                                : (e != null ? e.transform.position + Vector3.up * 0.5f : Vector3.zero);
         }
 
-        // aimOffset spreads each arrow of a volley to a distinct point around the target so two
-        // arrows landing on the SAME enemy fly separate arcs instead of overlapping into one
-        // "duplicated" animation.
+        // aimOffset spreads each arrow of a volley to a distinct spot so two arrows on the same
+        // enemy don't overlap into one.
         public static void Spawn(SkeletonEnemy target, Vector3 origin, float damage, float delay, Sprite sprite = null, Vector3 aimOffset = default)
         {
-            var a = Make(origin, CenterOf(target) + aimOffset, delay, sprite);
-            a._target = target; a._damage = damage; a._aimOffset = aimOffset;
+            Vector3 land = CenterOf(target) + aimOffset;
+            var a = Make(land, delay, sprite);
+            a._target = target; a._damage = damage; a._aimOffset = aimOffset; a._landY = land.y;
         }
 
-        // Visual-only replay on a partner's screen: lobs onto a fixed point, no damage.
+        // Visual-only replay on a partner's screen: falls onto a fixed point, no damage.
         public static void SpawnCosmetic(Vector3 landing, float delay, Sprite sprite = null)
         {
-            Vector3 origin = landing + new Vector3(-2.0f, 2.2f, 0f);
-            var a = Make(origin, landing, delay, sprite);
-            a._cosmetic = true;
+            var a = Make(landing, delay, sprite);
+            a._cosmetic = true; a._landY = landing.y;
         }
 
-        static FallingArrow Make(Vector3 origin, Vector3 landing, float delay, Sprite sprite)
+        static FallingArrow Make(Vector3 land, float delay, Sprite sprite)
         {
             var go = new GameObject("FallingArrow");
+            go.transform.position = new Vector3(land.x, land.y + FallHeight, 0f);
+            go.transform.rotation = Quaternion.Euler(0f, 0f, -90f);   // art points +x → rotate to point DOWN
             var a = go.AddComponent<FallingArrow>();
-            a._origin = origin; a._landing = landing; a._delay = Mathf.Max(0f, delay);
-            go.transform.position = origin;
+            a._delay = Mathf.Max(0f, delay);
+
             var sr = go.AddComponent<SpriteRenderer>();
-            // FLAT arrow (no baked shading) — the pack arrow's shading read as a wrong shadow at
-            // steep falling angles over common enemies.
-            sr.sprite = sprite != null ? sprite : Arrow.FlatSprite;
-            sr.color = Color.white;
-            sr.sortingOrder = 300;   // foreground, above everything
+            sr.sprite       = sprite != null ? sprite : Arrow.SharedSprite;   // SAME arrow as the basic shot
+            sr.color        = Color.white;
+            sr.sortingOrder = 300;                                            // foreground
             Arrow.ApplyWorldSize(go.transform, sr.sprite, Arrow.TargetWorldSize);
+
+            // Red contour: a slightly larger red silhouette just behind the arrow (NOT a shadow).
+            var outline = new GameObject("RedOutline");
+            outline.transform.SetParent(go.transform, false);
+            var osr = outline.AddComponent<SpriteRenderer>();
+            osr.sprite       = sr.sprite;
+            osr.color        = new Color(0.95f, 0.12f, 0.12f, 1f);
+            osr.sortingOrder = sr.sortingOrder - 1;
+            outline.transform.localScale = Vector3.one * 1.3f;
             return a;
         }
 
         void Update()
         {
-            // Stagger without disabling the component — hover until the delay elapses.
             if (_delay > 0f) { _delay -= Time.deltaTime; return; }
 
-            // Home onto a MOVING target: re-aim the landing point at the enemy's LIVE centre every
-            // frame, so the arrow comes down ON the enemy even while it walks. (It used to lock the
-            // landing to the cast-time position, so a moving enemy dodged the falling arrow.)
+            // Follow a moving target's X (and keep its centre Y) so it still lands on the enemy.
             if (!_cosmetic && _target != null && _target.IsAlive)
-                _landing = CenterOf(_target) + _aimOffset;
+            {
+                Vector3 c = CenterOf(_target) + _aimOffset;
+                _landY = c.y;
+                var pos = transform.position;
+                pos.x = Mathf.Lerp(pos.x, c.x, 12f * Time.deltaTime);
+                transform.position = pos;
+            }
 
-            _t += Time.deltaTime / Dur;
-            float u = Mathf.Clamp01(_t);
-            Vector3 prev = transform.position;
-            // Parabolic lob: straight-line interp + an arch, so it rises from the archer and
-            // descends DIAGONALLY onto the target centre.
-            float x = Mathf.Lerp(_origin.x, _landing.x, u);
-            float y = Mathf.Lerp(_origin.y, _landing.y, u) + ArcHeight * 4f * u * (1f - u);
-            transform.position = new Vector3(x, y, _landing.z);
+            var p = transform.position;
+            p.y -= FallSpeed * Time.deltaTime;
+            transform.position = p;
 
-            Vector3 d = transform.position - prev;
-            if (d.sqrMagnitude > 1e-6f)
-                transform.rotation = Quaternion.Euler(0f, 0f, Mathf.Atan2(d.y, d.x) * Mathf.Rad2Deg);
-
-            if (u >= 1f)
+            if (p.y <= _landY)
             {
                 if (!_cosmetic && _target != null && _target.IsAlive)
                 {
@@ -358,7 +361,7 @@ namespace ZulfarakRPG
                 p._sr.sprite = (p._frames != null && p._frames.Length > 0) ? p._frames[0] : SkillDart.Get();
                 p._speed  = 6f;
                 p._rotate = false;
-                Arrow.ApplyWorldSize(go.transform, p._sr.sprite, 0.5f);
+                Arrow.ApplyWorldSize(go.transform, p._sr.sprite, 0.32f);   // match Fireball's small spell-art scale
             }
             else
             {

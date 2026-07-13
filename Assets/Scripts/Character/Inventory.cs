@@ -106,14 +106,24 @@ namespace ZulfarakRPG
         // item wasn't in the server catalog, leaving nothing updated).
         public bool Equip(string itemId)
         {
-            if (!HasItem(itemId)) return false;
-            var data = ItemDatabase.Instance != null ? ItemDatabase.Instance.Get(itemId) : null;
-            if (data == null || data.itemType == ItemType.Consumable) return false;
+            if (!HasItem(itemId)) { Debug.LogWarning($"[Equip] '{itemId}' não está na sacola."); return false; }
+            var db = ItemDatabase.Instance;
+            var data = db != null ? db.Get(itemId) : null;
+
+            // Server-defined drops (rusty_sword, leather_armor, …) live only in the server catalog.
+            // If the bootstrap pull missed (server not ready yet), fetch it NOW so equipping works.
+            if (data == null && !_catalogLoaded)
+            {
+                PullItemCatalog();
+                data = db != null ? db.Get(itemId) : null;
+            }
+            if (data == null)      { Debug.LogWarning($"[Equip] '{itemId}' sem definição no catálogo (server offline?)."); return false; }
+            if (data.itemType == ItemType.Consumable) return false;
 
             var player = PlayerManager.Instance != null ? PlayerManager.Instance.Data : null;
             if (player == null) return false;
-            if (player.level < data.requiredLevel) return false;
-            if (!data.CanBeUsedBy(player.classType)) return false;
+            if (player.level < data.requiredLevel) { Debug.LogWarning($"[Equip] '{itemId}': nível {player.level} < requerido {data.requiredLevel}."); return false; }
+            if (!data.CanBeUsedBy(player.classType)) { Debug.LogWarning($"[Equip] '{itemId}': classe {player.classType} não pode usar."); return false; }
 
             // Move the currently-equipped item back to the bag, then equip the new one.
             string current = Equipment.GetSlot(data.itemType);
@@ -309,9 +319,17 @@ namespace ZulfarakRPG
         private void PersistToServer()
         {
             if (ServerApiClient.Instance == null || !ServerApiClient.Instance.IsReady) return;
+            // Fire-and-forget: the local equip already updated the UI/stats. A synchronous
+            // .GetAwaiter().GetResult() here froze the whole game on every equip when the server
+            // was slow/unreachable.
+            _ = PersistToServerAsync();
+        }
+
+        private async System.Threading.Tasks.Task PersistToServerAsync()
+        {
             try
             {
-                ServerApiClient.Instance.SaveInventoryAsync(BuildServerState()).GetAwaiter().GetResult();
+                await ServerApiClient.Instance.SaveInventoryAsync(BuildServerState());
             }
             catch (Exception e)
             {
@@ -351,6 +369,7 @@ namespace ZulfarakRPG
                 try
                 {
                     SyncItemCatalog();
+                    PullItemCatalog();   // load server-defined items so drops can be equipped/shown
                     var remote = ServerApiClient.Instance.LoadInventoryAsync().GetAwaiter().GetResult();
                     if (remote != null)
                     {
@@ -377,6 +396,55 @@ namespace ZulfarakRPG
                 new { items = new List<InventoryItem>(), equipment = new Equipment() });
             Items     = data.items ?? new List<InventoryItem>();
             Equipment = data.equipment ?? new Equipment();
+        }
+
+        // Pull the SERVER item catalog into the client ItemDatabase so dropped items (which the
+        // client never authored) resolve — otherwise Equip() silently no-ops on a null lookup.
+        private bool _catalogLoaded;
+
+        // Ensure the server item catalog is loaded (once) — called when the inventory opens so the
+        // bag renders and equipping works even if the bootstrap pull was skipped (server not ready).
+        public void EnsureCatalog()
+        {
+            if (!_catalogLoaded) PullItemCatalog();
+        }
+
+        private void PullItemCatalog()
+        {
+            try
+            {
+                if (ServerApiClient.Instance == null || !ServerApiClient.Instance.IsReady) return;
+                var defs = ServerApiClient.Instance.LoadItemDefinitionsAsync().GetAwaiter().GetResult();
+                var db = ItemDatabase.Instance;
+                if (defs == null || db == null) return;
+                foreach (var d in defs)
+                {
+                    if (d == null || string.IsNullOrWhiteSpace(d.itemId)) continue;
+                    var it = ScriptableObject.CreateInstance<ItemData>();
+                    it.itemId       = d.itemId;
+                    it.itemName     = d.name;
+                    it.description  = d.description ?? string.Empty;
+                    it.itemType     = (ItemType)d.itemType;
+                    it.rarity       = (ItemRarity)d.rarity;
+                    it.requiredLevel = d.requiredLevel;
+                    it.goldValue    = d.goldValue;
+                    it.bonusHp      = d.bonusHp;
+                    it.bonusAttack  = d.bonusAttack;
+                    it.bonusDefense = d.bonusDefense;
+                    it.bonusSpeed   = d.bonusSpeed;
+                    it.bonusHealPower = d.bonusHealPower;
+                    it.allowedClasses = (d.allowedClassTypes == null || d.allowedClassTypes.Length == 0)
+                        ? null
+                        : System.Array.ConvertAll(d.allowedClassTypes, x => (ClassType)x);
+                    db.RegisterRuntime(it);
+                }
+                _catalogLoaded = defs.Length > 0;
+                Debug.Log($"[Inventory] catálogo do servidor carregado: {defs.Length} itens.");
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[Inventory] catálogo de itens do servidor falhou: {e.Message}");
+            }
         }
 
         private void SyncItemCatalog()

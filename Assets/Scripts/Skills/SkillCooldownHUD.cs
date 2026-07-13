@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace ZulfarakRPG
@@ -17,7 +18,9 @@ namespace ZulfarakRPG
         static readonly Color ChargingColor = new Color(0.82f, 0.82f, 0.86f, 1f);   // light gray
         static readonly Color ReadyColor    = new Color(1.00f, 0.86f, 0.28f, 1f);   // warm yellow
 
-        SkillAutoCaster _caster;
+        // Fill fraction per equipped skill (0 = just cast, 1 = ready). Local reads it from the
+        // SkillAutoCaster; a remote avatar reads the values synced from its owner.
+        System.Func<List<float>> _fills;
         WorldHealthBar  _hpBar;
         SpriteRenderer  _playerSr;
         Bar[] _bars;
@@ -29,14 +32,27 @@ namespace ZulfarakRPG
             public SpriteRenderer fillSr;
         }
 
+        // Local hero: cooldowns come straight from its caster.
         public static void Attach(SkillAutoCaster caster)
         {
             if (caster == null) return;
             var go = new GameObject("SkillCooldownHUD");
             var hud = go.AddComponent<SkillCooldownHUD>();
-            hud._caster   = caster;
+            hud._fills    = caster.CooldownFills;
             hud._playerSr = caster.GetComponent<SpriteRenderer>();
             hud._hpBar    = caster.GetComponentInChildren<WorldHealthBar>(true);
+            hud.Build();
+        }
+
+        // Partner avatar: cooldowns come from the values synced onto the RemotePlayer.
+        public static void AttachRemote(RemotePlayer rp)
+        {
+            if (rp == null) return;
+            var go = new GameObject("SkillCooldownHUD_Remote");
+            var hud = go.AddComponent<SkillCooldownHUD>();
+            hud._fills    = () => rp.CooldownFractions;
+            hud._playerSr = rp.GetComponent<SpriteRenderer>();
+            hud._hpBar    = rp.GetComponentInChildren<WorldHealthBar>(true);
             hud.Build();
         }
 
@@ -56,9 +72,9 @@ namespace ZulfarakRPG
 
         void LateUpdate()
         {
-            if (_caster == null || _bars == null) { HideAll(); return; }
-            var active = _caster.Active;
-            int n = Mathf.Min(active.Count, _bars.Length);
+            if (_fills == null || _bars == null) { HideAll(); return; }
+            var fills = _fills();
+            int n = Mathf.Min(fills != null ? fills.Count : 0, _bars.Length);
             if (n == 0 || _hpBar == null) { HideAll(); return; }
 
             float W = _hpBar.BarWorldWidth;
@@ -81,7 +97,6 @@ namespace ZulfarakRPG
                 if (i >= n) { bar.root.SetActive(false); continue; }
                 bar.root.SetActive(true);
 
-                var a = active[i];
                 float bx = left + i * (barW + gap) + barW * 0.5f;
                 bar.root.transform.position = new Vector3(bx, y, -0.15f);
 
@@ -89,7 +104,7 @@ namespace ZulfarakRPG
                 bar.bg.localScale      = new Vector3(barW, barH, 1f);
 
                 // Fill fraction: 0 right after a cast, 1 when ready. Grows BOTTOM → TOP.
-                float ready = a.total > 0f ? 1f - Mathf.Clamp01(a.remaining / a.total) : 1f;
+                float ready = Mathf.Clamp01(fills[i]);
                 float fh = barH * ready;
                 bar.fill.localScale    = new Vector3(barW * 0.78f, fh, 1f);
                 bar.fill.localPosition = new Vector3(0f, (fh - barH) * 0.5f, -0.01f);   // anchored at bottom

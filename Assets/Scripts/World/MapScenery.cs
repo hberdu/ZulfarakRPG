@@ -94,11 +94,11 @@ namespace ZulfarakRPG
             if (MapScenery.Phase(sceneName) == 4)
                 BuildSnowGround();
 
-            // Themed background tree line — three depth rows, each scattering the phase trees randomly
-            // (ParallaxLayer picks per-item from `sprites`, seeded per row → disordered across layers).
-            // Skip the hub city (its own trees were swapped above). Dungeons register the rows with the
-            // WaveManager so they scroll during the inter-wave march.
-            if (sceneName != "Zulfarak" && trees.Length > 0)
+            // Themed background tree line — three depth rows, each scattering the phase trees randomly.
+            // ONLY in dungeons: they scroll during the inter-wave march, so overlapping rows read as
+            // depth. Static hubs (city + orc/slime camps) skipped these rows, which just piled trees
+            // on top of each other in place — those keep their (re-themed) baked trees instead.
+            if (MapBounds.IsDungeonScene(sceneName) && trees.Length > 0)
             {
                 float g = GroundAlignUtil.FindGroundTopY();
                 var far  = Row("TreeRow_Far",  trees, 0.24f, 0.38f, -24, g, 0.30f, 2.0f, 3.4f);

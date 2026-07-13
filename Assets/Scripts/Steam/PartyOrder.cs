@@ -39,6 +39,9 @@ namespace ZulfarakRPG
         // Adopt an order received from a partner (no re-broadcast).
         public static void Receive(IEnumerable<string> ids) => Assign(ids);
 
+        // Position of a member in the reconciled aggro order (0 = #1 tank / front), or -1.
+        public static int IndexOf(string id) => Get().IndexOf(id);
+
         static void Assign(IEnumerable<string> ids)
         {
             _order.Clear();

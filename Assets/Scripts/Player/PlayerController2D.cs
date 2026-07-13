@@ -363,7 +363,8 @@ namespace ZulfarakRPG
             switch (_classType)
             {
                 case ClassType.Mage:
-                    AddVariant(wizardAttack1Frames, wizardMagic1Frames);
+                    // Pair the cast with the Attack02 spell effect (the fireball art).
+                    AddVariant(wizardAttack1Frames, wizardMagic2Frames);
                     break;
                 case ClassType.Archer:
                     AddVariant(archerAttack1Frames, null);
@@ -721,9 +722,11 @@ namespace ZulfarakRPG
 
             // Basic attack: no big cast flash (that's reserved for skills). Just the orb.
 
-            // The magic sheet paired with this cast variant (null → procedural orb).
+            // The magic sheet paired with this cast variant; fall back to the real spell art
+            // (Wizard_Attack02_Effect) so the fireball never degrades to the arrow-like orb.
             Sprite[] magic = (_magicVariants != null && variant < _magicVariants.Count)
                 ? _magicVariants[variant] : null;
+            if (magic == null || magic.Length == 0) magic = Fireball.WizardMagicFrames();
 
             var fbGO = new GameObject("Fireball");
             fbGO.transform.position = spawnPos;
@@ -1014,6 +1017,20 @@ namespace ZulfarakRPG
             }
             _rb.linearVelocity = Vector2.zero;
             PlayAnim(_idle, 8f, forceRestart: true);
+
+            // Co-op: gather the whole party at the portal first; only the leader drives the load
+            // (followers transition on the leader's "portal" broadcast) so nobody is left behind.
+            var lobby = SteamLobbyManager.Instance;
+            if (lobby != null && lobby.InLobby && lobby.MemberSteamIds.Count >= 2)
+            {
+                MultiplayerSync.Instance?.BroadcastGather(target.x);
+                float deadline = Time.time + 6f;
+                while (Time.time < deadline && !MultiplayerSync.AllPartyNearX(target.x, 0.7f))
+                    yield return null;
+                if (!lobby.IsLeader) yield break;
+                MultiplayerSync.Instance?.BroadcastPortalEnter(destScene);
+            }
+
             // The hero stands in the portal while a dense smoke cloud slowly swallows him,
             // then the screen fades to black before the destination scene loads.
             yield return StartCoroutine(PortalAbsorbRoutine(2.4f));

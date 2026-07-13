@@ -11,7 +11,7 @@ namespace ZulfarakRPG
     //   Inventory → InventoryPopupWindow
     public static class TopPopups
     {
-        public enum Kind { None, Npc, Map, Invite, Inventory, Skills }
+        public enum Kind { None, Npc, Map, Invite, Inventory, Skills, Forge }
 
         // Closes every top popup except the one identified by `keep`. Call this at
         // the very start of each popup's Show() so it replaces whatever was open.
@@ -22,6 +22,7 @@ namespace ZulfarakRPG
             if (keep != Kind.Invite) FriendsListPopup.Hide();
             if (keep != Kind.Inventory) InventoryPopupWindow.Hide();
             if (keep != Kind.Skills) SkillTreePopup.Hide();
+            if (keep != Kind.Forge)  ForgePopupWindow.Hide();
         }
     }
 }

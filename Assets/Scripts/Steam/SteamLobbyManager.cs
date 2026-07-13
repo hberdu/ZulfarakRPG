@@ -31,6 +31,52 @@ namespace ZulfarakRPG
 
         public event Action OnLobbyChanged;   // raised on member join/leave/leader-change
 
+        // ── Local test BOTS ──────────────────────────────────────────────────
+        // Fake guests added to the lobby for visual testing of the party relationship. They live
+        // in MemberSteamIds (so the party frame + gating treat them like real members) but carry no
+        // Steam P2P — a BotPlayer drives their avatar locally.
+        readonly List<string> _bots = new List<string>();
+        public bool IsBot(string id) => id != null && _bots.Contains(id);
+
+        public void AddBot(string botId)
+        {
+            EnsureLobby();
+            if (!_bots.Contains(botId)) _bots.Add(botId);
+            if (!MemberSteamIds.Contains(botId)) MemberSteamIds.Add(botId);
+            OnLobbyChanged?.Invoke();
+        }
+
+        public void RemoveBot(string botId)
+        {
+            _bots.Remove(botId);
+            MemberSteamIds.Remove(botId);
+            OnLobbyChanged?.Invoke();
+        }
+
+        // ── Debug: fake lobby member (bot) ───────────────────────────────────────
+        // Injects a synthetic member id so the party frame / aggro order / remote-avatar systems
+        // can be exercised SOLO (no real Steam friend). MultiplayerSync spawns an avatar for it on
+        // the OnLobbyChanged event; MageBot drives that avatar. Real Steam callbacks aren't touched.
+        public void AddDebugBot(string botId)
+        {
+            if (string.IsNullOrEmpty(botId)) return;
+            var me = SteamIntegration.Instance?.SteamId;
+            if (string.IsNullOrEmpty(LobbyIdString)) { LobbyIdString = "DEBUG_LOBBY"; LeaderSteamId = me; }
+            if (!string.IsNullOrEmpty(me) && !MemberSteamIds.Contains(me)) MemberSteamIds.Insert(0, me);
+            if (!MemberSteamIds.Contains(botId)) MemberSteamIds.Add(botId);
+            OnLobbyChanged?.Invoke();
+        }
+
+        public void RemoveDebugBot(string botId)
+        {
+            MemberSteamIds.Remove(botId);
+            if (LobbyIdString == "DEBUG_LOBBY")
+            {
+                LobbyIdString = null; LeaderSteamId = null; MemberSteamIds.Clear();
+            }
+            OnLobbyChanged?.Invoke();
+        }
+
 #if STEAMWORKS_NET
         CSteamID _lobbyId;
         // Friends the user clicked "Convidar" for before the lobby finished being
@@ -304,6 +350,10 @@ namespace ZulfarakRPG
                 MemberSteamIds.Add(id.ToString());
             }
             LeaderSteamId = SteamMatchmaking.GetLobbyOwner(_lobbyId).ToString();
+
+            // Keep local test bots in the roster across any Steam-driven refresh, so an active bot
+            // never silently vanishes from the party on a lobby update.
+            foreach (var b in _bots) if (!MemberSteamIds.Contains(b)) MemberSteamIds.Add(b);
 
             // TODO(multiplayer): when a new member appears, spawn a remote-player
             // avatar in the current scene and start syncing position / animation

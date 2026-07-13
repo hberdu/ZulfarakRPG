@@ -108,7 +108,9 @@ namespace ZulfarakRPG
         {
             TopPopups.CloseAllExcept(TopPopups.Kind.Inventory);
             _hoverKind = 0; _hoverIndex = -1; _mouseTracking = false;
-            // Items are earned from server-defined monster drops now — nothing is seeded here.
+            // Items are earned from server-defined monster drops now — nothing is seeded here. Make
+            // sure the server item catalog is loaded so drops render + equip (bootstrap may miss it).
+            Inventory.Instance?.EnsureCatalog();
 #if UNITY_EDITOR
             Debug.Log("[InventoryPopup] aberto (editor).");
 #else
@@ -437,6 +439,21 @@ namespace ZulfarakRPG
             var l  = new RECT { Left = x + 1, Top = y + 1,     Right = x + 3,     Bottom = y + h - 1 };
             var rr = new RECT { Left = x + w - 3, Top = y + 1, Right = x + w - 1, Bottom = y + h - 1 };
             FillRect(hdc, ref t, b); FillRect(hdc, ref bo, b); FillRect(hdc, ref l, b); FillRect(hdc, ref rr, b);
+        }
+
+        // Yellow "+N" in the icon's top-right corner = times the item was enhanced at the forge.
+        static void DrawUpgradeBadge(IntPtr hdc, int x, int y, int cellW, string itemId)
+        {
+            int lvl = string.IsNullOrEmpty(itemId) ? 0 : ForgePopupWindow.UpgradeLevel(itemId);
+            if (lvl <= 0) return;
+            SelectObject(hdc, _fontTag);
+            string t = "+" + lvl;
+            var sh = new RECT { Left = x + 2, Top = y + 2, Right = x + cellW - 1, Bottom = y + 15 };
+            SetTextColor(hdc, Bgr(0f, 0f, 0f));
+            DrawTextW(hdc, t, -1, ref sh, DT_RIGHT | DT_TOP | DT_SINGLELINE | DT_NOPREFIX);
+            var rc = new RECT { Left = x + 1, Top = y + 1, Right = x + cellW - 2, Bottom = y + 14 };
+            SetTextColor(hdc, Bgr(1f, 0.90f, 0.20f));
+            DrawTextW(hdc, t, -1, ref rc, DT_RIGHT | DT_TOP | DT_SINGLELINE | DT_NOPREFIX);
         }
 
         static string SlotShort(ItemType t) => t switch
@@ -772,6 +789,7 @@ namespace ZulfarakRPG
                     var img = IconLibrary.Gdi(row.iconPath);
                     if (img != null && img.Ready) img.BlitAspect(hdc, s.x + 4, s.y + 4, s.w - 8, s.h - 8);
                     DrawQualityBorder(hdc, s.x, s.y, s.w, s.h, row.rarity);
+                    DrawUpgradeBadge(hdc, s.x, s.y, s.w, row.itemId);
                 }
                 else
                 {
@@ -809,6 +827,7 @@ namespace ZulfarakRPG
                     DrawTextW(hdc, row.itemName, -1, ref rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
                 }
                 DrawQualityBorder(hdc, c.x, c.y, c.w, c.h, row.consumable ? ItemRarity.Common : row.rarity);
+                DrawUpgradeBadge(hdc, c.x, c.y, c.w, row.itemId);
                 if (row.quantity > 1)
                 {
                     SelectObject(hdc, _fontHint);

@@ -259,6 +259,7 @@ namespace ZulfarakRPG
             FriendsListPopup.Reposition();
             InventoryPopupWindow.Reposition();
             SkillTreePopup.Reposition();
+            ForgePopupWindow.Reposition();
 #endif
         }
 
@@ -307,12 +308,18 @@ namespace ZulfarakRPG
             // click (walk-to / HUD button), so pure clicks still reach the game unchanged.
             if (Input.GetMouseButtonDown(0) && GetCursorPos(out var start))
             {
-                _pressActive = true;
-                _draggingAnywhere = false;
-                _dragStartCursorX = start.X;
-                _dragStartCursorY = start.Y;
-                _dragStartWinX = WinX;
-                _dragStartWinY = WinY;
+                // Don't hijack presses that start over UI (party-frame drag-reorder, HUD buttons) —
+                // let uGUI handle them instead of moving the whole window.
+                var es = UnityEngine.EventSystems.EventSystem.current;
+                if (es == null || !es.IsPointerOverGameObject())
+                {
+                    _pressActive = true;
+                    _draggingAnywhere = false;
+                    _dragStartCursorX = start.X;
+                    _dragStartCursorY = start.Y;
+                    _dragStartWinX = WinX;
+                    _dragStartWinY = WinY;
+                }
             }
             else if (_pressActive && Input.GetMouseButton(0) && GetCursorPos(out var now))
             {
