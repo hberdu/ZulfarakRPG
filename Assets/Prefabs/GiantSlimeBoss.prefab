@@ -278,7 +278,7 @@ MonoBehaviour:
   - {fileID: -8746592011375269112, guid: b3fe8e16148e2af4aa155cea7e30173c, type: 3}
   - {fileID: 4191326187784098674, guid: b3fe8e16148e2af4aa155cea7e30173c, type: 3}
   - {fileID: 5317551540973683370, guid: b3fe8e16148e2af4aa155cea7e30173c, type: 3}
-  enemyId: 
+  enemyId: giant_slime
   encounterId: 
   netInstanceId: 
   slamCooldown: 7

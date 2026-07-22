@@ -560,19 +560,26 @@ namespace ZulfarakRPG
             }
 
             enemyId = matched.enemyId;
-            maxHealth = Mathf.Max(1f, matched.hp) * ServerStatMultiplier * PhaseHpMul();
-            attackDamage = Mathf.Max(0f, matched.attack) * ServerStatMultiplier * PhaseDmgMul();
+            maxHealth = Mathf.Max(1f, matched.hp) * ServerStatMultiplier * GlobalStatScale * PhaseHpMul();
+            attackDamage = Mathf.Max(0f, matched.attack) * ServerStatMultiplier * GlobalStatScale * PhaseDmgMul();
             _hp = maxHealth;
             _hpBar?.SetHealth(_hp, maxHealth);
         }
 
-        // ── Per-phase difficulty ramp ──────────────────────────────────────────
+        // ── Difficulty knobs ───────────────────────────────────────────────────
+        // The server catalog stats are derived from the LEVEL-10 formula (skeleton ≈ 550 HP /
+        // 250 atk), which made the very first map brutal. GlobalStatScale is the master dial that
+        // brings the whole roster (base enemies AND bosses) down so map 1 is beatable at low level.
+        // ponytail: one flat knob — raise/lower to make every fight harder/easier across the board.
+        const float GlobalStatScale = 0.10f;  // map-1 skeleton ≈ 55 HP / 25 atk (was 550 / 250)
+
         // Dungeon phase = the digit after "Dungeon_" (Dungeon_2_1 → 2); the first dungeon
         // ("Dungeon") = 1. Each phase step multiplies enemy HP and damage over the previous phase
-        // so later phases feel like real progression instead of same-y stats.
+        // so later phases feel like progression. Kept LIGHT so the ramp to the last map (cemetery)
+        // is gentle instead of a wall.
         // ponytail: two flat knobs — retune here if a phase ends up too spongy or too deadly.
-        const float HpRampPerPhase  = 1.6f;   // phase 4 ≈ 4.1× the phase-1 HP
-        const float DmgRampPerPhase = 1.3f;   // phase 4 ≈ 2.2× the phase-1 damage
+        const float HpRampPerPhase  = 1.4f;   // phase 4 ≈ 2.7× the phase-1 HP
+        const float DmgRampPerPhase = 1.2f;   // phase 4 ≈ 1.7× the phase-1 damage
 
         static int CurrentPhase()
         {

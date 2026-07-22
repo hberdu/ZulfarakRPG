@@ -12,6 +12,9 @@ namespace ZulfarakRPG
     {
         public string itemId;
         public int quantity;
+        // Forge upgrade level of this stack (server-authoritative). Same itemId at different
+        // levels are separate stacks, mirroring the backend's per-instance inventory rows.
+        public int upgradeLevel;
     }
 
     [Serializable]
@@ -26,6 +29,18 @@ namespace ZulfarakRPG
         public string ringId;
         public string amuletId;
         public string capeId;
+
+        // Forge upgrade level of the item currently in each slot (mirrors the backend). Set
+        // alongside the id by Equip/Unequip so RecalculateStats can scale the item's bonuses.
+        public int weaponLevel;
+        public int helmetLevel;
+        public int chestLevel;
+        public int legsLevel;
+        public int bootsLevel;
+        public int glovesLevel;
+        public int ringLevel;
+        public int amuletLevel;
+        public int capeLevel;
 
         public string GetSlot(ItemType type) => type switch
         {
@@ -56,6 +71,36 @@ namespace ZulfarakRPG
                 case ItemType.Cape:    capeId    = id; break;
             }
         }
+
+        public int GetSlotLevel(ItemType type) => type switch
+        {
+            ItemType.Weapon  => weaponLevel,
+            ItemType.Helmet  => helmetLevel,
+            ItemType.Chest   => chestLevel,
+            ItemType.Legs    => legsLevel,
+            ItemType.Boots   => bootsLevel,
+            ItemType.Gloves  => glovesLevel,
+            ItemType.Ring    => ringLevel,
+            ItemType.Amulet  => amuletLevel,
+            ItemType.Cape    => capeLevel,
+            _ => 0
+        };
+
+        public void SetSlotLevel(ItemType type, int level)
+        {
+            switch (type)
+            {
+                case ItemType.Weapon:  weaponLevel  = level; break;
+                case ItemType.Helmet:  helmetLevel  = level; break;
+                case ItemType.Chest:   chestLevel   = level; break;
+                case ItemType.Legs:    legsLevel    = level; break;
+                case ItemType.Boots:   bootsLevel   = level; break;
+                case ItemType.Gloves:  glovesLevel  = level; break;
+                case ItemType.Ring:    ringLevel    = level; break;
+                case ItemType.Amulet:  amuletLevel  = level; break;
+                case ItemType.Cape:    capeLevel    = level; break;
+            }
+        }
     }
 
     public class Inventory : MonoBehaviour
@@ -76,18 +121,24 @@ namespace ZulfarakRPG
             DontDestroyOnLoad(gameObject);
         }
 
-        public void AddItem(string itemId, int qty = 1)
+        // Loot/test items land at base level; forge-earned levels come in via the level-aware
+        // overload. Same itemId at a different level is a separate stack.
+        public void AddItem(string itemId, int qty = 1) => AddItem(itemId, qty, 0);
+
+        public void AddItem(string itemId, int qty, int upgradeLevel)
         {
-            var existing = Items.FirstOrDefault(i => i.itemId == itemId);
+            var existing = Items.FirstOrDefault(i => i.itemId == itemId && i.upgradeLevel == upgradeLevel);
             if (existing != null) existing.quantity += qty;
-            else Items.Add(new InventoryItem { itemId = itemId, quantity = qty });
+            else Items.Add(new InventoryItem { itemId = itemId, quantity = qty, upgradeLevel = upgradeLevel });
             Save();
             OnInventoryChanged?.Invoke();
         }
 
-        public bool RemoveItem(string itemId, int qty = 1)
+        public bool RemoveItem(string itemId, int qty = 1) => RemoveItem(itemId, qty, 0);
+
+        public bool RemoveItem(string itemId, int qty, int upgradeLevel)
         {
-            var item = Items.FirstOrDefault(i => i.itemId == itemId);
+            var item = Items.FirstOrDefault(i => i.itemId == itemId && i.upgradeLevel == upgradeLevel);
             if (item == null || item.quantity < qty) return false;
             item.quantity -= qty;
             if (item.quantity <= 0) Items.Remove(item);
@@ -99,6 +150,28 @@ namespace ZulfarakRPG
         public bool HasItem(string itemId, int qty = 1) =>
             Items.Any(i => i.itemId == itemId && i.quantity >= qty);
 
+        // The most-upgraded stack of this item in the bag (equip picks the player's best copy).
+        public InventoryItem GetBestInstance(string itemId)
+        {
+            InventoryItem best = null;
+            foreach (var i in Items)
+                if (i.itemId == itemId && i.quantity > 0 && (best == null || i.upgradeLevel > best.upgradeLevel)) best = i;
+            return best;
+        }
+
+        // Highest forge level of any stack of this item in the bag (for the "+N" badge).
+        public int GetUpgradeLevel(string itemId)
+        {
+            int max = 0;
+            foreach (var i in Items)
+                if (i.itemId == itemId && i.upgradeLevel > max) max = i.upgradeLevel;
+            return max;
+        }
+
+        // Applies an authoritative inventory snapshot returned by the forge (keeps current HP,
+        // rebuilds bag + equipment + stats, and repaints any open windows).
+        public void ApplyForgeResult(InventoryStateDto state) => ApplyServerKillResult(state, notify: true);
+
         // Equip an item from the bag; unequips what was in that slot. Applied LOCALLY so the UI +
         // stats update immediately for ANY item, then persisted to the server via the inventory
         // PUT — which stores the loadout without needing the item in the server catalog, so it
@@ -106,7 +179,9 @@ namespace ZulfarakRPG
         // item wasn't in the server catalog, leaving nothing updated).
         public bool Equip(string itemId)
         {
-            if (!HasItem(itemId)) { Debug.LogWarning($"[Equip] '{itemId}' não está na sacola."); return false; }
+            var best = GetBestInstance(itemId);
+            if (best == null) { Debug.LogWarning($"[Equip] '{itemId}' não está na sacola."); return false; }
+            int newLevel = best.upgradeLevel;
             var db = ItemDatabase.Instance;
             var data = db != null ? db.Get(itemId) : null;
 
@@ -125,11 +200,14 @@ namespace ZulfarakRPG
             if (player.level < data.requiredLevel) { Debug.LogWarning($"[Equip] '{itemId}': nível {player.level} < requerido {data.requiredLevel}."); return false; }
             if (!data.CanBeUsedBy(player.classType)) { Debug.LogWarning($"[Equip] '{itemId}': classe {player.classType} não pode usar."); return false; }
 
-            // Move the currently-equipped item back to the bag, then equip the new one.
+            // Move the currently-equipped item (at its own forge level) back to the bag, then equip
+            // the chosen instance and remember its level so its bonuses scale.
             string current = Equipment.GetSlot(data.itemType);
-            if (!string.IsNullOrEmpty(current)) AddItem(current);
-            RemoveItem(itemId);
+            int currentLevel = Equipment.GetSlotLevel(data.itemType);
+            if (!string.IsNullOrEmpty(current)) AddItem(current, 1, currentLevel);
+            RemoveItem(itemId, 1, newLevel);
             Equipment.SetSlot(data.itemType, itemId);
+            Equipment.SetSlotLevel(data.itemType, newLevel);
             RecalculateStats();
             Save();
             OnInventoryChanged?.Invoke();
@@ -142,8 +220,10 @@ namespace ZulfarakRPG
         {
             string id = Equipment.GetSlot(slot);
             if (string.IsNullOrEmpty(id)) return false;
+            int level = Equipment.GetSlotLevel(slot);
             Equipment.SetSlot(slot, null);
-            AddItem(id);
+            Equipment.SetSlotLevel(slot, 0);
+            AddItem(id, 1, level);
             RecalculateStats();
             Save();
             OnInventoryChanged?.Invoke();
@@ -184,7 +264,8 @@ namespace ZulfarakRPG
         // ProgressionRules uses, so the hero stays balanced against the server-scaled enemies and
         // matches what the server reports) PLUS every equipped item's bonuses (flat + %). Called
         // after any equip / unequip / server-state application, so gear always shows on the hero.
-        private void RecalculateStats()
+        // Public so PlayerManager can re-fold equipment right after applying server-base stats.
+        public void RecalculateStats()
         {
             var player = PlayerManager.Instance != null ? PlayerManager.Instance.Data : null;
             if (player == null) return;
@@ -222,7 +303,9 @@ namespace ZulfarakRPG
 
                 // Rarity makes items DRASTICALLY stronger: the numeric bonuses are multiplied by
                 // a steep per-tier factor (Common→Legendary), so a legendary piece dwarfs a common.
-                float rm = RarityMult(item.rarity);
+                // Forge upgrades then scale those same numbers by +10%/level (mirrors the backend
+                // ForgeRules), so an equipped +N item gives its scaled stats.
+                float rm = RarityMult(item.rarity) * (1f + 0.10f * Equipment.GetSlotLevel(slot));
                 player.maxHp    += Mathf.RoundToInt(item.bonusHp * rm);
                 flatAttack      += Mathf.RoundToInt((item.bonusAttack + item.flatDamage) * rm);
                 player.defense  += Mathf.RoundToInt((item.bonusDefense + item.armor) * rm);
@@ -325,6 +408,15 @@ namespace ZulfarakRPG
             _ = PersistToServerAsync();
         }
 
+        // Awaitable persist — used before a server op (e.g. the forge) that reads the server's
+        // inventory, so the item exists there at its current level before the op runs.
+        public System.Threading.Tasks.Task PersistToServerNowAsync()
+        {
+            if (ServerApiClient.Instance == null || !ServerApiClient.Instance.IsReady)
+                return System.Threading.Tasks.Task.CompletedTask;
+            return ServerApiClient.Instance.SaveInventoryAsync(BuildServerState());
+        }
+
         private async System.Threading.Tasks.Task PersistToServerAsync()
         {
             try
@@ -346,7 +438,7 @@ namespace ZulfarakRPG
             {
                 items = Items
                     .Where(i => i != null && i.quantity > 0 && !TestItems.IsTestItem(i.itemId))
-                    .Select(i => new InventoryItemDto { itemId = i.itemId, quantity = i.quantity })
+                    .Select(i => new InventoryItemDto { itemId = i.itemId, quantity = i.quantity, upgradeLevel = i.upgradeLevel })
                     .ToArray(),
                 equipment = new EquipmentDto
                 {
@@ -357,7 +449,15 @@ namespace ZulfarakRPG
                     bootsId  = NonTest(Equipment.bootsId),
                     glovesId = NonTest(Equipment.glovesId),
                     ringId   = NonTest(Equipment.ringId),
-                    amuletId = NonTest(Equipment.amuletId)
+                    amuletId = NonTest(Equipment.amuletId),
+                    weaponUpgradeLevel = NonTest(Equipment.weaponId) == null ? 0 : Equipment.weaponLevel,
+                    helmetUpgradeLevel = NonTest(Equipment.helmetId) == null ? 0 : Equipment.helmetLevel,
+                    chestUpgradeLevel  = NonTest(Equipment.chestId)  == null ? 0 : Equipment.chestLevel,
+                    legsUpgradeLevel   = NonTest(Equipment.legsId)   == null ? 0 : Equipment.legsLevel,
+                    bootsUpgradeLevel  = NonTest(Equipment.bootsId)  == null ? 0 : Equipment.bootsLevel,
+                    glovesUpgradeLevel = NonTest(Equipment.glovesId) == null ? 0 : Equipment.glovesLevel,
+                    ringUpgradeLevel   = NonTest(Equipment.ringId)   == null ? 0 : Equipment.ringLevel,
+                    amuletUpgradeLevel = NonTest(Equipment.amuletId) == null ? 0 : Equipment.amuletLevel
                 }
             };
         }
@@ -478,7 +578,7 @@ namespace ZulfarakRPG
                     foreach (var it in remote.items)
                     {
                         if (string.IsNullOrWhiteSpace(it.itemId) || it.quantity <= 0) continue;
-                        Items.Add(new InventoryItem { itemId = it.itemId, quantity = it.quantity });
+                        Items.Add(new InventoryItem { itemId = it.itemId, quantity = it.quantity, upgradeLevel = it.upgradeLevel });
                     }
                 }
 

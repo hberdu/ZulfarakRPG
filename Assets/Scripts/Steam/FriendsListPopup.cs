@@ -384,11 +384,14 @@ namespace ZulfarakRPG
         {
             int w = PopupWidth, h = PopupHeight;
 
-            // ── Frame: dark panel + gold pixel bevel + ruby corner studs ──
+            // ── Frame: pixel-art theme (tiled texture + gothic frame) with bevel fallback ──
             var full = new RECT { Left = 0, Top = 0, Right = w, Bottom = h };
             FillRect(hdc, ref full, _brushPanel);
-            NativeFrameImage.PixelBevel(hdc, 0, 0, w, h, _brushOutline, _brushBevHi, _brushBevLo, _brushPanel);
-            NativeFrameImage.PixelCornerStuds(hdc, 0, 0, w, h, _brushRuby, inset: 5, size: 3);
+            if (!NativeFrameImage.DrawWindowTheme(hdc, 0, 0, w, h))
+            {
+                NativeFrameImage.PixelBevel(hdc, 0, 0, w, h, _brushOutline, _brushBevHi, _brushBevLo, _brushPanel);
+                NativeFrameImage.PixelCornerStuds(hdc, 0, 0, w, h, _brushRuby, inset: 5, size: 3);
+            }
 
             SetBkMode(hdc, TRANSPARENT);
 
@@ -396,13 +399,14 @@ namespace ZulfarakRPG
             var headerBar = new RECT { Left = 3, Top = 3, Right = w - 3, Bottom = HeaderH };
             FillRect(hdc, ref headerBar, _brushDivider);
 
-            // Small dragon emblem inside a bevelled square on the left of the header.
+            // Themed emblem (tavern mugs; dragon art as fallback) on the left of the header.
             const int EmblemSize = 24;
             int emblemY = 3 + (HeaderH - 3 - EmblemSize) / 2;
             int emblemX = 6;
             NativeFrameImage.PixelBevel(hdc, emblemX, emblemY, EmblemSize, EmblemSize,
                 _brushOutline, _brushBevHi, _brushBevLo, _brushPanel);
-            var dragon = NativeFrameImage.Get(DragonRes);
+            var dragon = NativeFrameImage.Get("UI/Emblem_Friends");
+            if (!dragon.Ready) dragon = NativeFrameImage.Get(DragonRes);
             if (dragon.Ready)
                 dragon.BlitAspect(hdc, emblemX + 3, emblemY + 3, EmblemSize - 6, EmblemSize - 6);
 

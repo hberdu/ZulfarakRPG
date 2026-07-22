@@ -265,18 +265,22 @@ namespace ZulfarakRPG
             int h = PopupHeight;
             var full = new RECT { Left = 0, Top = 0, Right = w, Bottom = h };
             FillRect(hdc, ref full, _brushPanel);
-            NativeFrameImage.PixelBevel(hdc, 0, 0, w, h, _brushOutline, _brushBevHi, _brushBevLo, _brushPanel);
-            NativeFrameImage.PixelCornerStuds(hdc, 0, 0, w, h, _brushRuby, inset: 5, size: 3);
+            if (!NativeFrameImage.DrawWindowTheme(hdc, 0, 0, w, h))
+            {
+                NativeFrameImage.PixelBevel(hdc, 0, 0, w, h, _brushOutline, _brushBevHi, _brushBevLo, _brushPanel);
+                NativeFrameImage.PixelCornerStuds(hdc, 0, 0, w, h, _brushRuby, inset: 5, size: 3);
+            }
 
             // Header divider bar.
             var headerBar = new RECT { Left = 6, Top = HeaderH, Right = w - 6, Bottom = HeaderH + 2 };
             FillRect(hdc, ref headerBar, _brushDivider);
 
-            // Dragon emblem (top-left of header) inside a bevelled square.
+            // Themed emblem (compass on parchment; old dragon art as fallback), top-left of header.
             int emblemX = 8, emblemY = 5;
             NativeFrameImage.PixelBevel(hdc, emblemX, emblemY, EmblemSz, EmblemSz,
                 _brushOutline, _brushBevHi, _brushBevLo, _brushPanel);
-            var dragon = NativeFrameImage.Get(DragonRes);
+            var dragon = NativeFrameImage.Get("UI/Emblem_Map");
+            if (!dragon.Ready) dragon = NativeFrameImage.Get(DragonRes);
             if (dragon.Ready) dragon.BlitAspect(hdc, emblemX + 3, emblemY + 3, EmblemSz - 6, EmblemSz - 6);
 
             // Title text (right of emblem).

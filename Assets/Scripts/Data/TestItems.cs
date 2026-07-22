@@ -193,7 +193,9 @@ namespace ZulfarakRPG
         // Best-guess icon mapping per slot × quality. Weapons come from the Epic Weapons
         // pack (numbered), the rest from the Accessories/Armor pack (tileNNN). Adjust the
         // base indices here to pick different-looking icons.
-        static string IconFor(ItemType type, ItemRarity rarity)
+        // Public so ItemDatabase can back-fill an icon for authored/server items that ship without
+        // an iconPath (weapons + armour; rings/amulets/legs/consumables have no convention → null).
+        public static string IconFor(ItemType type, ItemRarity rarity)
         {
             int qi = QualityIndex(rarity);   // 0..3
             // Armor sheet is 16 columns (index = row*16 + col): row0 helmets, row2 boots,

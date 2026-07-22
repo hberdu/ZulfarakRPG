@@ -92,6 +92,11 @@ namespace ZulfarakRPG
             Data = remote;
             NormalizeData();
 
+            // Server stats are BASE-only (equipment is applied client-side). Re-fold equipment so
+            // maxHp reflects gear BEFORE we clamp HP — otherwise preserveCurrentHp clamped to the
+            // equipment-less base each kill, eroding HP and making gear look ignored on the hero.
+            Inventory.Instance?.RecalculateStats();
+
             if (preserveCurrentHp)
             {
                 Data.hp = Mathf.Clamp(previousHp, 0, Data.maxHp);

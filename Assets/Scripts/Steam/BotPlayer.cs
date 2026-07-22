@@ -29,7 +29,7 @@ namespace ZulfarakRPG
         SpriteRenderer _sr;
         WorldHealthBar _hpBar;
         Sprite[] _idle, _walk, _atk, _hurt, _death;
-        Coroutine _animCo; string _curKey = "idle"; bool _locked, _dead, _scaleSet;
+        Coroutine _animCo; string _curKey = "idle"; bool _locked, _dead;
         float _castTimer, _rebindTimer, _hitTimer, _reviveTimer, _hp, _maxHp = 100f;
 
         public static void Toggle()
@@ -88,10 +88,9 @@ namespace ZulfarakRPG
         {
             var lp = Object.FindAnyObjectByType<PlayerController2D>();
             if (lp == null) return;
-            // Capture the hero's size ONCE (the bot is toggled on in the city where the hero is
-            // already shrunk). Re-reading lossyScale on later scene loads caught the NEW scene's
-            // hero BEFORE its Start() shrinks it by HeroScale, so the bot ballooned on the trip home.
-            if (!_scaleSet) { transform.localScale = lp.transform.lossyScale; _scaleSet = true; }
+            // Size is synced to the hero every frame in Update (a SET, so it converges to the
+            // hero's CURRENT scale each scene and never accumulates → no more ballooning on map
+            // change). No one-time capture here — that caught the pre-shrink scale at bad frames.
             var lpSr = lp.GetComponent<SpriteRenderer>();
             // Copy the hero's sorting layer AND material — a runtime SpriteRenderer keeps the default
             // material, which the dungeon's URP 2D renderer can drop (the bot "vanished" on entry).
@@ -154,7 +153,10 @@ namespace ZulfarakRPG
         {
             float g = GroundAlignUtil.FindGroundTopY();
             float scale = Mathf.Abs(transform.lossyScale.y);
-            float feet = (_sr != null && _sr.sprite != null) ? SpriteAlphaBounds.Get(_sr.sprite).bottomFromBottom * scale : 0f;
+            // Seat by the actual FEET (feetFromBottom), like the hero's GroundAlignUtil — using the
+            // lowest visible pixel (bottomFromBottom) sat any shadow/aura on the ground and left the
+            // feet floating a bit ABOVE the line.
+            float feet = (_sr != null && _sr.sprite != null) ? SpriteAlphaBounds.Get(_sr.sprite).feetFromBottom * scale : 0f;
             transform.position = new Vector3(transform.position.x, g - feet, transform.position.z);
         }
 
@@ -187,6 +189,7 @@ namespace ZulfarakRPG
                 transform.position += new Vector3(step, 0f, 0f);
                 if (_sr != null) _sr.flipX = dx < 0f;
             }
+            transform.localScale = lp.transform.lossyScale;   // match the hero's CURRENT size every frame (no accumulation → never balloons across maps)
             GroundSeat();   // seat by OWN visible feet so it never floats (city/camp/dungeon)
             if (!_locked) SwitchAnim(moving ? "walk" : "idle", false);
             // Real damage now comes from enemies that aggro the bot (see SkeletonEnemy) — no more

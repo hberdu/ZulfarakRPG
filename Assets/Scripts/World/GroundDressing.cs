@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -41,7 +42,18 @@ namespace ZulfarakRPG
             // across the arena (the ground is centred on the load-time camera X and stays put).
             float worldW     = Mathf.Max(halfW * 2f + 2f, 40f);
 
-            // Sand fills well below the view so it always reads as deep, continuous ground.
+            // PixelLab ground tiles per context+phase: city (open natural floor) vs dungeon
+            // (built stone floor), 4 biomes each. BODY = seamless all-direction fill, SURFACE =
+            // grass/moss/snow top-edge line tiled horizontally at the standing line. The "Ground"
+            // sprite TOP stays exactly on the standing line — FindGroundTopY derives from it.
+            int phase    = MapScenery.Phase(scene.name);
+            bool dungeon = scene.name == "Dungeon" || scene.name.StartsWith("Dungeon_");
+            string ctx   = dungeon ? "dungeon" : "city";
+            var bodySprite = GroundTile(ctx, phase, "body");
+            var surfSprite = GroundTile(ctx, phase, "surf");
+            // Legacy procedural fallback (golden sand vs grass) if the new tiles are missing.
+            bool desert = scene.name == "Zulfarak"
+                       || scene.name == "Camp_2_1" || scene.name == "Dungeon_2_1";
             float dirtBottom = viewBottom - 3f;
             float dirtH      = standLine - dirtBottom;
             float dirtCenter = (standLine + dirtBottom) * 0.5f;
@@ -49,11 +61,7 @@ namespace ZulfarakRPG
             ground.transform.localScale = Vector3.one;
             ground.transform.position   = new Vector3(camX, dirtCenter, ground.transform.position.z);
 
-            // Desert sand for the Zulfarak hub AND the orc settlement/dungeon (its canyon biome —
-            // matches the first phase); mossy forest grass everywhere else.
-            bool desert = scene.name == "Zulfarak"
-                       || scene.name == "Camp_2_1" || scene.name == "Dungeon_2_1";
-            sr.sprite       = GroundSprite(desert);
+            sr.sprite       = bodySprite != null ? bodySprite : GroundSprite(desert);
             sr.color        = SandTint;
             sr.drawMode     = SpriteDrawMode.Tiled;
             sr.tileMode     = SpriteTileMode.Continuous;
@@ -68,6 +76,29 @@ namespace ZulfarakRPG
                 col.isTrigger = false;
                 col.size      = new Vector2(worldW, dirtH);
                 col.offset    = Vector2.zero;   // box top = position.y + dirtH/2 = standLine
+            }
+
+            // SURFACE line: the grass/moss/snow top-edge tile, one tile tall, tiled HORIZONTALLY
+            // only, sitting with its top on the standing line — a clean drawn boundary between the
+            // body fill and the world above (characters at sorting 1 stand on it). Physics and
+            // FindGroundTopY are untouched. Old PathArt/GroundSurf children are cleared first.
+            var stalePath = ground.transform.Find("PathArt");
+            if (stalePath != null) Destroy(stalePath.gameObject);
+            var staleSurf = ground.transform.Find("GroundSurf");
+            if (staleSurf != null) Destroy(staleSurf.gameObject);
+            if (surfSprite != null)
+            {
+                float surfH = surfSprite.bounds.size.y;   // one tile tall → no vertical repeat
+                var pgo = new GameObject("GroundSurf");
+                pgo.transform.SetParent(ground.transform, false);
+                var psr = pgo.AddComponent<SpriteRenderer>();
+                psr.sprite       = surfSprite;
+                psr.drawMode     = SpriteDrawMode.Tiled;
+                psr.tileMode     = SpriteTileMode.Continuous;
+                psr.size         = new Vector2(worldW, surfH);
+                psr.sortingOrder = Mathf.Min(sr.sortingOrder, -6) + 1;   // over the base fill, behind everything else
+                pgo.transform.position = new Vector3(
+                    camX, standLine + FieldRise - surfH * 0.5f, ground.transform.position.z);
             }
 
             // Remove the old two-tone grass/surface band if a previous build left one — the
@@ -87,6 +118,44 @@ namespace ZulfarakRPG
 
         static Sprite _sandSprite;
         static Sprite _grassSprite;
+
+        // How far the open-field path art rises past the standing line (world units).
+        const float FieldRise = 0.12f;
+
+        // Pixel-art PATH tiles, one per biome phase (512x192, horizontally seamless: receding
+        // field + tiled plank walkway (seam lines + top bevel) + rich foreground), created by
+        // the art pipeline into Resources/Ground. PPU 200 → 2.56 WU per tile, ~2 repeats per view.
+        static readonly Sprite[] _themedCache = new Sprite[5];
+        static readonly bool[]   _themedMiss  = new bool[5];
+
+        // PixelLab ground tiles, keyed "<ctx>_<biome>_<kind>" (city_forest_body, dungeon_snow_surf…).
+        static readonly Dictionary<string, Sprite> _groundTiles = new Dictionary<string, Sprite>();
+        static readonly string[] _biomeName = { null, "forest", "canyon", "swamp", "snow" };
+
+        // Load a ground tile from Resources/Ground (imported as a Sprite with Repeat wrap by
+        // ZulfarakArtPostprocessor so Tiled draw mode is seamless). Cached; null if absent.
+        static Sprite GroundTile(string ctx, int phase, string kind)
+        {
+            if (phase < 1 || phase > 4) return null;
+            string key = ctx + "_" + _biomeName[phase] + "_" + kind;
+            if (_groundTiles.TryGetValue(key, out var cached)) return cached;
+            var sp = Resources.Load<Sprite>("Ground/" + key);
+            _groundTiles[key] = sp;
+            return sp;
+        }
+
+        static Sprite ThemeSprite(string sceneName)
+        {
+            int phase = MapScenery.Phase(sceneName);
+            if (phase < 1 || phase > 4 || _themedMiss[phase]) return null;
+            if (_themedCache[phase] != null) return _themedCache[phase];
+            string[] names = { null, "ground_forest", "ground_canyon", "ground_swamp", "ground_snow" };
+            var tex = Resources.Load<Texture2D>("Ground/" + names[phase]);
+            if (tex == null) { _themedMiss[phase] = true; return null; }
+            _themedCache[phase] = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height),
+                                                new Vector2(0.5f, 0.5f), 200f);
+            return _themedCache[phase];
+        }
 
         static Sprite GroundSprite(bool desert)
         {

@@ -238,7 +238,7 @@ MonoBehaviour:
   - {fileID: -4463229762502221854, guid: dc130aefe25af4747bb852f2ce436ccd, type: 3}
   - {fileID: 2161038538726658031, guid: dc130aefe25af4747bb852f2ce436ccd, type: 3}
   - {fileID: 1091462072994205310, guid: dc130aefe25af4747bb852f2ce436ccd, type: 3}
-  enemyId: 
+  enemyId: werewolf
   encounterId: 
   netInstanceId: 
 --- !u!1 &9062961153854221162

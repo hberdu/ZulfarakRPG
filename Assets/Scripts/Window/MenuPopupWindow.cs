@@ -216,12 +216,14 @@ namespace ZulfarakRPG
             // a wood ribbon title. Falls back to the old pixel bevel if the atlas is missing.
             if (RpgUiNative.Ready) { PaintRpg(hdc, w, h); return; }
 
-            // Chunky pixel-art bevel across the whole window (outline + gold shoulders +
-            // dark panel). This is the "menu frame" the dragon sits inside — no more
-            // stretched dragon-across-everything, so the wings keep their true silhouette.
-            NativeFrameImage.PixelBevel(hdc, 0, 0, w, h,
-                _brushOutline, _brushBevHi, _brushBevLo, _brushBg);
-            NativeFrameImage.PixelCornerStuds(hdc, 0, 0, w, h, _brushRuby, inset: 5, size: 3);
+            // Pixel-art theme: tiled dark texture + gothic 9-slice frame; procedural bevel
+            // only if the art PNGs are missing.
+            if (!NativeFrameImage.DrawWindowTheme(hdc, 0, 0, w, h))
+            {
+                NativeFrameImage.PixelBevel(hdc, 0, 0, w, h,
+                    _brushOutline, _brushBevHi, _brushBevLo, _brushBg);
+                NativeFrameImage.PixelCornerStuds(hdc, 0, 0, w, h, _brushRuby, inset: 5, size: 3);
+            }
 
             // Compact dragon emblem — top-left badge, native aspect ratio (no squash),
             // with its own smaller pixel bevel so it reads as a framed portrait next to
@@ -233,7 +235,9 @@ namespace ZulfarakRPG
             int emblemY = EmblemPad;
             NativeFrameImage.PixelBevel(hdc, emblemX, emblemY, emblemW, emblemH,
                 _brushOutline, _brushBevHi, _brushBevLo, _brushBg);
-            var frame = NativeFrameImage.Get(DragonRes);
+            // Themed emblem (sealed scroll) with the old dragon art as fallback.
+            var frame = NativeFrameImage.Get("UI/Emblem_Npc");
+            if (!frame.Ready) frame = NativeFrameImage.Get(DragonRes);
             if (frame.Ready)
                 frame.BlitAspect(hdc, emblemX + 4, emblemY + 4, emblemW - 8, emblemH - 8);
 

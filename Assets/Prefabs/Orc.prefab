@@ -274,6 +274,6 @@ MonoBehaviour:
   - {fileID: -1185003378899358547, guid: 6c748ecdd7bfddd4597a471f01cdd0a5, type: 3}
   - {fileID: -2628998458732627980, guid: 6c748ecdd7bfddd4597a471f01cdd0a5, type: 3}
   - {fileID: 2377824496227862384, guid: 6c748ecdd7bfddd4597a471f01cdd0a5, type: 3}
-  enemyId: 
+  enemyId: orc
   encounterId: 
   netInstanceId: 

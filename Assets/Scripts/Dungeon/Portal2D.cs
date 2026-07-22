@@ -22,6 +22,10 @@ namespace ZulfarakRPG
         // "PORTAL RANK A" and summons the extremely hard Minotaur boss into the current scene.
         [Header("Rank A")]
         public bool rankA = false;
+        // Like rankA visually (red rings), but instead of summoning the boss in place it
+        // TRANSITIONS to destinationScene as a Minotaur run (see MinotaurArena). Used by the red
+        // portal in the city so the fight happens in a separate dungeon, not the city.
+        public bool minotaurRun = false;
 
         [Header("Tooltip")]
         // Persistent label rendered above the portal, e.g. "1-1" (dungeon 1, phase 1).
@@ -66,7 +70,7 @@ namespace ZulfarakRPG
                 spr = MakeProceduralRing();
                 if (glowSprite != null) glowSprite.sprite = spr;
             }
-            var ringColors = rankA ? RankARingColors : RingColors;
+            var ringColors = (rankA || minotaurRun) ? RankARingColors : RingColors;
             _rings = new SpriteRenderer[RingSizes.Length];
             for (int i = 0; i < RingSizes.Length; i++)
             {
@@ -298,6 +302,8 @@ namespace ZulfarakRPG
             yield return new WaitForSeconds(absorb - 0.3f);
             SceneFader.FadeToBlack(0.3f);
             yield return new WaitForSeconds(0.3f);
+            // Flag the destination as a Minotaur run so MinotaurArena takes over (boss instead of waves).
+            if (minotaurRun) MinotaurArena.Pending = true;
             SceneManager.LoadScene(destinationScene);
         }
 

@@ -279,7 +279,7 @@ MonoBehaviour:
   - {fileID: -486091560615662378, guid: 6301d6d3badc41a41a98cfd4822d3471, type: 3}
   - {fileID: -895491228106729965, guid: 6301d6d3badc41a41a98cfd4822d3471, type: 3}
   - {fileID: -1731499667720825828, guid: 6301d6d3badc41a41a98cfd4822d3471, type: 3}
-  enemyId: 
+  enemyId: orc_rider
   encounterId: 
   netInstanceId: 
   chargeCooldown: 8

@@ -8,8 +8,10 @@ using UnityEngine.SceneManagement;
 namespace ZulfarakRPG
 {
     // "Seleção de Herói": the three classes stand around the campfire. Hovering a hero previews its
-    // name + description and plays a little attack loop; CLICKING a hero starts the game right away.
-    // There is no name field any more — the character reuses the player's Steam persona name.
+    // name + description and plays a little attack loop; CLICKING a hero selects it and reveals the
+    // CRIAR PERSONAGEM button, which actually creates the character and starts the game.
+    // There is no name field — the character reuses the player's Steam persona name, and each Steam
+    // account holds a single character (GET/PUT /api/character/me).
     public class CharacterCreationUI : MonoBehaviour
     {
         [Header("Class figures (index 0=Mage, 1=Warrior, 2=Archer)")]
@@ -39,23 +41,109 @@ namespace ZulfarakRPG
         Sprite[][]  _idle, _attack;
         Coroutine[] _anim = new Coroutine[3];
         int _preview = -1;
+        int _selected = -1;
+        GameObject _createButton;
+        bool _creating;
 
         void Start()
         {
             _idle   = new[] { mageIdleFrames,   warriorIdleFrames,   archerIdleFrames };
             _attack = new[] { mageAttackFrames, warriorAttackFrames, archerAttackFrames };
 
+            BuildBackdropArt();
+            BuildCreateButton();
+
             int n = classButtons != null ? Mathf.Min(classButtons.Length, 3) : 0;
             for (int i = 0; i < n; i++)
             {
                 int idx = i;
                 if (classButtons[i] == null) continue;
-                classButtons[i].onClick.AddListener(() => StartAs((ClassType)idx));   // click = start
-                AddHover(classButtons[i].gameObject, () => Preview(idx));             // hover = preview
+                classButtons[i].onClick.AddListener(() => Select(idx));    // click = select
+                AddHover(classButtons[i].gameObject, () => Preview(idx));  // hover = preview
                 ShowIdle(idx, 0);
                 SetBorder(idx, false);
             }
             Preview(1);   // Warrior previewed by default
+
+            var sub = GameObject.Find("SubTitle");
+            if (sub != null && sub.TryGetComponent(out TextMeshProUGUI subTmp))
+                subTmp.text = "Selecione um herói e clique em CRIAR PERSONAGEM";
+        }
+
+        // Pixel-art night-clearing backdrop (Resources/UI/CampfireBg) slotted just above the flat
+        // "Background" panel but under its vignette/stars, so the authored atmosphere still layers.
+        void BuildBackdropArt()
+        {
+            var sprite = Resources.Load<Sprite>("UI/CampfireBg");
+            if (sprite == null) return;
+            var bg = GameObject.Find("Background");
+            var parent = bg != null ? bg.transform : transform;
+            var go = new GameObject("BackdropArt", typeof(RectTransform));
+            var rt = (RectTransform)go.transform;
+            rt.SetParent(parent, false);
+            rt.SetAsFirstSibling();
+            rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one;
+            rt.offsetMin = rt.offsetMax = Vector2.zero;
+            var img = go.AddComponent<Image>();
+            img.sprite = sprite;
+            img.raycastTarget = false;
+        }
+
+        // "CRIAR PERSONAGEM" button (bottom-right, clear of the campfire) — hidden until a class
+        // is selected. Built in code so the wizard-baked scene needs no rebuild.
+        void BuildCreateButton()
+        {
+            var go = new GameObject("CreateButton", typeof(RectTransform));
+            var rt = (RectTransform)go.transform;
+            rt.SetParent(transform, false);
+            rt.anchorMin = new Vector2(0.76f, 0.055f);
+            rt.anchorMax = new Vector2(0.985f, 0.175f);
+            rt.offsetMin = rt.offsetMax = Vector2.zero;
+
+            var img = go.AddComponent<Image>();
+            img.color = new Color(0.10f, 0.06f, 0.02f, 0.96f);
+
+            // Thin gold frame behind the panel (slightly larger).
+            var frame = new GameObject("Frame", typeof(RectTransform));
+            var frt = (RectTransform)frame.transform;
+            frt.SetParent(rt, false);
+            frt.anchorMin = Vector2.zero; frt.anchorMax = Vector2.one;
+            frt.offsetMin = new Vector2(-2f, -2f); frt.offsetMax = new Vector2(2f, 2f);
+            var fimg = frame.AddComponent<Image>();
+            fimg.color = BorderOn;
+            fimg.raycastTarget = false;
+            frame.transform.SetAsFirstSibling();
+
+            var label = new GameObject("Label", typeof(RectTransform));
+            var lrt = (RectTransform)label.transform;
+            lrt.SetParent(rt, false);
+            lrt.anchorMin = Vector2.zero; lrt.anchorMax = Vector2.one;
+            lrt.offsetMin = lrt.offsetMax = Vector2.zero;
+            var tmp = label.AddComponent<TextMeshProUGUI>();
+            if (GameFont.Tmp != null) tmp.font = GameFont.Tmp;
+            tmp.text = "CRIAR PERSONAGEM";
+            tmp.fontSize = 13f;
+            tmp.fontStyle = FontStyles.Bold;
+            tmp.alignment = TextAlignmentOptions.Center;
+            tmp.color = new Color(0.97f, 0.88f, 0.50f);
+            tmp.raycastTarget = false;
+
+            var btn = go.AddComponent<Button>();
+            btn.onClick.AddListener(() =>
+            {
+                if (_selected >= 0 && !_creating) { _creating = true; StartAs((ClassType)_selected); }
+            });
+
+            _createButton = go;
+            go.SetActive(false);
+        }
+
+        void Select(int idx)
+        {
+            _selected = idx;
+            _preview  = -1;      // force Preview to re-apply borders/animation
+            Preview(idx);
+            if (_createButton != null) _createButton.SetActive(true);
         }
 
         void OnDestroy()
@@ -80,7 +168,7 @@ namespace ZulfarakRPG
             if (infoDescText) infoDescText.text = Descs[idx];
             for (int i = 0; i < 3; i++)
             {
-                SetBorder(i, i == idx);
+                SetBorder(i, i == idx || i == _selected);   // selection ring survives hovers
                 if (_anim[i] != null) { StopCoroutine(_anim[i]); _anim[i] = null; }
                 if (i == idx) _anim[i] = StartCoroutine(AnimateSelected(i));
                 else ShowIdle(i, 0);

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using UnityEngine;
 
 namespace ZulfarakRPG
@@ -8,10 +9,10 @@ namespace ZulfarakRPG
     // The blacksmith's FORGE — a native Win32 top popup (same family as the inventory / map /
     // friends windows, coordinated by TopPopups so only one is open). Left: the bag's equippable
     // items (click to select). Right: a pixel forge scene (glowing forge + anvil + two happy
-    // fire/earth elementals that DANCE while enhancing). Enhance costs -5% success per level and
-    // grants +10% of the item's stats; SUCCESS / FAILED splash as game banners; a failure breaks
-    // (removes) the item. ponytail: the +10% is tracked per item id (PlayerPrefs) — wiring it into
-    // RecalculateStats needs per-instance item data (a follow-up); the loop + visuals are live.
+    // fire/earth elementals that DANCE while enhancing). Enhance is SERVER-AUTHORITATIVE: the
+    // backend (POST /api/forge/upgrade) spends the gold, rolls success (-8%/level, +10% stats per
+    // level), destroys the item on failure, and records the ledger. The client just shows the
+    // dance until the reply lands, then applies the returned inventory state + SUCCESS/FAILED banner.
     public static class ForgePopupWindow
     {
         public const int PopupHeight = 300;
@@ -20,7 +21,7 @@ namespace ZulfarakRPG
         public static int PopupWidth => _popupWidth;
         public static bool IsOpen => _hwnd != IntPtr.Zero;
 
-        struct Row { public string id, name; public uint color; public string iconPath; public ItemRarity rarity; }
+        struct Row { public string id, name; public uint color; public string iconPath; public ItemRarity rarity; public int level; }
         static readonly List<Row> _rows = new List<Row>();
         static int _sel = -1, _scroll;
 
@@ -29,7 +30,8 @@ namespace ZulfarakRPG
         static readonly List<IconCell> _cells = new List<IconCell>();
 
         // Enhance animation state (driven from the Unity main thread by ForgePopupPump).
-        static bool  _animating; static float _animT; static string _pendingId;
+        static bool  _animating; static float _animT; static string _pendingId; static int _pendingLevel;
+        static Task<ForgeUpgradeResultDto> _pendingTask;
 
         public static void Show()
         {
@@ -69,28 +71,43 @@ namespace ZulfarakRPG
                 _rows.Add(new Row { id = it.itemId,
                     name = string.IsNullOrWhiteSpace(data.itemName) ? it.itemId : data.itemName,
                     color = BgrOf(ItemData.QualityColor(data.rarity)),
-                    iconPath = data.iconPath, rarity = data.rarity });
+                    iconPath = data.iconPath, rarity = data.rarity, level = it.upgradeLevel });
             }
             if (_sel >= _rows.Count) _sel = _rows.Count - 1;
         }
 
         // ── Upgrade math ──────────────────────────────────────────────────────
-        static string Key(string id) => "forge_lvl_" + id;
-        static int   Level(string id) => PlayerPrefs.GetInt(Key(id), 0);
+        // Level is now per-instance and server-authoritative (Inventory item), not PlayerPrefs.
         // Exposed so other windows (inventory) can show the same "+N" enhancement badge.
-        public static int UpgradeLevel(string id) => Level(id);
-        static float Chance(int lvl) => Mathf.Clamp01(0.95f - 0.05f * lvl);
+        public static int UpgradeLevel(string id) => Inventory.Instance != null ? Inventory.Instance.GetUpgradeLevel(id) : 0;
+        // Mirrors the backend ForgeRules.SuccessChance so the % shown matches what the server rolls.
+        static float Chance(int lvl) => Mathf.Clamp(0.90f - 0.08f * lvl, 0.10f, 0.90f);
 
-        // ── Enhance flow (started on click, ticked by the pump) ───────────────
+        // ── Enhance flow (started on click, resolved by the server) ───────────
+        // The roll, gold cost, scaling and ledger are all backend-authoritative now. The click
+        // kicks off the request; the dance plays until BOTH the min animation time and the server
+        // response are done, then the returned inventory state is applied.
         static void StartEnhance()
         {
             if (_animating || _sel < 0 || _sel >= _rows.Count) return;
             var inv = Inventory.Instance;
+            var api = ServerApiClient.Instance;
             if (inv == null || !inv.HasItem(_rows[_sel].id)) { RebuildItems(); return; }
-            _pendingId = _rows[_sel].id; _animating = true; _animT = 0f;
+            if (api == null || !api.IsReady) { PixelBanner.Show("SEM CONEXAO", new Color(0.95f, 0.5f, 0.16f)); return; }
+            _pendingId = _rows[_sel].id; _pendingLevel = _rows[_sel].level;
+            _animating = true; _animT = 0f;
+            _pendingTask = ForgeAsync(_pendingId, _pendingLevel);
         }
 
-        // Called every frame by the pump while the elementals dance; resolves at the end.
+        // Push the current bag to the server (so the item exists at `level` there), then run the
+        // authoritative forge. Exceptions surface via the faulted task and are shown as FALHOU.
+        static async Task<ForgeUpgradeResultDto> ForgeAsync(string id, int level)
+        {
+            await Inventory.Instance.PersistToServerNowAsync();
+            return await ServerApiClient.Instance.ForgeUpgradeAsync(id, level);
+        }
+
+        // Called every frame by the pump while the elementals dance; resolves once the server replies.
         internal static void Tick(float dt)
         {
             if (_hwnd == IntPtr.Zero) return;
@@ -100,22 +117,25 @@ namespace ZulfarakRPG
             if (!_animating) return;
             _animT += dt;
             if (_animT < 1.3f) return;
+            if (_pendingTask != null && !_pendingTask.IsCompleted) return;   // wait for the server
 
             _animating = false;
-            int lvl = Level(_pendingId);
-            bool ok = UnityEngine.Random.value < Chance(lvl);
-            if (ok)
+            var task = _pendingTask; _pendingTask = null;
+            if (task == null || task.IsFaulted || task.Result == null)
             {
-                PlayerPrefs.SetInt(Key(_pendingId), lvl + 1); PlayerPrefs.Save();
-                PixelBanner.Show("SUCCESS", new Color(0.35f, 1f, 0.45f));
+                Debug.LogWarning($"[Forge] upgrade falhou: {task?.Exception?.GetBaseException().Message ?? "resposta vazia"}");
+                PixelBanner.Show("FALHOU", new Color(0.95f, 0.20f, 0.16f));
             }
             else
             {
-                Inventory.Instance?.RemoveItem(_pendingId, 1);   // broken + lost
-                PlayerPrefs.DeleteKey(Key(_pendingId));
-                PixelBanner.Show("FAILED", new Color(0.95f, 0.20f, 0.16f));
-                RebuildItems();
+                var r = task.Result;
+                Inventory.Instance?.ApplyForgeResult(r.state);
+                if (PlayerManager.Instance != null && PlayerManager.Instance.Data != null)
+                    PlayerManager.Instance.Data.gold = r.gold;
+                PixelBanner.Show(r.success ? "SUCCESS" : "FAILED",
+                    r.success ? new Color(0.35f, 1f, 0.45f) : new Color(0.95f, 0.20f, 0.16f));
             }
+            RebuildItems();
             if (_hwnd != IntPtr.Zero) InvalidateRect(_hwnd, IntPtr.Zero, true);
         }
 
@@ -226,7 +246,8 @@ namespace ZulfarakRPG
             var full = new RECT { Left = 0, Top = 0, Right = w, Bottom = h };
             FillRect(hdc, ref full, _bPanel);
             if (Rpg) RpgUiNative.DarkBoard(hdc, 0, 0, w, h);
-            else NativeFrameImage.PixelBevel(hdc, 0, 0, w, h, _bOutline, _bBevHi, _bBevLo, _bPanel);
+            else if (!NativeFrameImage.DrawWindowTheme(hdc, 0, 0, w, h))
+                NativeFrameImage.PixelBevel(hdc, 0, 0, w, h, _bOutline, _bBevHi, _bBevLo, _bPanel);
             SetBkMode(hdc, TRANSPARENT);
 
             // ── Header (wood ribbon title + close button, exactly like the inventory) ──
@@ -243,7 +264,11 @@ namespace ZulfarakRPG
             {
                 var hb = new RECT { Left = 3, Top = 3, Right = w - 3, Bottom = HeaderH };
                 FillRect(hdc, ref hb, _bDivider);
-                var trc = new RECT { Left = 10, Top = 6, Right = w - 30, Bottom = HeaderH };
+                // Anvil emblem left of the title when the themed art is present.
+                var emb = NativeFrameImage.Get("UI/Emblem_Forge");
+                int embW = emb.Ready ? HeaderH - 6 : 0;
+                if (emb.Ready) emb.BlitAspect(hdc, 8, 4, embW, embW);
+                var trc = new RECT { Left = 10 + (embW > 0 ? embW + 6 : 0), Top = 6, Right = w - 30, Bottom = HeaderH };
                 SetTextColor(hdc, Bgr(1f, 0.82f, 0.32f));
                 DrawTextW(hdc, "FORJA", -1, ref trc, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
             }
@@ -291,7 +316,7 @@ namespace ZulfarakRPG
                     DrawTextW(hdc, row.name, -1, ref rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
                 }
                 DrawQualityBorder(hdc, c.x, c.y, c.w, c.h, row.rarity);
-                DrawUpgradeBadge(hdc, c.x, c.y, c.w, Level(row.id));   // yellow +N when enhanced
+                DrawUpgradeBadge(hdc, c.x, c.y, c.w, row.level);   // yellow +N when enhanced
             }
             SelectClipRgn(hdc, IntPtr.Zero);
             if (_rows.Count == 0)
@@ -314,7 +339,7 @@ namespace ZulfarakRPG
             SelectObject(hdc, _fRow); SetTextColor(hdc, Rpg ? RpgUiNative.InkDark : Bgr(0.9f, 0.9f, 0.95f));
             var slotRc = new RECT { Left = spx, Top = sceneTop + sceneH + 4, Right = w - 8, Bottom = sceneTop + sceneH + 40 };
             string info = _sel >= 0 && _sel < _rows.Count
-                ? $"{_rows[_sel].name}  +{Level(_rows[_sel].id)}\nSucesso: {Mathf.RoundToInt(Chance(Level(_rows[_sel].id)) * 100f)}%"
+                ? $"{_rows[_sel].name}  +{_rows[_sel].level}\nSucesso: {Mathf.RoundToInt(Chance(_rows[_sel].level) * 100f)}%"
                 : "Escolha um item";
             DrawTextW(hdc, info, -1, ref slotRc, DT_LEFT | DT_TOP | DT_WORDBREAK | DT_NOPREFIX);
 
@@ -329,7 +354,17 @@ namespace ZulfarakRPG
             // Footer.
             SelectObject(hdc, _fHint); SetTextColor(hdc, Rpg ? RpgUiNative.InkOnDark : Bgr(0.66f, 0.62f, 0.5f));
             var frc = new RECT { Left = 8, Top = h - FooterH, Right = w - 8, Bottom = h - 4 };
-            DrawTextW(hdc, "-5% sucesso e +10% status por nivel · falha quebra o item · ESC fecha", -1, ref frc, DT_CENTER | DT_BOTTOM | DT_SINGLELINE | DT_NOPREFIX);
+            DrawTextW(hdc, "-8% sucesso e +10% status por nivel · falha quebra o item · ESC fecha", -1, ref frc, DT_CENTER | DT_BOTTOM | DT_SINGLELINE | DT_NOPREFIX);
+
+            // Hover tooltip (drawn last so it floats on top). The forge repaints every frame, so we
+            // just read the cursor here instead of tracking WM_MOUSEMOVE.
+            if (GetCursorPos(out var cur))
+            {
+                ScreenToClient(_hwnd, ref cur);
+                int hi = CellAt(cur.X, cur.Y);
+                if (hi >= 0 && hi < _rows.Count)
+                    DrawTooltip(hdc, ItemDatabase.Instance != null ? ItemDatabase.Instance.Get(_rows[hi].id) : null, cur.X, cur.Y, w, h);
+            }
         }
 
         // Section header bar over a pane (parchment ink when skinned, else gold-on-divider).
@@ -374,6 +409,79 @@ namespace ZulfarakRPG
             var rc = new RECT { Left = x + 1, Top = y + 1, Right = x + cellW - 2, Bottom = y + 15 };
             SetTextColor(hdc, Bgr(1f, 0.90f, 0.20f));   // yellow
             DrawTextW(hdc, t, -1, ref rc, DT_RIGHT | DT_TOP | DT_SINGLELINE | DT_NOPREFIX);
+        }
+
+        static string TypeLabel(ItemType t) => t switch
+        {
+            ItemType.Weapon => "Arma", ItemType.Helmet => "Capacete", ItemType.Chest => "Peito",
+            ItemType.Gloves => "Maos", ItemType.Boots  => "Pes",      ItemType.Cape  => "Capa",
+            ItemType.Consumable => "Consumivel", _ => "Item"
+        };
+
+        // Floating item card — the SAME tooltip the bag shows: icon + name (quality-tinted) +
+        // type · quality, then one row per non-zero attribute, then the required-level line
+        // (red when the player can't equip it yet, white when they can).
+        static void DrawTooltip(IntPtr hdc, ItemData item, int mx, int my, int w, int h)
+        {
+            if (item == null) return;
+            var lines = item.StatLines();
+            bool showReq = item.requiredLevel > 1;
+            int playerLevel = PlayerManager.Instance != null && PlayerManager.Instance.Data != null ? PlayerManager.Instance.Data.level : 1;
+            const int pad = 8, iconBox = 40, headH = 46, lineH = 15;
+            int tw = 182;
+            int th = pad + headH + (lines.Count > 0 ? lines.Count * lineH + 6 : 0) + (showReq ? lineH + 4 : 0) + pad;
+            int tx = Mathf.Clamp(mx + 16, 4, w - tw - 4);
+            int ty = Mathf.Clamp(my + 16, HeaderH, h - th - 4);
+
+            if (Rpg) RpgUiNative.DarkBoard(hdc, tx, ty, tw, th);
+            else NativeFrameImage.PixelBevel(hdc, tx, ty, tw, th, _bOutline, _bBevHi, _bBevLo, _bVoid);
+
+            int ix = tx + pad, iy = ty + pad;
+            NativeFrameImage.PixelBevel(hdc, ix, iy, iconBox, iconBox, _bOutline, _bBevLo, _bBevLo, _bSlot);
+            if (!string.IsNullOrEmpty(item.iconPath))
+            {
+                var img = IconLibrary.Gdi(item.iconPath);
+                if (img != null && img.Ready) img.BlitAspect(hdc, ix + 3, iy + 3, iconBox - 6, iconBox - 6);
+            }
+            DrawQualityBorder(hdc, ix, iy, iconBox, iconBox, item.rarity);
+
+            int tex = ix + iconBox + 8;
+            SelectObject(hdc, _fSection);
+            SetTextColor(hdc, BgrOf(ItemData.QualityColor(item.rarity)));
+            var nameRc = new RECT { Left = tex, Top = ty + pad, Right = tx + tw - pad, Bottom = ty + pad + 28 };
+            DrawTextW(hdc, item.itemName, -1, ref nameRc, DT_LEFT | DT_TOP | DT_WORDBREAK | DT_NOPREFIX);
+
+            SelectObject(hdc, _fHint);
+            SetTextColor(hdc, Bgr(0.72f, 0.70f, 0.60f));
+            var typeRc = new RECT { Left = tex, Top = ty + pad + 28, Right = tx + tw - pad, Bottom = ty + pad + iconBox + 2 };
+            DrawTextW(hdc, $"{TypeLabel(item.itemType)} · {ItemData.QualityLabel(item.rarity)}", -1, ref typeRc, DT_LEFT | DT_BOTTOM | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+
+            if (lines.Count == 0 && !showReq) return;
+
+            var div = new RECT { Left = tx + pad, Top = ty + pad + headH - 4, Right = tx + tw - pad, Bottom = ty + pad + headH - 3 };
+            FillRect(hdc, ref div, _bDivider);
+
+            SelectObject(hdc, _fRow);
+            int ry = ty + pad + headH + 2;
+            for (int i = 0; i < lines.Count; i++)
+            {
+                var lblRc = new RECT { Left = tx + pad, Top = ry, Right = tx + tw - pad, Bottom = ry + lineH };
+                SetTextColor(hdc, Bgr(0.80f, 0.78f, 0.66f));
+                DrawTextW(hdc, lines[i].label, -1, ref lblRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+                var valRc = new RECT { Left = tx + pad, Top = ry, Right = tx + tw - pad, Bottom = ry + lineH };
+                SetTextColor(hdc, Bgr(0.55f, 1f, 0.62f));
+                DrawTextW(hdc, lines[i].value, -1, ref valRc, DT_RIGHT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+                ry += lineH;
+            }
+
+            if (showReq)
+            {
+                if (lines.Count > 0) ry += 2;
+                SelectObject(hdc, _fRow);
+                SetTextColor(hdc, playerLevel < item.requiredLevel ? Bgr(1f, 0.28f, 0.24f) : Bgr(1f, 1f, 1f));
+                var reqRc = new RECT { Left = tx + pad, Top = ry, Right = tx + tw - pad, Bottom = ry + lineH };
+                DrawTextW(hdc, $"Requer Nível {item.requiredLevel}", -1, ref reqRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+            }
         }
 
         // Quality-colour brushes (index 0..3 = Comum/Raro/Mito/Lendario) + accessor.
@@ -551,6 +659,7 @@ namespace ZulfarakRPG
             [MarshalAs(UnmanagedType.LPWStr)] public string lpszClassName; public IntPtr hIconSm; }
         [StructLayout(LayoutKind.Sequential)] struct MSG { public IntPtr hwnd; public uint message; public IntPtr wParam, lParam; public uint time; public int pt_x, pt_y; }
         [StructLayout(LayoutKind.Sequential)] struct RECT { public int Left, Top, Right, Bottom; }
+        [StructLayout(LayoutKind.Sequential)] struct POINT { public int X, Y; }
         [StructLayout(LayoutKind.Sequential)] struct PAINTSTRUCT { public IntPtr hdc; public bool fErase; public RECT rcPaint; public bool fRestore, fIncUpdate; [MarshalAs(UnmanagedType.ByValArray, SizeConst = 32)] public byte[] rgbReserved; }
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
         struct LOGFONT { public int lfHeight, lfWidth, lfEscapement, lfOrientation, lfWeight; public byte lfItalic, lfUnderline, lfStrikeOut, lfCharSet, lfOutPrecision, lfClipPrecision, lfQuality, lfPitchAndFamily; [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string lfFaceName; }
@@ -581,6 +690,8 @@ namespace ZulfarakRPG
         static int FillRect(IntPtr dc, RECT r, IntPtr br) => FillRect(dc, ref r, br);
         [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "DrawTextW")] static extern int DrawTextW(IntPtr dc, string s, int n, ref RECT r, uint f);
         [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr h);
+        [DllImport("user32.dll")] static extern bool GetCursorPos(out POINT p);
+        [DllImport("user32.dll")] static extern bool ScreenToClient(IntPtr h, ref POINT p);
         [DllImport("user32.dll", EntryPoint = "LoadCursorW")] static extern IntPtr LoadCursorW(IntPtr i, IntPtr n);
         [DllImport("gdi32.dll")] static extern IntPtr CreateSolidBrush(uint c);
         [DllImport("gdi32.dll")] static extern IntPtr SelectObject(IntPtr dc, IntPtr o);

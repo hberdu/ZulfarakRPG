@@ -69,6 +69,7 @@ namespace ZulfarakRPG
             public bool consumable;
             public ItemRarity rarity;
             public string iconPath;
+            public int upgradeLevel;
         }
 
         static readonly List<EquipRow> _equipRows = new List<EquipRow>(6);
@@ -220,7 +221,8 @@ namespace ZulfarakRPG
                     quantity = it.quantity,
                     consumable = data != null && data.itemType == ItemType.Consumable,
                     rarity = data != null ? data.rarity : ItemRarity.Common,
-                    iconPath = data != null ? data.iconPath : null
+                    iconPath = data != null ? data.iconPath : null,
+                    upgradeLevel = it.upgradeLevel
                 });
             }
 
@@ -442,9 +444,8 @@ namespace ZulfarakRPG
         }
 
         // Yellow "+N" in the icon's top-right corner = times the item was enhanced at the forge.
-        static void DrawUpgradeBadge(IntPtr hdc, int x, int y, int cellW, string itemId)
+        static void DrawUpgradeBadge(IntPtr hdc, int x, int y, int cellW, int lvl)
         {
-            int lvl = string.IsNullOrEmpty(itemId) ? 0 : ForgePopupWindow.UpgradeLevel(itemId);
             if (lvl <= 0) return;
             SelectObject(hdc, _fontTag);
             string t = "+" + lvl;
@@ -662,7 +663,7 @@ namespace ZulfarakRPG
             {
                 RpgUiNative.DarkBoard(hdc, 0, 0, w, h);
             }
-            else
+            else if (!NativeFrameImage.DrawWindowTheme(hdc, 0, 0, w, h))
             {
                 NativeFrameImage.PixelBevel(hdc, 0, 0, w, h, _brushOutline, _brushBevHi, _brushBevLo, _brushPanel);
                 NativeFrameImage.PixelCornerStuds(hdc, 0, 0, w, h, _brushRuby, inset: 5, size: 3);
@@ -717,7 +718,9 @@ namespace ZulfarakRPG
                 int emblemY = sumTop + 3;
                 NativeFrameImage.PixelBevel(hdc, emblemX, emblemY, emblemSize, emblemSize,
                     _brushOutline, _brushBevHi, _brushBevLo, _brushVoid);
-                var dragon = NativeFrameImage.Get(DragonRes);
+                // Themed emblem (treasure chest; old dragon art as fallback).
+                var dragon = NativeFrameImage.Get("UI/Emblem_Inventory");
+                if (!dragon.Ready) dragon = NativeFrameImage.Get(DragonRes);
                 if (dragon.Ready)
                     dragon.BlitAspect(hdc, emblemX + 4, emblemY + 4, emblemSize - 8, emblemSize - 8);
 
@@ -789,7 +792,7 @@ namespace ZulfarakRPG
                     var img = IconLibrary.Gdi(row.iconPath);
                     if (img != null && img.Ready) img.BlitAspect(hdc, s.x + 4, s.y + 4, s.w - 8, s.h - 8);
                     DrawQualityBorder(hdc, s.x, s.y, s.w, s.h, row.rarity);
-                    DrawUpgradeBadge(hdc, s.x, s.y, s.w, row.itemId);
+                    DrawUpgradeBadge(hdc, s.x, s.y, s.w, Inventory.Instance?.Equipment?.GetSlotLevel(row.slotType) ?? 0);
                 }
                 else
                 {
@@ -827,7 +830,7 @@ namespace ZulfarakRPG
                     DrawTextW(hdc, row.itemName, -1, ref rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
                 }
                 DrawQualityBorder(hdc, c.x, c.y, c.w, c.h, row.consumable ? ItemRarity.Common : row.rarity);
-                DrawUpgradeBadge(hdc, c.x, c.y, c.w, row.itemId);
+                DrawUpgradeBadge(hdc, c.x, c.y, c.w, row.upgradeLevel);
                 if (row.quantity > 1)
                 {
                     SelectObject(hdc, _fontHint);
@@ -872,9 +875,13 @@ namespace ZulfarakRPG
             if (item == null) return;
 
             var lines = item.StatLines();
+            // Required-level line: shown for items that gate on level (>1). Red when the player is
+            // too low to equip, white once they meet it.
+            bool showReq = item.requiredLevel > 1;
+            int playerLevel = PlayerManager.Instance != null && PlayerManager.Instance.Data != null ? PlayerManager.Instance.Data.level : 1;
             const int pad = 8, iconBox = 40, headH = 46, lineH = 15;
             int tw = 182;
-            int th = pad + headH + (lines.Count > 0 ? lines.Count * lineH + 6 : 0) + pad;
+            int th = pad + headH + (lines.Count > 0 ? lines.Count * lineH + 6 : 0) + (showReq ? lineH + 4 : 0) + pad;
             int tx = Mathf.Clamp(_hoverX + 16, 4, w - tw - 4);
             int ty = Mathf.Clamp(_hoverY + 16, HeaderH, h - th - 4);
 
@@ -904,7 +911,7 @@ namespace ZulfarakRPG
             DrawTextW(hdc, $"{TypeLabel(item.itemType)} · {ItemData.QualityLabel(item.rarity)}", -1, ref typeRc,
                 DT_LEFT | DT_BOTTOM | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
 
-            if (lines.Count == 0) return;
+            if (lines.Count == 0 && !showReq) return;
 
             // Divider under the header, then the attribute rows.
             var div = new RECT { Left = tx + pad, Top = ty + pad + headH - 4, Right = tx + tw - pad, Bottom = ty + pad + headH - 3 };
@@ -921,6 +928,16 @@ namespace ZulfarakRPG
                 SetTextColor(hdc, Bgr(0.55f, 1f, 0.62f));
                 DrawTextW(hdc, lines[i].value, -1, ref valRc, DT_RIGHT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
                 ry += lineH;
+            }
+
+            // Required-level line — red when the player can't equip it yet, white when they can.
+            if (showReq)
+            {
+                if (lines.Count > 0) ry += 2;
+                SelectObject(hdc, _fontSummary);
+                SetTextColor(hdc, playerLevel < item.requiredLevel ? Bgr(1f, 0.28f, 0.24f) : Bgr(1f, 1f, 1f));
+                var reqRc = new RECT { Left = tx + pad, Top = ry, Right = tx + tw - pad, Bottom = ry + lineH };
+                DrawTextW(hdc, $"Requer Nível {item.requiredLevel}", -1, ref reqRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
             }
         }
 

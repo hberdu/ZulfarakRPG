@@ -230,6 +230,7 @@ MonoBehaviour:
   - {fileID: 2907682683811911766, guid: e50d5af3fb53acf45be03b507bc9b7d2, type: 3}
   - {fileID: -4325738119086067156, guid: e50d5af3fb53acf45be03b507bc9b7d2, type: 3}
   enemyId: 
+  encounterId: 
   netInstanceId: 
 --- !u!1 &1381895798055363719
 GameObject:

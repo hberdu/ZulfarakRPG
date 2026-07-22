@@ -17,13 +17,14 @@ namespace ZulfarakRPG
     {
         struct Deco { public string obj; public string res; public float height; public float x; }
 
-        // 2 trees (edges) + 2 tents, spread across the ~0..5 city width. (Statues removed.)
+        // 2 trees (edges) + tent + cart, spread across the ~0..5 city width — all from the
+        // ORIGINAL generated pack (Gandalf art retired). (Statues removed.)
         static readonly Deco[] Decor =
         {
-            new Deco{ obj="Column_L",  res="Tree3",       height=1.10f, x=0.30f },   // far-left tree
-            new Deco{ obj="Vase_L",    res="SmallTent",   height=0.50f, x=1.80f },
-            new Deco{ obj="Vase_R",    res="LargeTent",   height=0.55f, x=3.40f },
-            new Deco{ obj="Column_R",  res="Tree3",       height=1.15f, x=4.70f },   // far-right tree
+            new Deco{ obj="Column_L",  res="AutumnOak",   height=1.10f, x=0.30f },   // far-left tree
+            new Deco{ obj="Vase_L",    res="TraderTent",  height=0.50f, x=1.80f },
+            new Deco{ obj="Vase_R",    res="HayCart",     height=0.45f, x=3.40f },
+            new Deco{ obj="Column_R",  res="AutumnOak",   height=1.15f, x=4.70f },   // far-right tree
         };
 
         // Extra prop objects we no longer use — hidden so the city isn't crowded.
@@ -89,7 +90,7 @@ namespace ZulfarakRPG
                 {
                     sr.sprite   = sprite;
                     sr.color    = Color.white;
-                    bool isTree = d.res == "Tree3" || d.res.StartsWith("Birch");
+                    bool isTree = d.res == "AutumnOak";
                     sr.flipX    = isTree && (treeIdx++ % 2 == 1);
                     sr.drawMode = SpriteDrawMode.Simple;
                     float shp   = sprite.bounds.size.y;

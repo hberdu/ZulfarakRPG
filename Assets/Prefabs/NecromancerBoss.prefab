@@ -276,6 +276,7 @@ MonoBehaviour:
   - {fileID: -9223011700869342703, guid: 24b7beadf3ee63a4eb70f07558a2b0bf, type: 3}
   - {fileID: 6688889545301695858, guid: 24b7beadf3ee63a4eb70f07558a2b0bf, type: 3}
   enemyId: 
+  encounterId: 
   netInstanceId: 
   summonFrames:
   - {fileID: -4063369843262767139, guid: b4240dc1f1ca85642b410046824d2d25, type: 3}
@@ -289,6 +290,7 @@ MonoBehaviour:
   - {fileID: -234371332689125784, guid: b4240dc1f1ca85642b410046824d2d25, type: 3}
   - {fileID: -5817284297660386127, guid: b4240dc1f1ca85642b410046824d2d25, type: 3}
   minionPrefab: {fileID: 568349454255688919, guid: b6ebf963e8aa9714dadff443ad433ffb, type: 3}
+  minionEnemyId: skeleton
   minionsPerSummon: 5
   summonCooldown: 14
   summonFps: 10

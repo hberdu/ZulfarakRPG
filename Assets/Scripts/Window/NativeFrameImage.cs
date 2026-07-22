@@ -165,6 +165,49 @@ namespace ZulfarakRPG
             DeleteDC(mem);
         }
 
+        // Tile this DIB at native pixel size across the destination rect — background texture
+        // fill for the themed windows. Single DC for the whole loop (a paint may tile ~90 cells).
+        public void BlitTiled(IntPtr hdc, int dstX, int dstY, int dstW, int dstH)
+        {
+            if (_hbitmap == IntPtr.Zero || _w <= 0 || _h <= 0 || dstW <= 0 || dstH <= 0) return;
+            IntPtr mem = CreateCompatibleDC(hdc);
+            if (mem == IntPtr.Zero) return;
+            IntPtr old = SelectObject(mem, _hbitmap);
+            var bf = new BLENDFUNCTION
+            {
+                BlendOp = AC_SRC_OVER, BlendFlags = 0, SourceConstantAlpha = 255, AlphaFormat = AC_SRC_ALPHA,
+            };
+            for (int y = 0; y < dstH; y += _h)
+            {
+                int th = Math.Min(_h, dstH - y);
+                for (int x = 0; x < dstW; x += _w)
+                {
+                    int tw = Math.Min(_w, dstW - x);
+                    AlphaBlend(hdc, dstX + x, dstY + y, tw, th, mem, 0, 0, tw, th, bf);
+                }
+            }
+            SelectObject(mem, old);
+            DeleteDC(mem);
+        }
+
+        // One-call pixel-art window theme shared by every native popup: tiled dark texture
+        // (UI/PanelTex) + gothic 9-slice frame (UI/PanelFrame, fine-grained hi-res art whose
+        // border is a QUARTER of the source size, blitted 1:1). Returns false when neither PNG
+        // is present so callers fall back to the procedural bevel — no regression.
+        public static bool DrawWindowTheme(IntPtr hdc, int x, int y, int w, int h)
+        {
+            var tex   = Get("UI/PanelTex");
+            var frame = Get("UI/PanelFrame");
+            if (!tex.Ready && !frame.Ready) return false;
+            if (tex.Ready)   tex.BlitTiled(hdc, x, y, w, h);
+            if (frame.Ready)
+            {
+                int b = Mathf.Max(8, frame.Width / 4);   // 128px art → 32px border at 1:1
+                frame.BlitNineSlice(hdc, x, y, w, h, 0, 0, frame.Width, frame.Height, b, b, b, b);
+            }
+            return true;
+        }
+
         // 9-slice blit: keeps the (bl,bt,br,bb) borders at native size while stretching the
         // edges and centre — so an atlas panel/button scales to any window rect without the
         // corners distorting. Source rect is (srcX,srcY,srcW,srcH); borders are in source px.

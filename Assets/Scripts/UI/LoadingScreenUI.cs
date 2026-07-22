@@ -47,6 +47,16 @@ namespace ZulfarakRPG
             var bg = MakeImage("BG", transform, new Color(0.055f, 0.045f, 0.09f, 1f));
             Stretch(bg.rectTransform);
 
+            // Pixel-art night panorama (Resources/UI/LoadingBg, 480x180) over the flat base
+            // when present — the flat colour stays underneath as the opacity guarantee.
+            var bgSprite = Resources.Load<Sprite>("UI/LoadingBg");
+            if (bgSprite != null)
+            {
+                var art = MakeImage("BgArt", transform, Color.white);
+                art.sprite = bgSprite;
+                Stretch(art.rectTransform);
+            }
+
             var vignette = MakeImage("Vignette", transform, new Color(0f, 0f, 0f, 0.35f));
             var vrt = vignette.rectTransform;
             vrt.anchorMin = new Vector2(0f, 0f);

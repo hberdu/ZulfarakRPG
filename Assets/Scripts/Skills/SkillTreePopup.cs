@@ -242,7 +242,7 @@ namespace ZulfarakRPG
             {
                 RpgUiNative.DarkBoard(hdc, 0, 0, w, h);
             }
-            else
+            else if (!NativeFrameImage.DrawWindowTheme(hdc, 0, 0, w, h))
             {
                 NativeFrameImage.PixelBevel(hdc, 0, 0, w, h, _brushOutline, _brushBevHi, _brushBevLo, _brushPanel);
                 NativeFrameImage.PixelCornerStuds(hdc, 0, 0, w, h, _brushRuby, inset: 5, size: 3);
@@ -263,8 +263,12 @@ namespace ZulfarakRPG
             {
                 var headerBar = new RECT { Left = 3, Top = 3, Right = w - 3, Bottom = HeaderH };
                 FillRect(hdc, ref headerBar, _brushDivider);
+                // Arcane tome emblem left of the title when the themed art is present.
+                var emb = NativeFrameImage.Get("UI/Emblem_Skills");
+                int embW = emb.Ready ? HeaderH - 6 : 0;
+                if (emb.Ready) emb.BlitAspect(hdc, 8, 4, embW, embW);
                 SetTextColor(hdc, Bgr(1.00f, 0.82f, 0.32f));
-                var titleRc = new RECT { Left = 12, Top = 6, Right = w - 190, Bottom = HeaderH };
+                var titleRc = new RECT { Left = 12 + (embW > 0 ? embW + 4 : 0), Top = 6, Right = w - 190, Bottom = HeaderH };
                 DrawTextW(hdc, "Arvore de Habilidades", -1, ref titleRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
             }
 

@@ -32,9 +32,19 @@ namespace ZulfarakRPG
         public ItemData Get(string id)
         {
             var authored = items?.FirstOrDefault(i => i.itemId == id);
-            if (authored != null) return authored;
-            if (_runtime != null && _runtime.TryGetValue(id, out var rt)) return rt;
+            if (authored != null) return FillIcon(authored);
+            if (_runtime != null && _runtime.TryGetValue(id, out var rt)) return FillIcon(rt);
             return TestItems.Get(id);
+        }
+
+        // Authored assets + server-pulled items ship WITHOUT an iconPath (only TestItems set one),
+        // so the native inventory/forge popups drew no icon for them. Back-fill it from the same
+        // type+rarity convention TestItems uses, so every equippable item shows an icon.
+        private static ItemData FillIcon(ItemData d)
+        {
+            if (d != null && string.IsNullOrEmpty(d.iconPath))
+                d.iconPath = TestItems.IconFor(d.itemType, d.rarity);
+            return d;
         }
         public ItemData[] GetByType(ItemType type) => items?.Where(i => i.itemType == type).ToArray();
         public ItemData[] GetByRarity(ItemRarity rarity) => items?.Where(i => i.rarity == rarity).ToArray();

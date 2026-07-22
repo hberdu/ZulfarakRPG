@@ -136,6 +136,15 @@ namespace ZulfarakRPG
             return JsonConvert.DeserializeObject<InventoryStateDto>(raw);
         }
 
+        // Server-authoritative forge: deducts gold, rolls success, upgrades or destroys the item,
+        // and records the ledger — all backend-side. Returns the outcome + fresh inventory state.
+        public async Task<ForgeUpgradeResultDto> ForgeUpgradeAsync(string itemId, int upgradeLevel)
+        {
+            var payload = new ForgeUpgradeRequest { itemId = itemId, upgradeLevel = upgradeLevel };
+            var raw = await PostAsync("/api/forge/upgrade", payload, includeAuth: true).ConfigureAwait(false);
+            return DeserializeOrNull<ForgeUpgradeResultDto>(raw);
+        }
+
         public async Task<ItemDefinitionDto[]> LoadItemDefinitionsAsync()
         {
             var raw = await GetAsync("/api/items/definitions").ConfigureAwait(false);
@@ -495,7 +504,8 @@ namespace ZulfarakRPG
             items = inventory.Items.ConvertAll(x => new InventoryItemDto
             {
                 itemId = x.itemId,
-                quantity = x.quantity
+                quantity = x.quantity,
+                upgradeLevel = x.upgradeLevel
             }).ToArray(),
             equipment = EquipmentDto.FromEquipment(inventory.Equipment)
         };
@@ -506,6 +516,7 @@ namespace ZulfarakRPG
     {
         public string itemId;
         public int quantity;
+        public int upgradeLevel;
     }
 
     [Serializable]
@@ -520,6 +531,15 @@ namespace ZulfarakRPG
         public string ringId;
         public string amuletId;
 
+        public int weaponUpgradeLevel;
+        public int helmetUpgradeLevel;
+        public int chestUpgradeLevel;
+        public int legsUpgradeLevel;
+        public int bootsUpgradeLevel;
+        public int glovesUpgradeLevel;
+        public int ringUpgradeLevel;
+        public int amuletUpgradeLevel;
+
         public static EquipmentDto FromEquipment(Equipment eq) => new EquipmentDto
         {
             weaponId = eq.weaponId,
@@ -529,7 +549,15 @@ namespace ZulfarakRPG
             bootsId = eq.bootsId,
             glovesId = eq.glovesId,
             ringId = eq.ringId,
-            amuletId = eq.amuletId
+            amuletId = eq.amuletId,
+            weaponUpgradeLevel = eq.weaponLevel,
+            helmetUpgradeLevel = eq.helmetLevel,
+            chestUpgradeLevel = eq.chestLevel,
+            legsUpgradeLevel = eq.legsLevel,
+            bootsUpgradeLevel = eq.bootsLevel,
+            glovesUpgradeLevel = eq.glovesLevel,
+            ringUpgradeLevel = eq.ringLevel,
+            amuletUpgradeLevel = eq.amuletLevel
         };
 
         public Equipment ToEquipment() => new Equipment
@@ -541,7 +569,15 @@ namespace ZulfarakRPG
             bootsId = bootsId,
             glovesId = glovesId,
             ringId = ringId,
-            amuletId = amuletId
+            amuletId = amuletId,
+            weaponLevel = weaponUpgradeLevel,
+            helmetLevel = helmetUpgradeLevel,
+            chestLevel = chestUpgradeLevel,
+            legsLevel = legsUpgradeLevel,
+            bootsLevel = bootsUpgradeLevel,
+            glovesLevel = glovesUpgradeLevel,
+            ringLevel = ringUpgradeLevel,
+            amuletLevel = amuletUpgradeLevel
         };
     }
 
@@ -617,6 +653,27 @@ namespace ZulfarakRPG
     public class UseConsumableRequest
     {
         public string itemId;
+    }
+
+    [Serializable]
+    public class ForgeUpgradeRequest
+    {
+        public string itemId;
+        public int upgradeLevel;
+    }
+
+    [Serializable]
+    public class ForgeUpgradeResultDto
+    {
+        public bool success;
+        public string itemId;
+        public int fromLevel;
+        public int toLevel;
+        public long goldSpent;
+        public double successChance;
+        public bool itemLost;
+        public long gold;
+        public InventoryStateDto state;
     }
 
     [Serializable]
