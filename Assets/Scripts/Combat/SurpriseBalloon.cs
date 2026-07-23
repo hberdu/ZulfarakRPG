@@ -12,14 +12,18 @@ namespace ZulfarakRPG
         SpriteRenderer _sr;
         const float Life = 1.0f;
 
-        public static void Spawn(Transform target)
+        public enum Glyph { Exclaim, Question }
+
+        public static void Spawn(Transform target) => Spawn(target, Glyph.Exclaim);
+
+        public static void Spawn(Transform target, Glyph glyph)
         {
             if (target == null) return;
             var go = new GameObject("SurpriseBalloon");
             var b = go.AddComponent<SurpriseBalloon>();
             b._target = target;
             b._sr = go.AddComponent<SpriteRenderer>();
-            b._sr.sprite       = Art();
+            b._sr.sprite       = Art(glyph);
             b._sr.sortingOrder = 500;   // floats above the hero + FX
             go.transform.localScale = Vector3.one * BaseScale;
         }
@@ -57,11 +61,13 @@ namespace ZulfarakRPG
             }
         }
 
-        // ── Procedural bubble sprite (cream body + black outline + red "!") ──
-        static Sprite _art;
-        static Sprite Art()
+        // ── Procedural bubble sprite (cream body + black outline + red glyph) ──
+        // One cached sprite per glyph; only the glyph pixels differ, the bubble is identical.
+        static readonly Sprite[] _art = new Sprite[2];
+        static Sprite Art(Glyph glyph)
         {
-            if (_art != null) return _art;
+            int slot = (int)glyph;
+            if (_art[slot] != null) return _art[slot];
             const int W = 16, H = 18;
             var fill  = new bool[W, H];
 
@@ -95,13 +101,29 @@ namespace ZulfarakRPG
                     t.SetPixel(x, y, edge ? ink : Color.clear);
                 }
 
-            // Red "!" — bar on top (high y), dot at the bottom.
-            for (int y = 9; y <= 14; y++) { t.SetPixel(7, y, red); t.SetPixel(8, y, red); }
-            t.SetPixel(7, 6, red); t.SetPixel(8, 6, red); t.SetPixel(7, 7, red); t.SetPixel(8, 7, red);
+            if (glyph == Glyph.Exclaim)
+            {
+                // Red "!" — bar on top (high y), dot at the bottom.
+                for (int y = 9; y <= 14; y++) { t.SetPixel(7, y, red); t.SetPixel(8, y, red); }
+                t.SetPixel(7, 6, red); t.SetPixel(8, 6, red); t.SetPixel(7, 7, red); t.SetPixel(8, 7, red);
+            }
+            else
+            {
+                // Red "?" — hook across the top, down the right, curling into the stem, dot below.
+                // Drawn in the same 6..14 band the "!" uses so both read at the same weight.
+                for (int x = 6; x <= 9; x++) t.SetPixel(x, 14, red);      // top bar
+                t.SetPixel(5, 13, red);  t.SetPixel(10, 13, red);          // shoulders
+                t.SetPixel(10, 12, red); t.SetPixel(10, 11, red);          // right side
+                t.SetPixel(9, 10, red);                                    // curl inward
+                t.SetPixel(8, 10, red);  t.SetPixel(8, 9, red);            // stem
+                t.SetPixel(7, 9, red);
+                t.SetPixel(7, 6, red);   t.SetPixel(8, 6, red);            // dot
+                t.SetPixel(7, 7, red);   t.SetPixel(8, 7, red);
+            }
 
             t.Apply();
-            _art = Sprite.Create(t, new Rect(0, 0, W, H), new Vector2(0.5f, 0f), 100f);
-            return _art;
+            _art[slot] = Sprite.Create(t, new Rect(0, 0, W, H), new Vector2(0.5f, 0f), 100f);
+            return _art[slot];
         }
     }
 }

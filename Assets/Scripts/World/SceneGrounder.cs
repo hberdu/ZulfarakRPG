@@ -15,17 +15,22 @@ namespace ZulfarakRPG
     // Runtime, so it survives scene re-saves. Physics characters self-ground and are skipped.
     public class SceneGrounder : MonoBehaviour
     {
-        struct Deco { public string obj; public string res; public float height; public float x; }
+        struct Deco { public string obj; public string res; public float height; public float x; public bool horizon; }
 
         // 2 trees (edges) + 2 natural pieces, spread across the ~0..5 city width. The old
         // TraderTent/HayCart went with the "scenery is objects, not buildings or carts" pass —
         // these are rock/ruin from the current biome pack instead. (Statues removed.)
+        //
+        // horizon = seats at the FAR EDGE of the ground plane (top of the backdrop band) instead of
+        // at the hero's feet. The trees used to be 1.10 u tall (~134 px) sitting on the standing
+        // line, which put them in the foreground towering over everyone; as scenery they belong at
+        // the end of the terrain. Only ground cover (the boulder) still sits at the hero's feet.
         static readonly Deco[] Decor =
         {
-            new Deco{ obj="Column_L",  res="AutumnOak",     height=1.10f, x=0.30f },   // far-left tree
-            new Deco{ obj="Vase_L",    res="MossBoulder",   height=0.50f, x=1.80f },
-            new Deco{ obj="Vase_R",    res="StandingStone", height=0.45f, x=3.40f },
-            new Deco{ obj="Column_R",  res="AutumnOak",     height=1.15f, x=4.70f },   // far-right tree
+            new Deco{ obj="Column_L",  res="AutumnOak",     height=0.40f, x=0.30f, horizon=true  },
+            new Deco{ obj="Vase_L",    res="MossBoulder",   height=0.16f, x=1.80f, horizon=false },
+            new Deco{ obj="Vase_R",    res="StandingStone", height=0.17f, x=3.40f, horizon=true  },
+            new Deco{ obj="Column_R",  res="AutumnOak",     height=0.42f, x=4.70f, horizon=true  },
         };
 
         // Extra prop objects we no longer use — hidden so the city isn't crowded.
@@ -103,7 +108,7 @@ namespace ZulfarakRPG
                 go.transform.position = new Vector3(d.x, p.y, p.z);      // spread across the map
                 foreach (var c in go.GetComponents<Collider2D>())        // never block the player
                     if (!c.isTrigger) c.enabled = false;
-                GroundBySprite(go, sr, groundTop);
+                GroundBySprite(go, sr, d.horizon ? groundTop + GroundDressing.BackdropRise : groundTop);
             }
 
             // Scale every static NPC to the HERO's size so the player and NPCs share one

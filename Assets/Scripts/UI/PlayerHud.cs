@@ -38,24 +38,30 @@ namespace ZulfarakRPG
         static readonly Color MenuOpenColor = new Color(0.44f, 0.16f, 0.66f, 1f);   // purple = open
         static readonly Color MenuIdleColor = new Color(0.17f, 0.13f, 0.17f, 1f);   // dark   = closed
 
-        // Bottom-left button-column metrics (public so the dungeon progress bar can
-        // align itself relative to the button rail).
+        // Bottom-left button-RAIL metrics (public so the dungeon progress bar can
+        // align itself relative to the rail). The rail runs HORIZONTALLY along the
+        // bottom edge — a vertical stack ate most of the 220 px strip's height.
         public const float ButtonSize          = 24f;   // small square — about the on-screen size of the map icon
-        // Buttons touch (1 px overlap on their shared 9-slice border) so the whole
-        // column of five HUD buttons fits inside the 120 px taskbar window without
-        // pushing the topmost button off the top edge.
+        // Buttons touch (1 px overlap on their shared 9-slice border).
         public const float ButtonGap           = -1f;
-        public const float ButtonColumnX       = 4f;    // x offset of the column from the left edge
-        public const float ButtonColumnBottomY = 2f;    // y offset of the bottom-most button in the column
-        public const int   ButtonCount         = 3;     // Menu / Map / Friends
+        public const float ButtonColumnX       = 4f;    // x offset of the first button from the left edge
+        public const float ButtonColumnBottomY = 2f;    // y offset of the rail from the bottom edge
 
-        // Legacy aliases (row-layout) kept so any external caller compiled against the
-        // old horizontal layout keeps building; both resolve to the column origin.
+        // Legacy aliases kept so any external caller compiled against the older names
+        // keeps building; both resolve to the rail origin.
         public const float ButtonRowLeftX = ButtonColumnX;
         public const float ButtonRowY     = ButtonColumnBottomY;
 
         const float SIZE   = ButtonSize;
         const float GAP    = ButtonGap;
+
+        // Slot N of the bottom-left rail, in canvas pixels from the bottom-left corner.
+        static Vector2 RailSlot(int slot) =>
+            new Vector2(ButtonColumnX + slot * (SIZE + GAP), ButtonColumnBottomY);
+
+        // Width the close/minimise pair reserves at the bottom-RIGHT, so the right-edge
+        // rail (dungeon portal button) starts clear of them instead of underneath.
+        public const float WindowButtonsWidth = 2f * (WinBtn + 3f) + 3f;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         static void Hook()
@@ -179,7 +185,7 @@ namespace ZulfarakRPG
             go.transform.SetParent(parent, false);
             var rt = (RectTransform)go.transform;
             rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0f, 0f);
-            rt.anchoredPosition = new Vector2(ButtonColumnX, ButtonColumnBottomY + slot * (SIZE + GAP));
+            rt.anchoredPosition = RailSlot(slot);
             rt.sizeDelta        = new Vector2(SIZE, SIZE);
 
             var chassis = go.AddComponent<Image>();
@@ -229,7 +235,7 @@ namespace ZulfarakRPG
             go.transform.SetParent(parent, false);
             var rt = (RectTransform)go.transform;
             rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0f, 0f);
-            rt.anchoredPosition = new Vector2(ButtonColumnX + SIZE + 1f, ButtonColumnBottomY + 4 * (SIZE + GAP));
+            rt.anchoredPosition = RailSlot(5);   // last stop on the rail, right after "repeat"
             rt.sizeDelta = new Vector2(SIZE, SIZE);
 
             var chassis = go.AddComponent<Image>();
@@ -292,7 +298,7 @@ namespace ZulfarakRPG
             go.transform.SetParent(parent, false);
             var rt = (RectTransform)go.transform;
             rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0f, 0f);
-            rt.anchoredPosition = new Vector2(ButtonColumnX, ButtonColumnBottomY + slot * (SIZE + GAP));
+            rt.anchoredPosition = RailSlot(slot);
             rt.sizeDelta        = new Vector2(SIZE, SIZE);
 
             // Button chassis from the atlas (9-sliced so it fills the square cleanly). It's
@@ -374,8 +380,11 @@ namespace ZulfarakRPG
             var go = new GameObject("WinBtn_" + name, typeof(RectTransform));
             go.transform.SetParent(parent, false);
             var rt = (RectTransform)go.transform;
-            rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(1f, 1f);   // top-right
-            rt.anchoredPosition = new Vector2(-(3f + idx * (WinBtn + 3f)), -3f);
+            // Bottom-RIGHT, vertically centred on the HUD rail so close/minimise read as the
+            // right-hand end of the same horizontal line as inventory/map/invite/skills.
+            rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(1f, 0f);
+            rt.anchoredPosition = new Vector2(-(3f + idx * (WinBtn + 3f)),
+                                              ButtonColumnBottomY + (SIZE - WinBtn) * 0.5f);
             rt.sizeDelta        = new Vector2(WinBtn, WinBtn);
 
             var bg = go.AddComponent<Image>();
@@ -782,7 +791,9 @@ namespace ZulfarakRPG
             go.transform.SetParent(parent, false);
             var rt = (RectTransform)go.transform;
             rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(1f, 0f);
-            rt.anchoredPosition = new Vector2(-(ButtonColumnX + slot * (SIZE + GAP)), ButtonColumnBottomY);
+            // Offset past the close/minimise pair, which now shares this bottom-right corner.
+            rt.anchoredPosition = new Vector2(
+                -(WindowButtonsWidth + ButtonColumnX + slot * (SIZE + GAP)), ButtonColumnBottomY);
             rt.sizeDelta        = new Vector2(SIZE, SIZE);
 
             // Shield chassis from the atlas. `hi` doubles as the shield tint so each

@@ -50,16 +50,25 @@ namespace ZulfarakRPG
                     break;
             }
 
-            // Bake the white-hair + recoloured-clothes frames. If the swap couldn't read
-            // the textures it returns the originals unchanged → apply the flat tint so the
-            // master is at least a different colour from the player.
-            _frames = NPCRecolor.Recolor(source, clothesHue);
-            // Recolor returns a fresh array but leaves individual frames untouched when a
-            // texture can't be read — so success is when the baked frame differs from the
-            // source sprite. Only then is the sprite already coloured (no tint needed).
-            bool recolored = _frames != null && source != null && _frames.Length > 0
-                             && source.Length > 0 && _frames[0] != source[0];
-            _sr.color = recolored ? Color.white : tintFallback;
+            // Prefer a DECOUPLED, pixel-edited master sheet (Resources/Masters/*) — the master's
+            // new gear (cloak/weapon) lives there so it never touches the idle art it otherwise
+            // SHARES with the player. Used as-is (no recolor). Falls back to the shared inspector
+            // frames + runtime recolor when no edited sheet exists for this class.
+            string masterRes = classType == ClassType.Mage   ? "Masters/WizardMaster-Idle"
+                             : classType == ClassType.Archer ? "Masters/ArcherMaster-Idle"
+                             :                                  "Masters/SoldierMaster-Idle";
+            _frames = LoadMasterSheet(masterRes);
+            if (_frames != null)
+            {
+                _sr.color = Color.white;
+            }
+            else
+            {
+                _frames = NPCRecolor.Recolor(source, clothesHue);
+                bool recolored = _frames != null && source != null && _frames.Length > 0
+                                 && source.Length > 0 && _frames[0] != source[0];
+                _sr.color = recolored ? Color.white : tintFallback;
+            }
             if (_frames != null && _frames.Length > 0) _sr.sprite = _frames[0];
             // Static at its authored Y (Kael's ground line) with only its trigger collider,
             // so it rests correctly AND doesn't physically block the player from walking past
@@ -67,6 +76,20 @@ namespace ZulfarakRPG
             GetComponent<Interactable2D>().tooltipText = label;
             GetComponent<Interactable2D>().onClick = () => SkillTreePopup.Show();
             // No floating name tag — the name shows on hover (Interactable2D tooltip).
+        }
+
+        // Loads a 600x100 pixel-edited master sheet from Resources as 6 bottom-centre frames
+        // (pivot 0.5,0 — matches the authored idle sub-sprites so it seats at the same line).
+        static Sprite[] LoadMasterSheet(string res)
+        {
+            var tex = Resources.Load<Texture2D>(res);
+            if (tex == null) return null;
+            const int fw = 100;
+            int n = Mathf.Max(1, tex.width / fw);
+            var a = new Sprite[n];
+            for (int i = 0; i < n; i++)
+                a[i] = Sprite.Create(tex, new Rect(i * fw, 0, fw, tex.height), new Vector2(0.5f, 0f), 100f);
+            return a;
         }
 
         void Update()

@@ -98,7 +98,13 @@ namespace ZulfarakRPG
                     float ppu   = Mathf.Max(1f, sp.pixelsPerUnit);
                     // Feet relative to the pivot (== transform position), in world units.
                     float feetWorld  = tr.position.y + (ab.feetFromBottom - sp.pivot.y / ppu) * scale;
-                    float correction = Mathf.Clamp(target - feetWorld, -0.25f, 0.25f);
+                    // Safety clamp, sized to the CHARACTER. A flat ±0.25 is fine for a hero-sized
+                    // sprite but silently under-corrects anything big: the Minotaur (100 px art at
+                    // 1.5×+) needed more than that and was left hanging in the air, and scaling it
+                    // up made the gap worse. Half the on-screen sprite height is still far too
+                    // small to teleport anyone across the map if the alpha read goes wrong.
+                    float limit      = Mathf.Max(0.25f, spriteH * scale * 0.5f);
+                    float correction = Mathf.Clamp(target - feetWorld, -limit, limit);
                     if (Mathf.Abs(correction) > 0.0005f)
                     {
                         tr.position += new Vector3(0f, correction, 0f);

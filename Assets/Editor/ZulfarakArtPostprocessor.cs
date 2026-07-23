@@ -13,7 +13,10 @@ public class ZulfarakArtPostprocessor : AssetPostprocessor
         bool decor  = p.StartsWith("Assets/Resources/CityDecor/");
         bool ground = p.StartsWith("Assets/Resources/Ground/");
         bool ui     = p.StartsWith("Assets/Resources/UI/");
-        if (!decor && !ground && !ui) return;
+        bool camp   = p.StartsWith("Assets/Resources/Campfire/");   // animated campfire strip
+        bool horse  = p.StartsWith("Assets/Resources/horse");       // horse_gallop / horse_idle sheets
+        bool master = p.StartsWith("Assets/Resources/Masters/");     // pixel-edited class-master sheets
+        if (!decor && !ground && !ui && !camp && !horse && !master) return;
 
         var ti = (TextureImporter)assetImporter;
         ti.textureType         = TextureImporterType.Sprite;

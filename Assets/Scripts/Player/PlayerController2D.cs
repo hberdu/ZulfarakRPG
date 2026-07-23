@@ -405,6 +405,20 @@ namespace ZulfarakRPG
         // ── Update ─────────────────────────────────────────────────────────
         void Update()
         {
+            // The march (Phase.Running) has no movement logic of its own — the world scrolls past
+            // while the hero walks on the spot. Its only job is to KEEP the walk loop alive, and it
+            // has to do that per frame, not once at the transition: Start() ends with an
+            // unconditional PlayAnim(_idle), so whenever script order runs WaveManager's Start
+            // before the hero's, the idle stomped the walk and he slid along in his idle pose.
+            if (_phase == Phase.Running)
+            {
+                // Keep draining the attack lock here too — returning without it would freeze a
+                // swing that was still resolving when the march began, and `_attackLock <= 0`
+                // would then never become true, so the walk would never start.
+                _attackLock -= Time.deltaTime;
+                if (_attackLock <= 0) PlayAnim(_walk, 12f);   // no-ops once it's already the walk
+                return;
+            }
             if (_phase != Phase.Playing) return;
 
             _atkTimer   -= Time.deltaTime;
@@ -439,11 +453,11 @@ namespace ZulfarakRPG
                 _hp = Mathf.Clamp(_hp, 0f, maxHealth);
             }
 
-            if (Mathf.Abs(_hp - data.hp) > 0.5f)
-            {
-                _hp = Mathf.Clamp(data.hp, 0f, maxHealth);
-                _hpBar?.SetHealth(_hp, maxHealth);
-            }
+            // NO pull of data.hp -> _hp here. During play the RUNTIME _hp is authoritative — combat
+            // damage/heal/regen all write _hp and push it to data.hp (SyncPlayerDataHealthFromRuntime).
+            // Re-reading data.hp every frame let any external recalc (equip / level / server sync)
+            // overwrite the live combat HP, which is why the bar "changed for no reason" mid-dungeon.
+            // _hp is seeded from data.hp once on load (SyncRuntimeStatsFromPlayerData).
 
             var healPerSecond = Mathf.Max(0f, data.healPower);
             if (healPerSecond <= 0f || _hp >= maxHealth) return;
@@ -515,32 +529,26 @@ namespace ZulfarakRPG
 
             if (InDungeon)
             {
-                if (_classType == ClassType.Mage)
+                // EVERY class now ADVANCES toward the nearest enemy instead of standing still
+                // waiting for it to arrive — the hero walks until the target is inside its own
+                // attackRange, then holds and fights. The mage still back-pedals if an enemy gets
+                // closer than its preferred staff distance.
+                var target = FindNearest(999f);
+                if (target != null)
                 {
-                    // The mage NEVER fights up close: it retreats to keep enemies at staff
-                    // range and blasts them with fireballs on the way in. Only when cornered
-                    // against a scene bound does it stand and keep casting.
-                    var near = FindNearest(kitePreferredDistance);
-                    if (near != null && TryKiteAwayFrom(near)) return;
-                }
-                else if (_classType == ClassType.Warrior)
-                {
-                    // Only the melee Warrior chases: walk FORWARD to meet the nearest enemy
-                    // once it's on screen, then hold at attack range instead of marching in
-                    // place at them.
-                    var target = FindNearest(999f);
-                    if (target != null)
+                    float tx   = target.transform.position.x;
+                    float dist = Vector2.Distance(transform.position, target.transform.position);
+                    if (_classType == ClassType.Mage && dist < kitePreferredDistance)
                     {
-                        float dist = Vector2.Distance(transform.position, target.transform.position);
-                        if (dist > attackRange && IsOnScreen(target.transform.position))
-                        {
-                            MoveTowardX(target.transform.position.x);
-                            return;
-                        }
+                        if (TryKiteAwayFrom(target)) return;   // too close → retreat
                     }
+                    else if (dist > attackRange)
+                    {
+                        MoveTowardX(tx);                       // too far → walk toward it
+                        return;
+                    }
+                    // else: in range → fall through to idle/auto-attack
                 }
-                // The ARCHER holds its ground and shoots enemies as they rush into range — it
-                // never chases (it was drifting around too much, especially to cast the rain).
             }
 
             // Idle — also fires between auto-attacks while an enemy is in range.
@@ -899,11 +907,13 @@ namespace ZulfarakRPG
         }
 
         // Called by HorseCutscene during map travel: freezes the hero (no input/AI/physics) and
-        // lifts its sprite above the horse so it can be carried on the mount. The scene reloads
-        // right after, so these overrides don't need undoing.
+        // lifts its sprite above the horse so it can be carried on the mount. Normally the scene
+        // reloads right after and the overrides go with it — but if the load fails they would
+        // strand the hero kinematic and input-dead forever, so EndRide undoes every one of them.
         public void BeginRide()
         {
             if (_phase == Phase.Dead) return;
+            _rideSortingOrder = _sr != null ? _sr.sortingOrder : 0;
             _phase          = Phase.WalkingToPortal;   // any non-Playing phase suppresses Update/AI
             _hasClickTarget = false;
             if (_rb != null) { _rb.linearVelocity = Vector2.zero; _rb.bodyType = RigidbodyType2D.Kinematic; }
@@ -913,6 +923,25 @@ namespace ZulfarakRPG
                 if (_idle != null && _idle.Length > 0) _sr.sprite = _idle[0];
                 _sr.sortingOrder = 260;                // ride on top of the horse (sortingOrder 250)
             }
+        }
+
+        int _rideSortingOrder;
+
+        // Undoes BeginRide. Only reached when a travel transition failed to load its destination
+        // (SceneFader's watchdog) — the happy path swaps scenes instead.
+        public void EndRide()
+        {
+            if (_phase == Phase.Dead) return;
+            _phase = Phase.Playing;
+            if (_rb != null) _rb.bodyType = RigidbodyType2D.Dynamic;
+            if (_sr != null) _sr.sortingOrder = _rideSortingOrder;
+            PlayAnim(_idle, 8f, forceRestart: true);
+        }
+
+        public static void EndRideAll()
+        {
+            foreach (var p in FindObjectsByType<PlayerController2D>(FindObjectsSortMode.None))
+                p.EndRide();
         }
 
         // Called by Portal2D when the player enters the portal trigger. Stops all

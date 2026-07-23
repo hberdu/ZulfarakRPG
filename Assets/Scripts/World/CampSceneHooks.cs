@@ -26,7 +26,8 @@ namespace ZulfarakRPG
             if (scene.name.StartsWith("Camp_"))
             {
                 StripNpcs();
-                AddGrazingHorse();
+                StripBakedDecor();
+                // No grazing horse in the settlements — the horse belongs to the travel cutscene only.
             }
         }
 
@@ -34,7 +35,11 @@ namespace ZulfarakRPG
         static void WireCampfire()
         {
             var fire = GameObject.Find("Campfire");
-            if (fire == null || fire.GetComponent<Interactable2D>() != null) return;
+            if (fire == null) return;
+
+            SwapCampfireArt(fire);   // detailed animated flames (idempotent — safe every load)
+
+            if (fire.GetComponent<Interactable2D>() != null) return;
 
             if (fire.GetComponent<Collider2D>() == null)
             {
@@ -52,6 +57,58 @@ namespace ZulfarakRPG
                 var p = Object.FindAnyObjectByType<PlayerController2D>();
                 if (p != null) p.Heal(p.MaxHealthValue);   // top the hero up to max
             };
+        }
+
+        // Replaces the campfire's baked 24px flipbook with the detailed PixelLab animation from
+        // Resources/Campfire/campfire_lit (a horizontal strip of SQUARE frames). Drives the
+        // existing SimpleIdleAnim cycler. No-op (keeps the authored art) if the strip is absent.
+        static Sprite[] _campfireFrames;
+        static Sprite[] LoadCampfireFrames()
+        {
+            if (_campfireFrames != null) return _campfireFrames;
+            var tex = Resources.Load<Texture2D>("Campfire/campfire_lit");
+            if (tex == null) return null;
+            int fh = tex.height;
+            int n  = Mathf.Max(1, tex.width / fh);
+            var frames = new Sprite[n];
+            for (int i = 0; i < n; i++)
+                frames[i] = Sprite.Create(tex, new Rect(i * fh, 0, fh, fh), new Vector2(0.5f, 0f), 100f);
+            _campfireFrames = frames;
+            return frames;
+        }
+
+        static void SwapCampfireArt(GameObject fire)
+        {
+            var frames = LoadCampfireFrames();
+            if (frames == null || frames.Length == 0) return;
+            var sr = fire.GetComponent<SpriteRenderer>();
+            if (sr == null) return;
+            var anim = fire.GetComponent<SimpleIdleAnim>();
+            if (anim == null) anim = fire.AddComponent<SimpleIdleAnim>();
+            anim.frames = frames;
+            anim.fps    = 10f;
+            sr.sprite   = frames[0];
+            var ab   = SpriteAlphaBounds.Get(frames[0]);
+            float visH = Mathf.Max(0.01f, ab.topFromBottom - ab.bottomFromBottom);
+            fire.transform.localScale = new Vector3(0.42f / visH, 0.42f / visH, 1f);
+        }
+
+        // Fixed decorative props baked into the camp .unity files (rocks, gravestones, bushes) sat
+        // at hardcoded spots and clashed with the runtime scenery MapScenery scatters. Remove them
+        // by name prefix (the camps have nothing else starting with these words).
+        static readonly string[] BakedDecorPrefixes =
+            { "Rock", "Bush", "Grave", "Tomb", "Boulder", "Stone", "Mausoleum", "Shrub" };
+
+        static void StripBakedDecor()
+        {
+            foreach (var sr in Object.FindObjectsByType<SpriteRenderer>(FindObjectsSortMode.None))
+            {
+                if (sr == null) continue;
+                string n = sr.gameObject.name;
+                foreach (var p in BakedDecorPrefixes)
+                    if (n.StartsWith(p, System.StringComparison.OrdinalIgnoreCase))
+                    { Object.Destroy(sr.gameObject); break; }
+            }
         }
 
         static void StripNpcs()

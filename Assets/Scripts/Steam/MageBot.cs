@@ -94,6 +94,9 @@ namespace ZulfarakRPG
             {
                 float dx = (lp.transform.position.x - 0.8f) - _pos.x;   // idle just left of the hero
                 if (Mathf.Abs(dx) > 0.15f) { _pos.x += Mathf.Sign(dx) * 1.6f * Time.deltaTime; anim = "walk"; flip = dx < 0f; }
+                // No enemy in reach, but the party is MARCHING (world scrolls, hero holds his X):
+                // keep walking with them instead of standing idle while the ground slides past.
+                else if (lp.IsRunning) anim = "walk";
                 _hp = Mathf.Min(_maxHp, _hp + 6f * Time.deltaTime);
             }
 

@@ -66,7 +66,7 @@ namespace ZulfarakRPG
                     new[] { "FernClump",    "ToadstoolRing", "RootKnot",      "MossBoulder"   },
                     new[] { "BrambleBush",  "FallenTrunk",   "WildBerryBush", "MossyLog"      },
                     new[] { "RuinArch",     "BrokenColumn",  "IvyStone",      "StandingStone" },
-                    new[] { "OldWatchpost", "ThatchCottage", "WoodPalisade",  "ChapelSpire"   },
+                    new[] { "OldWatchpost", "ThatchCottage", "StoneMill",     "ChapelSpire"   },
                     new[] { "GreenKeep",    "ConiferRidge",  "MistMountain",  "FarHamlet"     },
                 };
                 case 2: return new[] {
@@ -75,7 +75,7 @@ namespace ZulfarakRPG
                     new[] { "SunSkull",     "ScrubTuft",     "RedPebbleHeap", "CrackedSlab"   },
                     new[] { "RustOreVein",  "BoneShard",     "SandstoneRock", "CactusPatch"   },
                     new[] { "CanyonSpire",  "TuskArch",      "RuinedPillar",  "SkullPike"     },
-                    new[] { "MesaWatchpost","OrcLonghouse",  "StakeWall",     "ObsidianTower" },
+                    new[] { "MesaWatchpost","OrcLonghouse",  "OrcGatehouse",  "ObsidianTower" },
                     new[] { "CanyonFort",   "ButteRidge",    "RedMountain",   "FarMesa"       },
                 };
                 case 3: return new[] {
@@ -87,8 +87,8 @@ namespace ZulfarakRPG
                 };
                 case 4: return new[] {
                     new[] { "FrostTuft",    "SnowDrift",     "IceShard",      "FrozenBramble" },
-                    new[] { "SnowCairn",    "IceOreVein",    "BuriedStone",   "DeadHedge"     },
-                    new[] { "CryptObelisk", "GraveCluster",  "BrokenTomb",    "IronFence"     },
+                    new[] { "SnowCairn",    "IceOreVein",    "BuriedStone",   "IceBoulder"    },
+                    new[] { "CryptObelisk", "GraveCluster",  "BrokenTomb",    "StoneSarcophagus" },
                     new[] { "FrostChapel",  "SnowWatchpost", "CryptGate",     "BellSpire"     },
                     new[] { "GlacierKeep",  "FrostRidge",    "DistantPeak",   "FarSnowMount"  },
                 };
@@ -161,34 +161,61 @@ namespace ZulfarakRPG
                 && Resources.Load<Texture2D>("Ground/ground_snow") == null)
                 BuildSnowGround();
 
-            // Themed background tree line — three depth rows, each scattering the phase trees randomly.
-            // ONLY in dungeons: they scroll during the inter-wave march, so overlapping rows read as
-            // depth. Static hubs (city + orc/slime camps) skipped these rows, which just piled trees
-            // on top of each other in place — those keep their (re-themed) baked trees instead.
-            var mixed = Mix(trees, props);
-            if (MapBounds.IsDungeonScene(sceneName) && mixed.Length > 0)
-            {
-                float g = GroundAlignUtil.FindGroundTopY();
-                // All rows alternate through the full 12-piece biome pool. The per-row ground
-                // offsets place distant rows HIGHER on the open-field band (fake depth, matching
-                // the TaskbarHero-style diagonal ground the path art draws).
-                var far  = Row("PropRow_Far",  mixed, 0.24f, 0.38f, -24, g + 0.10f, 0.30f, 1.6f, 2.8f, 0.02f);
-                var mid  = Row("PropRow_Mid",  mixed, 0.36f, 0.55f, -18, g + 0.06f, 0.48f, 2.0f, 3.4f, 0.02f);
-                var near = Row("PropRow_Near", mixed, 0.50f, 0.72f, -12, g + 0.02f, 0.65f, 2.4f, 4.0f, 0.01f);
-                var rows = new List<ParallaxLayer> { far, mid, near };
-                if (props.Length > 0)
-                    rows.Add(Row("PropRow_Fg", props, 0.52f, 0.85f, -10, g + 0.01f, 0.74f, 4.2f, 7.0f, 0f));
-                if (WaveManager.Instance != null)
-                    WaveManager.Instance.parallaxLayers = rows.ToArray();
-            }
-            else if (!MapBounds.IsDungeonScene(sceneName) && props.Length > 0)
-            {
-                // Static hubs (city + camps): scatter a handful of fixed biome props behind the
-                // NPC/prop layer, seated on the real ground line. Never in dungeons — fixed props
-                // would break the scroll illusion there.
+            // DUNGEONS NOW GET THE EXACT SAME SCENERY AS THE CITIES — the old dungeon-only parallax
+            // rows (ParallaxLayer + SceneryScaleCap) sized props to the tiny backdrop-band height
+            // and stacked them high, so they read as tiny specks floating above the scene. Routing
+            // both through ScatterHubProps gives dungeons the same real-world-sized, layered,
+            // no-overlap scatter that looks right in the hubs. (Static, not scrolling — the
+            // inter-wave march still moves the ground/backdrop for motion.)
+            if (props.Length > 0)
                 ScatterHubProps(props, rng);
-            }
             Destroy(gameObject);
+        }
+
+        // Real-world height of a scenery piece, in HERO HEIGHTS (the human yardstick). Keyed by
+        // what the NAME says the piece is, checked most-specific first, so a mushroom is ankle-high
+        // and a keep towers. This is what fixes "mushroom bigger than a house": size follows the
+        // object, not the depth band.
+        static bool Has(string s, params string[] keys)
+        {
+            foreach (var k in keys) if (s.Contains(k)) return true;
+            return false;
+        }
+
+        static float SceneryHeightHH(string name)
+        {
+            string n = (name ?? "").ToLowerInvariant();
+            // Distant landmarks — castles, ridgelines, mountains. Tall, but pushed back + faded.
+            if (Has(n, "keep", "fort", "citadel", "castle", "ridge", "mountain", "mesa", "butte",
+                       "peak", "hamlet", "bluff", "snowmount", "glacier"))            return 3.6f;
+            // Buildings — huts, cottages, chapels, towers, walls.
+            if (Has(n, "watchpost", "cottage", "hut", "longhouse", "chapel", "tower", "palisade",
+                       "stakewall", "bellspire", "stilthut"))                          return 2.6f;
+            // Trees — a couple of heroes tall.
+            if (Has(n, "oak", "maple", "elm", "acacia", "alder", "stump", "fir", "hawthorn",
+                       "conifer", "thorn", "tree", "pine", "birch", "willow"))         return 2.0f;
+            // Mid markers — arches, columns, obelisks, standing stones, graves, gates, fences.
+            if (Has(n, "arch", "column", "pillar", "obelisk", "idol", "spire", "standingstone",
+                       "menhir", "grave", "tomb", "gate", "fence", "hedge", "pike", "snag",
+                       "totem"))                                                       return 1.5f;
+            // Small objects — boulders, rocks, logs, ore, bushes, cacti, cairns.
+            if (Has(n, "boulder", "rock", "stone", "log", "trunk", "post", "heap", "ore", "vein",
+                       "bush", "cactus", "cairn", "sandstone"))                        return 0.75f;
+            // Everything else — ground cover: ferns, tufts, mushrooms, pebbles, reeds, shards.
+            return 0.4f;
+        }
+
+        // X-interval reservation helpers for the no-overlap scatter.
+        static bool Overlaps(List<(float lo, float hi)> spans, float lo, float hi)
+        {
+            foreach (var s in spans) if (lo < s.hi && hi > s.lo) return true;
+            return false;
+        }
+        static float HighestConflict(List<(float lo, float hi)> spans, float lo, float hi)
+        {
+            float top = lo;
+            foreach (var s in spans) if (lo < s.hi && hi > s.lo && s.hi > top) top = s.hi;
+            return top;
         }
 
         static Sprite[] Mix(Sprite[] a, Sprite[] b)
@@ -219,6 +246,36 @@ namespace ZulfarakRPG
             // the ones behind it. Falls back to the flat pool if a band's art isn't in yet.
             var buckets = MapScenery.PhasePropLayers(sceneName);
 
+            // The hero's VISIBLE height is the human yardstick every prop is scaled against, so a
+            // mushroom reads ankle-high and a cottage reads two-plus heroes tall. Read post-shrink
+            // (this runs 3 frames after PlayerController2D.Start scales the hero to 0.85).
+            float HH = 0.68f;
+            {
+                var pl   = Object.FindAnyObjectByType<PlayerController2D>();
+                var plsr = pl != null ? pl.GetComponent<SpriteRenderer>() : null;
+                if (plsr != null && plsr.sprite != null)
+                {
+                    var pab = SpriteAlphaBounds.Get(plsr.sprite);
+                    HH = Mathf.Max(0.3f, (pab.topFromBottom - pab.bottomFromBottom)
+                                         * Mathf.Abs(pl.transform.lossyScale.y));
+                }
+            }
+
+            // Every placed piece reserves its horizontal footprint here — across ALL bands — so no
+            // two props (same band OR different bands) load at the same spot. Overlapping props
+            // read as one blob; keeping them apart gives the horizon a constantly-changing profile.
+            var occupied = new List<(float lo, float hi)>();
+
+            // In DUNGEONS the same scatter has to SCROLL during the inter-wave march (the hero walks
+            // in place while the world moves). Attach a scroller and register every piece with a
+            // per-layer parallax speed. Cities get no scroller, so their scenery stays fixed.
+            DungeonSceneryScroller scroller = null;
+            if (MapBounds.IsDungeonScene(sceneName))
+            {
+                scroller = new GameObject("DungeonSceneryScroller").AddComponent<DungeonSceneryScroller>();
+                scroller.Configure(MapBounds.MinX, MapBounds.MaxX);
+            }
+
             for (int layer = 0; layer < DepthLayers; layer++)
             {
                 var slice = layer < buckets.Length ? LoadTrees(buckets[layer]) : new Sprite[0];
@@ -226,12 +283,14 @@ namespace ZulfarakRPG
                 if (slice.Length == 0) continue;
                 int sliceCursor = 0;
                 float t = layer / (float)(DepthLayers - 1);          // 0 = nearest, 1 = farthest
-                // EVERY band seats on the STANDING LINE — one straight row, no altitude drift and
-                // never on top of the backdrop band. Depth is carried by SIZE and FADE alone.
-                const float rise = 0f;
-                float baseS = Mathf.Lerp(0.72f, 0.20f, t);           // strong size falloff, all small
-                float alpha = Mathf.Lerp(1f,    0.28f, t);           // far bands fade well back
-                int   sort  = -4 - layer * 3;                        // -4..-16, all above ground(-20/-19)
+                // RECEDING LAYERS: band 0 is low ground cover on the standing line; every farther
+                // band seats HIGHER up the strip (starting at the backdrop-band limit and climbing
+                // into the sky), so the field reads as tilted depth — near/low/big → far/high/small.
+                // Props are never below the ground line, and the bands are visibly separated.
+                float seatY   = g + Mathf.Lerp(0f, 0.62f, t);        // 0 → +0.62 WU across the 5 bands
+                float distMul = Mathf.Lerp(1.0f, 0.5f, t);           // farther = a touch smaller (depth)
+                float alpha   = Mathf.Lerp(1f,   0.30f, t);          // far bands fade well back
+                int   sort    = -4 - layer * 3;                      // -4..-16, all above ground(-20/-19)
 
                 // Farther bands are denser (smaller pieces, packed tighter) like a real horizon —
                 // but keep the gaps WIDE overall: the play area is only ~5 world units, so short
@@ -252,7 +311,29 @@ namespace ZulfarakRPG
                     sprite = layer >= DepthLayers - 2
                            ? Grayscale(sprite)
                            : Harmonize(sprite, MapScenery.Phase(sceneName));
-                    float scale = baseS + ((float)rng.NextDouble() - 0.5f) * 0.10f * baseS;
+                    // Real-world sizing: scale each piece so its VISIBLE height is a believable
+                    // fraction of the hero's height, keyed by what the piece IS (SceneryHeightHH).
+                    float visH = 0.5f;
+                    {
+                        var b = SpriteAlphaBounds.Get(sprite);
+                        visH = Mathf.Max(0.01f, b.topFromBottom - b.bottomFromBottom);
+                    }
+                    float scale = SceneryHeightHH(sprite.name) * HH / visH * distMul;
+                    scale *= 1f + ((float)rng.NextDouble() - 0.5f) * 0.10f;   // ±5% variety
+                    scale  = Mathf.Min(scale, 1.6f / visH);                   // never taller than the frame
+
+                    // Slide x forward until this piece's footprint clears every reserved span, so it
+                    // never overlaps a piece already placed in ANY band. Give up on this band once
+                    // sliding runs off the right edge.
+                    float halfW = SpriteAlphaBounds.Get(sprite).width * scale * 0.5f + 0.12f;
+                    bool placed = true;
+                    while (Overlaps(occupied, x - halfW, x + halfW))
+                    {
+                        x = HighestConflict(occupied, x - halfW, x + halfW) + halfW + 0.02f;
+                        if (x >= MapBounds.MaxX - 0.1f) { placed = false; break; }
+                    }
+                    if (!placed) break;
+                    occupied.Add((x - halfW, x + halfW));
 
                     var go = new GameObject($"HubProp_L{layer}_{sprite.name}");
                     var sr = go.AddComponent<SpriteRenderer>();
@@ -261,8 +342,10 @@ namespace ZulfarakRPG
                     sr.color        = new Color(1f, 1f, 1f, alpha);
 
                     go.transform.position = new Vector3(x, 0f, 0f);   // SeatOnGround keeps X, sets Y
-                    SeatOnGround(go.transform, sprite, g + rise, scale);
-                    x += Mathf.Lerp(minGap, maxGap, (float)rng.NextDouble());
+                    SeatOnGround(go.transform, sprite, seatY, scale);
+                    // Nearer bands scroll faster than far ones → parallax depth during the march.
+                    scroller?.Register(go.transform, Mathf.Lerp(1.0f, 0.35f, t));
+                    x += halfW + Mathf.Lerp(minGap, maxGap, (float)rng.NextDouble());
                 }
             }
         }
@@ -292,6 +375,35 @@ namespace ZulfarakRPG
                 float d = Mathf.Repeat(anchor - h + 180f, 360f) - 180f;
                 return (Mathf.Repeat(h + d * 0.55f, 360f), Mathf.Min(s, 0.42f));
             });
+        }
+
+        static Sprite[] Harmonize(Sprite[] a, int phase)
+        {
+            var outp = new Sprite[a.Length];
+            for (int i = 0; i < a.Length; i++) outp[i] = Harmonize(a[i], phase);
+            return outp;
+        }
+
+        static Sprite[] Grayscale(Sprite[] a)
+        {
+            var outp = new Sprite[a.Length];
+            for (int i = 0; i < a.Length; i++) outp[i] = Grayscale(a[i]);
+            return outp;
+        }
+
+        // Largest uniform scale at which EVERY piece in the pool still fits inside the backdrop
+        // band. ParallaxLayer picks its own sprite per instance, so the cap has to hold for the
+        // tallest one — otherwise a single big piece pokes out over the horizon.
+        static float SceneryScaleCap(Sprite[] pool)
+        {
+            float tallest = 0f;
+            foreach (var s in pool)
+            {
+                if (s == null) continue;
+                var b = SpriteAlphaBounds.Get(s);
+                tallest = Mathf.Max(tallest, b.topFromBottom - b.bottomFromBottom);
+            }
+            return tallest > 0.0001f ? GroundDressing.BackdropRise / tallest : 1f;
         }
 
         static Sprite Recolour(Sprite src, int variant, System.Func<float, float, (float, float)> map)

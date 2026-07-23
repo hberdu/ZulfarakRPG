@@ -19,7 +19,7 @@ namespace ZulfarakRPG
 
         protected override float ServerStatMultiplier => 1f;
         protected override bool  UsesBossHealthBar    => true;
-        protected override float SpawnScaleMultiplier => 1.5f;   // towering
+        protected override float SpawnScaleMultiplier => 2.2f;   // towering — dwarfs the hero
         protected override float EntranceInvulnSeconds => 2f;
 
         bool  _charging;
@@ -103,8 +103,12 @@ namespace ZulfarakRPG
             var sr  = go.GetComponent<SpriteRenderer>();
             sr.sortingOrder = 1;                          // same layer as the hero
             var col = go.GetComponent<BoxCollider2D>();
-            col.size   = new Vector2(0.45f, 0.60f);       // body box; bottom ≈ sprite feet so it grounds cleanly
-            col.offset = new Vector2(0f, 0.32f);
+            // Box spans FEET→HEAD (bottom ≈ 0.02, top ≈ 0.88 local). WorldHealthBar.AttachAbove
+            // anchors the bar to the collider TOP as "the head": the old short body box (top 0.62)
+            // put the bar mid-torso on this 2.2× boss. A full-height box seats it just above the
+            // head like the other bosses, and still grounds cleanly by its bottom.
+            col.size   = new Vector2(0.55f, 0.86f);
+            col.offset = new Vector2(0f, 0.45f);
 
             m.idleFrames = _idle; m.walkFrames = _walk; m.attackFrames = _attack;
             m.hurtFrames = _hurt; m.deathFrames = _death;

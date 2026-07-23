@@ -26,6 +26,9 @@ namespace ZulfarakRPG
         // TRANSITIONS to destinationScene as a Minotaur run (see MinotaurArena). Used by the red
         // portal in the city so the fight happens in a separate dungeon, not the city.
         public bool minotaurRun = false;
+        // Red rings WITHOUT any rank-A behaviour — for the Minotaur arena's exit portal, which is
+        // a plain scene transition that still has to read as the Minotaur's own portal.
+        public bool forceRedRings = false;
 
         [Header("Tooltip")]
         // Persistent label rendered above the portal, e.g. "1-1" (dungeon 1, phase 1).
@@ -70,7 +73,7 @@ namespace ZulfarakRPG
                 spr = MakeProceduralRing();
                 if (glowSprite != null) glowSprite.sprite = spr;
             }
-            var ringColors = (rankA || minotaurRun) ? RankARingColors : RingColors;
+            var ringColors = (rankA || minotaurRun || forceRedRings) ? RankARingColors : RingColors;
             _rings = new SpriteRenderer[RingSizes.Length];
             for (int i = 0; i < RingSizes.Length; i++)
             {
@@ -226,9 +229,16 @@ namespace ZulfarakRPG
             TryEnter();
         }
 
-        // CLICK the portal → enter. Lets the player CHOOSE between the purple (leave) and the red
-        // (RANK A) portal in the final dungeon without having to walk into one.
-        void OnMouseDown() => TryEnter();
+        // CLICK the portal → WALK to it, then enter on arrival (the trigger fires TryEnter when the
+        // hero reaches it). Clicking used to TryEnter on the spot, which read as an instant teleport
+        // from wherever the hero stood. If he's already on the portal, enter immediately.
+        void OnMouseDown()
+        {
+            var p = UnityEngine.Object.FindAnyObjectByType<PlayerController2D>();
+            if (p == null) { TryEnter(); return; }
+            if (Mathf.Abs(p.transform.position.x - transform.position.x) < 0.5f) TryEnter();
+            else p.AutoWalkToX(transform.position.x);   // OnTriggerEnter2D enters when he arrives
+        }
 
         void TryEnter()
         {
@@ -257,7 +267,7 @@ namespace ZulfarakRPG
 
             // Spawn on the far side of the arena so the boss visibly stalks in.
             float groundY = GroundAlignUtil.FindGroundTopY();
-            var spawn = new Vector3(MapBounds.MaxX - 0.3f, groundY + 0.5f, 0f);
+            var spawn = new Vector3(MapBounds.MaxX - 0.3f, groundY, 0f);   // seating handles the rest
             MinotaurBoss.Spawn(spawn);
 
             Destroy(gameObject, 0.4f);   // the challenge is claimed — remove the spent portal

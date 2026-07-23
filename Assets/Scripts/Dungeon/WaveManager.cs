@@ -71,6 +71,14 @@ namespace ZulfarakRPG
 
         private IEnumerator StartWavesRoutine()
         {
+            // Arrival beat: the hero steps out of the portal, reacts with a "?" (mirror of the "!"
+            // he throws on seeing a boss), then marches off looking for the first wave. Without it
+            // he just stood still in an empty dungeon until the enemies popped in around him.
+            if (_player != null)
+                SurpriseBalloon.Spawn(_player.transform, SurpriseBalloon.Glyph.Question);
+            yield return StartCoroutine(RunToNextWave());
+            _player?.SetRunning(false);
+
             yield return LoadEnemyCatalogFromServer();
             yield return StartCoroutine(StartNextWave());
         }
@@ -123,6 +131,9 @@ namespace ZulfarakRPG
                 if (parallaxLayers != null)
                     for (int i = 0; i < parallaxLayers.Length; i++)
                         if (parallaxLayers[i] != null) parallaxLayers[i].Scroll(dx);
+                // Scroll the (static, city-style) scattered dungeon scenery so the hero visibly
+                // travels instead of running on the spot.
+                DungeonSceneryScroller.Active?.Scroll(dx);
                 // Drift the far scenic backdrop too, at ~the city's parallax rate.
                 BackgroundLayers.DungeonScroll += dx * 0.40f;
                 t += Time.deltaTime;
@@ -398,51 +409,12 @@ namespace ZulfarakRPG
             }
             exitPortal?.Open();
 
-            // Final dungeon: drop a RANK A (red) challenge portal right beside the purple exit and
-            // let the hero CHOOSE — walk into the purple to leave, or the red to face the Minotaur.
-            // (Other dungeons keep auto-walking the hero home.)
-            if (IsLastDungeon())
-            {
-                SpawnRankAPortal();
-                _player?.SetRunning(false);   // celebration over → hand control back so the hero can pick a portal
-                return;
-            }
-
+            // No red RANK A portal at the end of the dungeon anymore — the Minotaur is reached
+            // ONLY through the red portal in the city (RankAPortalSpawner). Every dungeon, the
+            // last one included, just walks the hero home through the purple exit.
             string dest = exitPortal != null ? exitPortal.destinationScene : "Zulfarak";
             _player?.WalkToPortal(exitPortal != null ? exitPortal.transform.position
                                                      : new Vector3(-5, -1.5f, 0), dest);
-        }
-
-        // The last dungeon in the progression — where the RANK A red portal appears. Uses THIS
-        // WaveManager's own scene (robust even if a persistent/bootstrap scene is the "active" one).
-        // ponytail: single scene-name gate; update if a later dungeon (Dungeon_5_1…) becomes the end.
-        bool IsLastDungeon() => gameObject.scene.name == "Dungeon_4_1";
-
-        private bool _rankASpawned;
-        void SpawnRankAPortal()
-        {
-            if (_rankASpawned) return;
-            _rankASpawned = true;
-
-            Vector3 pp = exitPortal != null ? exitPortal.transform.position
-                                            : new Vector3(MapBounds.CenterX, -0.025f, 0f);
-            float x = Mathf.Clamp(pp.x + 1.3f, MapBounds.MinX + 0.3f, MapBounds.MaxX - 0.3f);
-
-            var go = new GameObject("RankAPortal");
-            go.transform.position   = new Vector3(x, pp.y, pp.z);
-            go.transform.localScale = Vector3.one * 0.8f;   // same size as every portal
-            // Give it a glow-core SpriteRenderer like the authored portals — without one Portal2D
-            // only drew the outer rings, so the red portal read as empty/half-missing.
-            var core = go.AddComponent<SpriteRenderer>();
-            core.sortingOrder = 2;
-            core.color        = new Color(1f, 0.45f, 0.40f, 1f);   // red-hot core (rings add the glow)
-            var p = go.AddComponent<Portal2D>();            // RequireComponent adds the trigger collider
-            p.glowSprite    = core;                          // Start fills its sprite + shows it
-            p.rankA         = true;
-            p.openOnStart   = true;
-            p.destinationScene = "";
-            p.tooltipText   = "RANK A";
-            Debug.Log($"[WaveManager] Portal RANK A (vermelho) criado em x={x:F2} (cena {gameObject.scene.name}).");
         }
 
         // ── Visual ─────────────────────────────────────────────────────────

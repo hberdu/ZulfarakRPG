@@ -64,6 +64,24 @@ namespace ZulfarakRPG
         {
             yield return FadeTo(target, duration);
             cb?.Invoke();
+
+            // WATCHDOG. `cb` is normally SceneManager.LoadScene, and OnSceneLoaded is what lifts
+            // the curtain. If the load never happens — the classic case being a destination that
+            // isn't in the build settings, which logs an error and returns without loading —
+            // nothing else in this class ever clears `_covered`, and the player is left staring at
+            // a black frozen screen with no way out. Give the load a couple of seconds, then lift
+            // the curtain anyway so the game is at worst wrong, never bricked.
+            float wait = 0f;
+            while (_covered && wait < 2.5f) { wait += Time.unscaledDeltaTime; yield return null; }
+            if (_covered)
+            {
+                Debug.LogError("[SceneFader] scene load did not happen within 2.5s — lifting the " +
+                               "curtain so the game isn't stuck. Check the destination is in " +
+                               "Build Settings.");
+                _covered = false;
+                PlayerController2D.EndRideAll();
+                _active = StartCoroutine(FadeTo(0f, 0.3f));
+            }
         }
 
         IEnumerator FadeTo(float targetAlpha, float duration)

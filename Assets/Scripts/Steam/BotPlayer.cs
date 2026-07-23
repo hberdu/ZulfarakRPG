@@ -182,7 +182,11 @@ namespace ZulfarakRPG
             Vector3 hp = lp.transform.position;
             float wantX = hp.x + SlotOffsetX(lp);
             float dx = wantX - transform.position.x;
-            bool moving = Mathf.Abs(dx) > 0.06f;
+            // Walking also covers the MARCH: during it the hero holds his X while the world scrolls
+            // past, so slot-following alone reports "not moving" and the bot stood idle sliding
+            // along beside a walking party. IsRunning is the same flag the co-op state broadcast
+            // uses for remote players, so all three stay in step.
+            bool moving = Mathf.Abs(dx) > 0.06f || lp.IsRunning;
             if (moving)
             {
                 float step = Mathf.Clamp(dx, -2.8f * Time.deltaTime, 2.8f * Time.deltaTime);

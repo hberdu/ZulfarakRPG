@@ -55,7 +55,9 @@ namespace ZulfarakRPG
 
             // Spawn on the far side so the boss stalks in (same spot the in-place summon used).
             float groundY = GroundAlignUtil.FindGroundTopY();
-            var spawn = new Vector3(MapBounds.MaxX - 0.3f, groundY + 0.5f, 0f);
+            // ON the ground line — SkeletonEnemy.Start re-seats by the alpha-trimmed feet, and the
+            // old +0.5 was a head start the seating clamp could not fully undo (it floated).
+            var spawn = new Vector3(MapBounds.MaxX - 0.3f, groundY, 0f);
             var boss = MinotaurBoss.Spawn(spawn);
 
             // Wait until the boss is dead (its GameObject is destroyed on death → Unity null).
@@ -66,17 +68,31 @@ namespace ZulfarakRPG
             Destroy(gameObject);
         }
 
-        // Purple portal back to the city, dropped once the Minotaur falls.
+        // The ONE way out: a single normal (purple) return portal. Any other portal the arena
+        // authored is removed first, and it is NOT red — no red portal lingers after the fight.
         static void SpawnExitPortal(float groundY)
         {
-            float x = Mathf.Clamp(0f, MapBounds.MinX + 1f, MapBounds.MaxX - 1f);
+            Portal2D anchor = null;
+            foreach (var p in Object.FindObjectsByType<Portal2D>(FindObjectsSortMode.None))
+            {
+                if (p == null) continue;
+                anchor = p;                       // keep one to copy the art/transform from
+                Destroy(p.gameObject);
+            }
+
+            float x     = Mathf.Clamp(0f, MapBounds.MinX + 1f, MapBounds.MaxX - 1f);
+            float y     = anchor != null ? anchor.transform.position.y   : -0.025f;
+            float scale = anchor != null ? anchor.transform.localScale.x : 0.8f;
+
             var go = new GameObject("MinotaurExitPortal");
-            go.transform.position   = new Vector3(x, -0.025f, 0f);
-            go.transform.localScale = new Vector3(0.8f, 0.8f, 1f);
+            go.transform.position   = new Vector3(x, y, 0f);
+            go.transform.localScale = new Vector3(scale, scale, 1f);
             go.AddComponent<CircleCollider2D>();
             var portal = go.AddComponent<Portal2D>();
-            portal.rankA            = false;               // purple = leave.
+            portal.rankA            = false;               // plain scene transition
+            portal.minotaurRun      = false;
             portal.destinationScene = MinotaurArena.City;
+            portal.tooltipText      = "SAIR";
             portal.openOnStart      = true;
         }
     }

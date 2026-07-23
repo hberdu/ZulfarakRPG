@@ -33,7 +33,13 @@ namespace ZulfarakRPG
         public int fxCols, fxRows;      // sheet grid
         public SkillShape shape;        // how the damage lands (see SkillShape)
 
-        public float CooldownAt(int level) => baseCooldown * (1f - 0.06f * (level - 1));
+        // Hard floor: no skill ever casts faster than this, even maxed. The old formula
+        // (baseCooldown * (1 - 0.06*(level-1))) went linearly to ZERO and then NEGATIVE —
+        // Chuva de Flechas hit -0.1 s at level 18. Damage keeps scaling with level (PowerAt),
+        // so flooring the cooldown doesn't remove the reward for leveling.
+        public const float CooldownFloor = 4f;
+        public float CooldownAt(int level) =>
+            Mathf.Max(CooldownFloor, baseCooldown * (1f - 0.06f * (level - 1)));
         public float PowerAt(int level)    => basePower * level;
     }
 
@@ -65,25 +71,25 @@ namespace ZulfarakRPG
         // Warrior + Mage damage skills all hit in AREA (every enemy in the blast).
         static readonly SkillDef[] Warrior =
         {
-            S("w_golpe",     "Golpe Pesado",  "Golpe forte que atinge todos ao redor.", ClassType.Warrior, SkillEffect.Damage, 3.0f, 16f, 12,  Steel,  8, 3, 2, SkillShape.AreaMelee),
-            S("w_investida", "Investida",     "Avanca girando a lamina, dano em area.",  ClassType.Warrior, SkillEffect.Damage, 6.0f, 44f, 107, Steel,  9, 4, 3, SkillShape.AreaMelee),
-            S("w_vigor",     "Vigor",         "Recupera vida do guerreiro.",             ClassType.Warrior, SkillEffect.Heal,   7.0f, 24f, 337, Nature, 3, 2, 2),
+            S("w_golpe",     "Golpe Pesado",  "Golpe forte que atinge todos ao redor.", ClassType.Warrior, SkillEffect.Damage, 6.0f, 16f, 12,  Steel,  8, 3, 2, SkillShape.AreaMelee),
+            S("w_investida", "Investida",     "Avanca girando a lamina, dano em area.",  ClassType.Warrior, SkillEffect.Damage, 8.0f, 44f, 107, Steel,  9, 4, 3, SkillShape.AreaMelee),
+            S("w_vigor",     "Vigor",         "Recupera vida do guerreiro.",             ClassType.Warrior, SkillEffect.Heal,   9.0f, 24f, 337, Nature, 3, 2, 2),
         };
 
         static readonly SkillDef[] Mage =
         {
-            S("m_fogo",   "Bola de Fogo",     "Explosao de fogo que atinge todos na area.", ClassType.Mage, SkillEffect.Damage, 3.5f, 22f, 4,  Fire,   4, 3, 3, SkillShape.AreaMelee),
-            S("m_gelo",   "Fragmento de Gelo","Estilhacos de gelo em area.",                ClassType.Mage, SkillEffect.Damage, 5.0f, 36f, 64, Ice,    5, 3, 2, SkillShape.AreaMelee),
-            S("m_arcano", "Explosao Arcana",  "Detona energia arcana em area.",             ClassType.Mage, SkillEffect.Damage, 7.0f, 58f, 38, Arcane, 6, 3, 2, SkillShape.AreaMelee),
+            S("m_fogo",   "Bola de Fogo",     "Explosao de fogo que atinge todos na area.", ClassType.Mage, SkillEffect.Damage, 6.0f, 22f, 4,  Fire,   4, 3, 3, SkillShape.AreaMelee),
+            S("m_gelo",   "Fragmento de Gelo","Estilhacos de gelo em area.",                ClassType.Mage, SkillEffect.Damage, 7.5f, 36f, 64, Ice,    5, 3, 2, SkillShape.AreaMelee),
+            S("m_arcano", "Explosao Arcana",  "Detona energia arcana em area.",             ClassType.Mage, SkillEffect.Damage, 9.0f, 58f, 38, Arcane, 6, 3, 2, SkillShape.AreaMelee),
         };
 
         // Archer skills — damage is a % of the archer's ATTACK (computed in SkillAutoCaster),
         // so basePower here is just the nominal number the HUD tooltip shows.
         static readonly SkillDef[] Archer =
         {
-            S("a_serpe",       "Tiro de Serpe",    "Flecha em zigue-zague: dano normal + veneno (30% do ataque/s por 4s).", ClassType.Archer, SkillEffect.Damage, 5.0f, 30f, 16, Nature, 1, 4, 3, SkillShape.ArcherSerpent),
-            S("a_concentrado", "Tiro Concentrado", "Concentra por 2s e dispara: 200% do dano de ataque.",                   ClassType.Archer, SkillEffect.Damage, 6.0f, 200f, 14, Steel, 8, 3, 2, SkillShape.ArcherConcentrated),
-            S("a_chuva",       "Chuva de Flechas", "3 flechas caem sobre inimigos aleatorios: 75% do ataque cada.",         ClassType.Archer, SkillEffect.Damage, 7.0f, 75f, 1,  Steel, 8, 3, 2, SkillShape.ArcherRain),
+            S("a_serpe",       "Tiro de Serpe",    "Flecha em zigue-zague: dano normal + veneno (30% do ataque/s por 4s).", ClassType.Archer, SkillEffect.Damage, 7.0f, 30f, 16, Nature, 1, 4, 3, SkillShape.ArcherSerpent),
+            S("a_concentrado", "Tiro Concentrado", "Concentra por 2s e dispara: 200% do dano de ataque.",                   ClassType.Archer, SkillEffect.Damage, 8.0f, 200f, 14, Steel, 8, 3, 2, SkillShape.ArcherConcentrated),
+            S("a_chuva",       "Chuva de Flechas", "3 flechas caem sobre inimigos aleatorios: 75% do ataque cada.",         ClassType.Archer, SkillEffect.Damage, 9.0f, 75f, 1,  Steel, 8, 3, 2, SkillShape.ArcherRain),
         };
 
         public static ClassType CurrentClass => PlayerManager.Instance != null && PlayerManager.Instance.Data != null
