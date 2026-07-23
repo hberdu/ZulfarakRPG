@@ -60,6 +60,12 @@ namespace ZulfarakRPG
 
         public bool IsAlive => !_dead;
 
+        // Can be ATTACKED right now. False while a boss plays its entrance animation (the
+        // Necromancer's portal rise → taunt → summon, the other bosses' walk-in): TakeDamage
+        // already no-ops there, so the hero/bots must not waste swings, arrows and skill
+        // cooldowns on it either — the same lock is honoured on both sides.
+        public bool IsTargetable => !_dead && !_invulnerable;
+
         // ── Init ───────────────────────────────────────────────────────────
         void Awake()
         {
@@ -209,14 +215,15 @@ namespace ZulfarakRPG
             if (_hp <= 0f) StartCoroutine(Die());
         }
 
-        // All living skeletons whose position is within `radius` of `center` — used by the
-        // warrior/mage area skills and the archer's arrow rain to pick targets.
+        // All ATTACKABLE skeletons whose position is within `radius` of `center` — used by the
+        // warrior/mage area skills and the archer's arrow rain to pick targets. A boss still
+        // playing its entrance animation is skipped (see IsTargetable).
         public static System.Collections.Generic.List<SkeletonEnemy> AliveInRadius(Vector3 center, float radius)
         {
             var list = new System.Collections.Generic.List<SkeletonEnemy>();
             float r2 = radius * radius;
             foreach (var e in FindObjectsByType<SkeletonEnemy>(FindObjectsSortMode.None))
-                if (e != null && e.IsAlive &&
+                if (e != null && e.IsTargetable &&
                     ((Vector2)(e.transform.position - center)).sqrMagnitude <= r2)
                     list.Add(e);
             return list;
@@ -284,20 +291,36 @@ namespace ZulfarakRPG
                 if (Mathf.Abs(dir) > 0.001f) _sr.flipX = dir < 0;
                 if (_atkTimer <= 0)
                 {
-                    // Swing at whoever is in front: the local hero or the local test bot loses HP
-                    // here (a remote victim resolves the hit on its own client).
-                    if (_targetIsLocal) _player.TakeDamage(attackDamage);
-                    else if (_targetBot != null) _targetBot.TakeDamage(attackDamage);
                     _atkTimer   = attackCooldown;
-                    _attackLock = attackFrames != null && attackFrames.Length > 0
+                    float swing = attackFrames != null && attackFrames.Length > 0
                                   ? attackFrames.Length / 12f : 0.5f;
+                    _attackLock = swing;
                     // One swing per attack — loop:false lets us return to idle while
                     // the cooldown ticks instead of looping the swing repeatedly.
                     PlayAnim(attackFrames, 12f, forceRestart: true, loop: false);
+                    // The blow only CONNECTS partway through that animation (its contact
+                    // frame), never on the frame the swing starts — the hit always follows
+                    // the wind-up the player can see. Damage and cadence are unchanged.
+                    StartCoroutine(StrikeAtContactFrame(swing * HitFrameFraction, _targetIsLocal, _targetBot));
                 }
                 else if (_attackLock <= 0)
                     PlayAnim(idleFrames, 8f);
             }
+        }
+
+        // How far into the attack animation the blow lands (0 = first frame, 1 = last one).
+        // The Necromancer's cast releases its bolt at the same point of its own animation.
+        protected const float HitFrameFraction = 0.55f;
+
+        // Lands the melee hit at the swing's contact frame. The victim is captured when the
+        // swing STARTS: the local hero or the local test bot loses HP here (a remote victim
+        // resolves the hit on its own client).
+        IEnumerator StrikeAtContactFrame(float windUp, bool targetIsLocal, BotPlayer targetBot)
+        {
+            yield return new WaitForSeconds(windUp);
+            if (_dead) yield break;   // died mid-swing — the blow never connects
+            if (targetIsLocal) { if (_player != null) _player.TakeDamage(attackDamage); }
+            else if (targetBot != null && targetBot.IsAlive) targetBot.TakeDamage(attackDamage);
         }
 
         // When skeletons stand close together (similar X), shift each HP bar up by a

@@ -65,10 +65,16 @@ namespace ZulfarakRPG
 
         static void AddGrazingHorse()
         {
-            var wagon = GameObject.Find("Wagon");
-            if (wagon == null) return;
-            Vector3 wp = wagon.transform.position;
-            GrazingHorse.Spawn(new Vector3(wp.x - 0.95f, wp.y, 0f));   // just left of the wagon
+            // The Wagon prop only exists when the editor scene wizard was run+saved for this Camp
+            // — which it never was — so GameObject.Find("Wagon") was always null and the horse
+            // silently never spawned. Fall back to the Campfire (present in every Camp scene) so
+            // the travel horse shows up on arrival regardless.
+            var wagon  = GameObject.Find("Wagon");
+            var anchor = wagon != null ? wagon : GameObject.Find("Campfire");
+            if (anchor == null) return;
+            Vector3 ap = anchor.transform.position;
+            float x = wagon != null ? ap.x - 0.95f : ap.x + 1.4f;   // left of the wagon, or right of the campfire
+            GrazingHorse.Spawn(new Vector3(x, ap.y, 0f));
         }
     }
 

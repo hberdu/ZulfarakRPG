@@ -513,6 +513,9 @@ namespace ZulfarakRPG
             var hintRc = new RECT { Left = 12, Top = h - FooterH, Right = w - 12, Bottom = h - 6 };
             DrawTextW(hdc, "Digite para buscar · clique para convidar · roda rola · ESC limpa/fecha", -1, ref hintRc,
                 DT_LEFT | DT_BOTTOM | DT_SINGLELINE | DT_NOPREFIX);
+
+            // ornate frame LAST so it rings the window over the content
+            NativeFrameImage.DrawWindowFrame(hdc, 0, 0, w, h);
         }
 
         internal static void Pump()

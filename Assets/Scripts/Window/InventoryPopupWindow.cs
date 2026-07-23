@@ -849,6 +849,9 @@ namespace ZulfarakRPG
                 DT_CENTER | DT_BOTTOM | DT_SINGLELINE | DT_NOPREFIX);
             SelectObject(hdc, prev);
 
+            // ornate frame LAST so it rings the window over the content
+            NativeFrameImage.DrawWindowFrame(hdc, 0, 0, w, h);
+
             // Hover tooltip / slot-picker modal drawn last so they float above everything.
             if (_pickerOpen) DrawPicker(hdc, w, h);
             else DrawTooltip(hdc, w, h);

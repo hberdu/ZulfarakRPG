@@ -778,7 +778,9 @@ namespace ZulfarakRPG
             float minD = range;
             foreach (var e in FindObjectsByType<SkeletonEnemy>(FindObjectsSortMode.None))
             {
-                if (!e.IsAlive) continue;
+                // A boss making its entrance (portal rise / taunt / summon) is untouchable:
+                // the hero WAITS for that animation to end instead of swinging at it.
+                if (!e.IsTargetable) continue;
                 float d = Vector2.Distance(transform.position, e.transform.position);
                 if (d < minD) { minD = d; best = e; }
             }

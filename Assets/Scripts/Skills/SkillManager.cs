@@ -117,9 +117,9 @@ namespace ZulfarakRPG
             return true;
         }
 
-        // Confirms the optimistic learn against the AUTHORITATIVE server. On rejection the local
-        // level is rolled back so the server stays the source of truth for progression. Offline
-        // (server not ready) the optimistic value stands until the next SyncWithServer.
+        // Best-effort confirmation of the optimistic learn against the server. The local, already-
+        // saved value is the display source of truth (AvailablePoints/CanLearn gate spending
+        // locally); a server hiccup or empty response must never erase it — it only converges up.
         async void ConfirmLearnWithServer(string id, bool wasNew)
         {
             var api = ServerApiClient.Instance;
@@ -131,12 +131,10 @@ namespace ZulfarakRPG
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"[SkillManager] Servidor recusou upar '{id}': {ex.Message}. Revertendo.");
-                int lvl = GetLevel(id);
-                if (lvl <= 1) { _levels.Remove(id); if (wasNew) _equipped.Remove(id); }
-                else _levels[id] = lvl - 1;
-                Save();
-                OnSkillsChanged?.Invoke();
+                // Best-effort: a transient/broken/offline server call must NOT wipe a learn we
+                // already saved locally. Keep the optimistic value; the next SyncWithServer
+                // reconverges. (Rolling back here was half of the "resets to zero" bug.)
+                Debug.LogWarning($"[SkillManager] level-up de '{id}' não confirmado no servidor (mantido local): {ex.Message}");
             }
         }
 
@@ -166,8 +164,10 @@ namespace ZulfarakRPG
         // local equip loadout, dropping any equipped skill no longer learned and backfilling.
         void ApplyServerState(SkillsStateDto state)
         {
-            if (state == null || state.skills == null) return;
-            _levels.Clear();
+            // Merge-UP only: an empty/stale/broken response must NEVER erase locally-earned,
+            // already-saved progress (that was the "skill snaps back to 0" bug). The server can
+            // raise a level, never wipe one — so bail on an empty payload and never Clear().
+            if (state == null || state.skills == null || state.skills.Length == 0) return;
             foreach (var s in state.skills)
             {
                 if (string.IsNullOrEmpty(s.skillId) || s.level <= 0) continue;
@@ -175,7 +175,7 @@ namespace ZulfarakRPG
                 // class-scoped budget. Other-class skills stay stored server-side, ignored here.
                 var def = SkillDefs.Get(s.skillId);
                 if (def == null || def.cls != SkillDefs.CurrentClass) continue;
-                _levels[s.skillId] = s.level;
+                _levels[s.skillId] = Mathf.Max(GetLevel(s.skillId), s.level);
             }
 
             _equipped.RemoveAll(eid => GetLevel(eid) <= 0);

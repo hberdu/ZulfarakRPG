@@ -17,14 +17,15 @@ namespace ZulfarakRPG
     {
         struct Deco { public string obj; public string res; public float height; public float x; }
 
-        // 2 trees (edges) + tent + cart, spread across the ~0..5 city width — all from the
-        // ORIGINAL generated pack (Gandalf art retired). (Statues removed.)
+        // 2 trees (edges) + 2 natural pieces, spread across the ~0..5 city width. The old
+        // TraderTent/HayCart went with the "scenery is objects, not buildings or carts" pass —
+        // these are rock/ruin from the current biome pack instead. (Statues removed.)
         static readonly Deco[] Decor =
         {
-            new Deco{ obj="Column_L",  res="AutumnOak",   height=1.10f, x=0.30f },   // far-left tree
-            new Deco{ obj="Vase_L",    res="TraderTent",  height=0.50f, x=1.80f },
-            new Deco{ obj="Vase_R",    res="HayCart",     height=0.45f, x=3.40f },
-            new Deco{ obj="Column_R",  res="AutumnOak",   height=1.15f, x=4.70f },   // far-right tree
+            new Deco{ obj="Column_L",  res="AutumnOak",     height=1.10f, x=0.30f },   // far-left tree
+            new Deco{ obj="Vase_L",    res="MossBoulder",   height=0.50f, x=1.80f },
+            new Deco{ obj="Vase_R",    res="StandingStone", height=0.45f, x=3.40f },
+            new Deco{ obj="Column_R",  res="AutumnOak",     height=1.15f, x=4.70f },   // far-right tree
         };
 
         // Extra prop objects we no longer use — hidden so the city isn't crowded.

@@ -47,21 +47,14 @@ namespace ZulfarakRPG
                     Destroy(go);
                 }
 
+            // Overlay aesthetic: NO opaque scenic backdrop. The window is TRANSPARENT (magenta
+            // clear → AlphaMaskFeature → live desktop shows through), so a full-screen bg image
+            // would defeat the point. The biome PROPS (MapScenery) ARE the layered background now.
+            // Only clear any leftover backdrop a previous (opaque) build may have parented.
             var cam = Camera.main;
             if (cam == null) return;
-
             var prev = cam.transform.Find("__Background");
             if (prev != null) Destroy(prev.gameObject);
-
-            var spr = Resources.Load<Sprite>(BgForScene(scene.name));
-            if (spr == null) return;
-
-            var bg = new GameObject("__Background");
-            bg.transform.SetParent(cam.transform, false);
-            var cb = bg.AddComponent<CameraBackdrop>();   // tiles + parallax-scrolls it
-            cb.sprite = spr;
-            cb.sortingOrder = -100;   // behind ground (-5), props and characters
-            cb.scrolls = MapBounds.IsDungeonScene(scene.name);  // static in city/camp hubs
         }
 
         // Themed backdrop per map: forest/dark are EXCLUSIVE to the first city/dungeon; each

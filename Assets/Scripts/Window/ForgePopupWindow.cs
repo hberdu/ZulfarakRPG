@@ -356,6 +356,9 @@ namespace ZulfarakRPG
             var frc = new RECT { Left = 8, Top = h - FooterH, Right = w - 8, Bottom = h - 4 };
             DrawTextW(hdc, "-8% sucesso e +10% status por nivel · falha quebra o item · ESC fecha", -1, ref frc, DT_CENTER | DT_BOTTOM | DT_SINGLELINE | DT_NOPREFIX);
 
+            // ornate frame LAST so it rings the window over the content
+            NativeFrameImage.DrawWindowFrame(hdc, 0, 0, w, h);
+
             // Hover tooltip (drawn last so it floats on top). The forge repaints every frame, so we
             // just read the cursor here instead of tracking WM_MOUSEMOVE.
             if (GetCursorPos(out var cur))

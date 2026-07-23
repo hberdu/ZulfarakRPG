@@ -389,6 +389,9 @@ namespace ZulfarakRPG
             DrawTextW(hdc, "Clique ou ESC para fechar", -1, ref hintRc,
                 DT_CENTER | DT_BOTTOM | DT_SINGLELINE | DT_NOPREFIX);
 
+            // ornate frame LAST so it rings the window over the content
+            NativeFrameImage.DrawWindowFrame(hdc, 0, 0, w, h);
+
             SelectObject(hdc, prevFont);
         }
 

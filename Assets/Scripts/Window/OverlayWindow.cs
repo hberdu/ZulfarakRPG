@@ -49,10 +49,13 @@ namespace ZulfarakRPG
         const uint SWP_SHOWWINDOW  = 0x0040;
         const uint SWP_FRAMECHANGED= 0x0020;
 
-        // Transparency retired: this is now a normal OPAQUE window. The gameplay camera clears
-        // straight to this forest-sky colour (no magenta key, no per-pixel layered push, no
-        // desktop see-through). Tune to taste.
-        public static readonly Color BackgroundColor = new Color(0.53f, 0.71f, 0.63f, 1f);
+        // MAGENTA clear colour for the gameplay window. URP renders through AlphaMaskFeature
+        // (AlphaFromMagenta.shader): after post-processing it rewrites every magenta pixel
+        // (R≥.85, G≤.15, B≥.85) to alpha 0; LayeredWindowRenderer then pushes the per-pixel-alpha
+        // frame via UpdateLayeredWindow, so magenta becomes a true see-through hole over the live
+        // desktop while sprites/text/HUD stay opaque. (Transparent-black clear leaves the frame
+        // OPAQUE — the DX swapchain clobbers clear alpha unless AlphaMaskFeature keys off magenta.)
+        public static readonly Color BackgroundColor = new Color(1f, 0f, 1f, 1f);
 
         // ── Public settings ───────────────────────────────────────────────────
         // 400 px wide keeps the strip compact (TaskbarHero-style) instead of a very wide
@@ -68,7 +71,11 @@ namespace ZulfarakRPG
         // ground + a little sky), ~5.3 world wide — matching the ~5-wide play area so the walk
         // range and enemy spawns fill the screen without big empty margins. Tweak in-editor.
         public const float GameplayCamOrtho = 0.9f;
-        public const float GameplayCamY     = 0.45f;
+        // Camera centre Y. The 220 px strip is 1.8 world units, i.e. ~122 px per unit. Parking the
+        // centre 0.695 u ABOVE the standing line (world y≈-0.344) leaves only the bottom ~25 px as
+        // FLOOR; the rest of the strip is the thin backdrop band (GroundDressing.BackdropRise) and
+        // then clear sky, so the hero and the scenery read against the desktop, not against dirt.
+        public const float GameplayCamY     = 0.351f;
 
         public static OverlayWindow Instance { get; private set; }
         public static int WinX { get; private set; } = 40;
@@ -225,12 +232,15 @@ namespace ZulfarakRPG
                        WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX);
             SetWindowLong(_hwnd, GWL_STYLE, style);
 
-            // Opaque window: WS_EX_TOOLWINDOW still hides us from taskbar/Alt+Tab, but
-            // WS_EX_LAYERED is cleared — transparency is retired, so the normal DX-rendered
-            // (opaque) content shows directly. No LayeredWindowRenderer push.
+            // WS_EX_LAYERED so LayeredWindowRenderer can push per-pixel-alpha frames via
+            // UpdateLayeredWindow: it reads back the composited frame, keys the magenta clear to
+            // transparent on the CPU, and pushes it so the OS composites over the live desktop.
+            // WS_EX_TOOLWINDOW hides us from the taskbar/Alt+Tab.
+            // NOTE: do NOT route the camera to an offscreen RenderTexture here — that stops anything
+            // reaching the swapchain and, if the push fails, the window renders BLANK (game "won't
+            // load"). Tried 2026-07-23, reverted.
             int ex = GetWindowLong(_hwnd, GWL_EXSTYLE);
-            ex |= WS_EX_TOOLWINDOW;
-            ex &= ~WS_EX_LAYERED;
+            ex |= WS_EX_TOOLWINDOW | WS_EX_LAYERED;
             SetWindowLong(_hwnd, GWL_EXSTYLE, ex);
 
             if (repositionWindow)
@@ -239,6 +249,10 @@ namespace ZulfarakRPG
                     WinX, WinY, windowWidth, windowHeight,
                     SWP_SHOWWINDOW | SWP_FRAMECHANGED);
             }
+
+#if !UNITY_EDITOR
+            LayeredWindowRenderer.Ensure();
+#endif
         }
 
         public static void MoveWindowTo(int x, int y)
@@ -344,12 +358,13 @@ namespace ZulfarakRPG
                 IsDraggingWindow = false;
             }
 
-            // Keep the taskbar-hiding sticky (Unity occasionally resets the ex-style) and make
-            // sure WS_EX_LAYERED never sneaks back — the window must stay opaque.
+            // Keep BOTH sticky: Unity occasionally resets the ex-style, dropping the taskbar-hiding
+            // AND the layered-window transparency. Re-assert whenever either drops.
+            const int wanted = WS_EX_TOOLWINDOW | WS_EX_LAYERED;
             int ex = GetWindowLong(_hwnd, GWL_EXSTYLE);
-            if ((ex & WS_EX_TOOLWINDOW) == 0 || (ex & WS_EX_LAYERED) != 0)
+            if ((ex & wanted) != wanted)
             {
-                ex = (ex | WS_EX_TOOLWINDOW) & ~WS_EX_LAYERED;
+                ex |= wanted;
                 SetWindowLong(_hwnd, GWL_EXSTYLE, ex);
             }
 #endif

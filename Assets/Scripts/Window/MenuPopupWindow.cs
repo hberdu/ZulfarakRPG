@@ -266,6 +266,9 @@ namespace ZulfarakRPG
             SetTextColor(hdc, Bgr(0.62f, 0.62f, 0.68f));
             DrawTextW(hdc, "Clique ou ESC para fechar", -1, ref hintRc, DT_RIGHT | DT_BOTTOM | DT_SINGLELINE | DT_NOPREFIX);
             SelectObject(hdc, prev);
+
+            // ornate frame LAST so it rings the window over the content
+            NativeFrameImage.DrawWindowFrame(hdc, 0, 0, w, h);
         }
 
         // RPG UI Pack skin: wood-trim board frame, parchment body page, wood ribbon title.

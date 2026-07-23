@@ -190,22 +190,33 @@ namespace ZulfarakRPG
             DeleteDC(mem);
         }
 
-        // One-call pixel-art window theme shared by every native popup: tiled dark texture
-        // (UI/PanelTex) + gothic 9-slice frame (UI/PanelFrame, fine-grained hi-res art whose
-        // border is a QUARTER of the source size, blitted 1:1). Returns false when neither PNG
-        // is present so callers fall back to the procedural bevel — no regression.
+        // BACKGROUND ONLY: the tiled dark texture (UI/PanelTex). Call FIRST in Paint. The ornate
+        // frame is drawn separately, LAST, by DrawWindowFrame — otherwise the popup's own header
+        // bars / pane bevels paint OVER the frame's border and bury it ("moldura sobreposta").
+        // Returns true when either theme PNG exists, so callers skip the procedural-bevel fallback.
         public static bool DrawWindowTheme(IntPtr hdc, int x, int y, int w, int h)
         {
             var tex   = Get("UI/PanelTex");
             var frame = Get("UI/PanelFrame");
             if (!tex.Ready && !frame.Ready) return false;
-            if (tex.Ready)   tex.BlitTiled(hdc, x, y, w, h);
-            if (frame.Ready)
-            {
-                int b = Mathf.Max(8, frame.Width / 4);   // 128px art → 32px border at 1:1
-                frame.BlitNineSlice(hdc, x, y, w, h, 0, 0, frame.Width, frame.Height, b, b, b, b);
-            }
+            if (tex.Ready) tex.BlitTiled(hdc, x, y, w, h);
             return true;
+        }
+
+        // Ornate 9-slice frame (UI/PanelFrame). Draw LAST in Paint (after all content) — its centre
+        // is transparent, so content shows through and the border cleanly rings the window on top.
+        //
+        // The border slice MUST match how thick the ornament actually is in the source art: the
+        // 9-slice STRETCHES everything inside it across the whole window. With a slice thinner than
+        // the ornament, the ornate ring itself lands in the "centre" and got smeared over the panes
+        // (labels buried). The art is therefore stored pre-scaled so its ornament is exactly a
+        // QUARTER of the image — 63px art → 15px border — giving a correct slice AND a thin ring.
+        public static void DrawWindowFrame(IntPtr hdc, int x, int y, int w, int h)
+        {
+            var frame = Get("UI/PanelFrame");
+            if (!frame.Ready) return;
+            int b = Mathf.Max(6, frame.Width / 4);
+            frame.BlitNineSlice(hdc, x, y, w, h, 0, 0, frame.Width, frame.Height, b, b, b, b);
         }
 
         // 9-slice blit: keeps the (bl,bt,br,bb) borders at native size while stretching the

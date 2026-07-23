@@ -66,7 +66,11 @@ namespace ZulfarakRPG
             sr.drawMode     = SpriteDrawMode.Tiled;
             sr.tileMode     = SpriteTileMode.Continuous;
             sr.size         = new Vector2(worldW, dirtH);
-            sr.sortingOrder = Mathf.Min(sr.sortingOrder, -6);
+            // Pushed far back (-20) on purpose: the scenery needs a deep sorting budget above the
+            // floor so MapScenery can stack several depth layers (near props → distant structures)
+            // and still draw them all IN FRONT of the ground. At -6 there were only ~3 usable
+            // slots and anything beyond that fell behind the floor and got painted over.
+            sr.sortingOrder = Mathf.Min(sr.sortingOrder, -20);
 
             // Collider: top edge exactly on the standing line (GroundFloorEnsurer backs it up).
             var col = ground.GetComponent<BoxCollider2D>();
@@ -101,6 +105,28 @@ namespace ZulfarakRPG
                     camX, standLine + FieldRise - surfH * 0.5f, ground.transform.position.z);
             }
 
+            // BACKDROP band: the floor CONTINUES upward past the standing line as a receding plane
+            // (different art from the floor itself), stopping at the hero's shoulders. Its TOP edge
+            // is the horizon every scenery prop is aligned to, which is what sells the tilted
+            // seen-from-above field instead of a flat side-on strip. Tiled horizontally only.
+            var staleBack = ground.transform.Find("GroundBackdrop");
+            if (staleBack != null) Destroy(staleBack.gameObject);
+            var backSprite = GroundTile(ctx, phase, "back") ?? bodySprite;
+            if (backSprite != null)
+            {
+                var bgo = new GameObject("GroundBackdrop");
+                bgo.transform.SetParent(ground.transform, false);
+                var bsr = bgo.AddComponent<SpriteRenderer>();
+                bsr.sprite       = backSprite;
+                bsr.drawMode     = SpriteDrawMode.Tiled;
+                bsr.tileMode     = SpriteTileMode.Continuous;
+                bsr.size         = new Vector2(worldW, BackdropRise);
+                // Behind the floor surface but still in front of nothing else; props sort above it.
+                bsr.sortingOrder = Mathf.Min(sr.sortingOrder, -20) - 1;
+                bgo.transform.position = new Vector3(camX, standLine + BackdropRise * 0.5f,
+                                                     ground.transform.position.z);
+            }
+
             // Remove the old two-tone grass/surface band if a previous build left one — the
             // floor is now a single continuous surface.
             var stale = ground.transform.Find("GroundGrass");
@@ -119,8 +145,15 @@ namespace ZulfarakRPG
         static Sprite _sandSprite;
         static Sprite _grassSprite;
 
-        // How far the open-field path art rises past the standing line (world units).
-        const float FieldRise = 0.12f;
+        // How far the surface line rises past the standing line (world units). MUST stay 0: any
+        // positive value lifts the grass band above the line the props are seated on, so the
+        // surface painted over their trunk bases and trees looked buried in the floor.
+        const float FieldRise = 0f;
+
+        // Height of the backdrop band that continues the floor upward, in world units. A thin
+        // ~20 px strip: just enough to read as a receding plane behind the ~25 px floor. Scenery
+        // does NOT sit on top of it — every prop seats on the standing line itself.
+        public const float BackdropRise = 0.165f;
 
         // Pixel-art PATH tiles, one per biome phase (512x192, horizontally seamless: receding
         // field + tiled plank walkway (seam lines + top bevel) + rich foreground), created by

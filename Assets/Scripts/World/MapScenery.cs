@@ -54,24 +54,56 @@ namespace ZulfarakRPG
         // Biome PROPS (generated pixel-art, Resources/CityDecor): 12+ pieces per phase counting
         // the trees above; all alternate through the distant parallax rows. Names deliberately
         // avoid tree/pine/birch/willow/flower/statue/angel so the swap/destroy passes skip them.
-        public static string[] PhasePropNames(string scene)
+        // One EXCLUSIVE set per depth band, nearest first. Nothing is shared between bands, so a
+        // screen never shows the same silhouette twice and each band contrasts with the ones behind
+        // it. Bands 0-2 are ground matter (vegetation, rock, ore, ruin); bands 3-4 are the far
+        // structural skyline (towers, keeps, mountains) and are drawn hue-stripped + faded.
+        public static string[][] PhasePropLayers(string scene)
         {
             switch (Phase(scene))
             {
-                case 1:  return new[] { "RuinArch", "ShroomCluster", "MossyLog", "ForestShrine",
-                                        "StoneWell", "TraderTent", "HayCart", "FernClump",
-                                        "MossBoulder", "RavenPerch" };
-                case 2:  return new[] { "OrcTotem", "CanyonSpire", "BoneHeap", "OrcBanner",
-                                        "OrcHut", "WarDrum", "SkullPike", "TuskArch",
-                                        "CampCauldron", "ScrapPile" };
-                case 3:  return new[] { "SwampSnag", "GlowShrooms", "SlimePool", "Cattails",
-                                        "SwampHut", "VineSnare", "FrogTotem", "MireLantern",
-                                        "PeatMound", "BubbleGeyser" };
-                case 4:  return new[] { "GraveGuardian", "CryptObelisk", "IronFence", "LanternPost",
-                                        "TombVault", "GraveCluster", "DeadHedge", "SnowCairn",
-                                        "WraithLight", "BellShrine" };
-                default: return new string[0];
+                case 1: return new[] {
+                    new[] { "FernClump",    "ToadstoolRing", "RootKnot",      "MossBoulder"   },
+                    new[] { "BrambleBush",  "FallenTrunk",   "WildBerryBush", "MossyLog"      },
+                    new[] { "RuinArch",     "BrokenColumn",  "IvyStone",      "StandingStone" },
+                    new[] { "OldWatchpost", "ThatchCottage", "WoodPalisade",  "ChapelSpire"   },
+                    new[] { "GreenKeep",    "ConiferRidge",  "MistMountain",  "FarHamlet"     },
+                };
+                case 2: return new[] {
+                    // NOT "DryThorn" — that name is a phase-2 TREE (PhaseTreeNames), and a piece
+                    // may only ever live in one bucket or the screen repeats it.
+                    new[] { "SunSkull",     "ScrubTuft",     "RedPebbleHeap", "CrackedSlab"   },
+                    new[] { "RustOreVein",  "BoneShard",     "SandstoneRock", "CactusPatch"   },
+                    new[] { "CanyonSpire",  "TuskArch",      "RuinedPillar",  "SkullPike"     },
+                    new[] { "MesaWatchpost","OrcLonghouse",  "StakeWall",     "ObsidianTower" },
+                    new[] { "CanyonFort",   "ButteRidge",    "RedMountain",   "FarMesa"       },
+                };
+                case 3: return new[] {
+                    new[] { "Cattails",     "LilyPatch",     "PeatMound",     "SwampReeds"    },
+                    new[] { "GlowShrooms",  "SunkenLog",     "SlimePool",     "VineSnare"     },
+                    new[] { "SwampSnag",    "DrownedArch",   "MireIdol",      "RottenPost"    },
+                    new[] { "StiltHut",     "MireWatchpost", "SunkenChapel",  "BogGate"       },
+                    new[] { "DrownedCitadel","FogRidge",     "MarshMountain", "FarBluff"      },
+                };
+                case 4: return new[] {
+                    new[] { "FrostTuft",    "SnowDrift",     "IceShard",      "FrozenBramble" },
+                    new[] { "SnowCairn",    "IceOreVein",    "BuriedStone",   "DeadHedge"     },
+                    new[] { "CryptObelisk", "GraveCluster",  "BrokenTomb",    "IronFence"     },
+                    new[] { "FrostChapel",  "SnowWatchpost", "CryptGate",     "BellSpire"     },
+                    new[] { "GlacierKeep",  "FrostRidge",    "DistantPeak",   "FarSnowMount"  },
+                };
+                default: return new string[0][];
             }
+        }
+
+        // Flat pool of the same pieces — used by the dungeon parallax rows, which do their own
+        // depth banding and just need every biome piece in one list.
+        public static string[] PhasePropNames(string scene)
+        {
+            var layers = PhasePropLayers(scene);
+            var flat   = new List<string>();
+            foreach (var l in layers) flat.AddRange(l);
+            return flat.ToArray();
         }
 
         // Icy snow tone for phase 4's ground — same light-blue family as its Tree4.
@@ -117,7 +149,10 @@ namespace ZulfarakRPG
                 if (!grounderOwned && (MapScenery.IsStatueSprite(spr.name) || IsGandalfLeftover(spr.name)))
                     { Destroy(sr.gameObject); continue; }
                 if (MapScenery.IsTreeSprite(spr.name) && trees.Length > 0)
-                    SwapTree(sr, trees[rng.Next(trees.Length)]);
+                    // Harmonised like the props — foliage is the loudest thing on screen, so it is
+                    // the first place an off-palette colour shows.
+                    SwapTree(sr, Harmonize(trees[rng.Next(trees.Length)],
+                                           MapScenery.Phase(sceneName)));
             }
 
             // Phase 4: lay an icy blanket over the ground so it reads as snow (same blue as the
@@ -167,29 +202,141 @@ namespace ZulfarakRPG
         // Fixed biome props for the static hubs. Deterministic per scene (seeded rng), spread
         // across the shared playable width, seated with the same alpha-aware maths as
         // ParallaxLayer so the visible art bottom touches the ground line.
+        // How many receding depth bands the open field is split into (0 = nearest).
+        const int DepthLayers = 5;
+
+        // Scatters the biome pieces across DepthLayers receding bands so the flat side-on strip
+        // reads as a TILTED field seen slightly from above (TaskbarHero-style): the farther a band
+        // is, the HIGHER up the strip it sits, the SMALLER it draws, the further back it sorts and
+        // the more it fades out. Every piece is seated by its alpha-trimmed bottom so it actually
+        // touches the ground instead of floating or sinking into it.
         void ScatterHubProps(Sprite[] props, System.Random rng)
         {
             float g = GroundAlignUtil.FindGroundTopY();
-            float x = MapBounds.MinX + 0.05f + (float)rng.NextDouble() * 0.25f;
-            int i = 0;
-            while (x < MapBounds.MaxX - 0.1f && i < 9)
+
+            // Each band draws ONLY from its own authored set (PhasePropLayers) — no piece is shared
+            // between bands, so a screen never repeats a silhouette and every band contrasts with
+            // the ones behind it. Falls back to the flat pool if a band's art isn't in yet.
+            var buckets = MapScenery.PhasePropLayers(sceneName);
+
+            for (int layer = 0; layer < DepthLayers; layer++)
             {
-                var sprite = props[rng.Next(props.Length)];
-                // Depth on the open-field band: farther props sit higher, draw smaller and
-                // behind — same fake perspective as the dungeon rows.
-                float depth = (float)rng.NextDouble() * 0.09f;
-                float scale = Mathf.Lerp(0.62f, 0.38f, depth / 0.09f)
-                            + ((float)rng.NextDouble() - 0.5f) * 0.08f;
-                var ab = SpriteAlphaBounds.Get(sprite);
-                var go = new GameObject("HubProp_" + sprite.name);
-                var sr = go.AddComponent<SpriteRenderer>();
-                sr.sprite       = sprite;
-                sr.sortingOrder = -7 - Mathf.RoundToInt(depth * 30f);   // -7..-11, behind wagon(-4)
-                go.transform.position   = new Vector3(x, g + depth - ab.bottomFromBottom * scale, 0f);
-                go.transform.localScale = new Vector3(scale, scale, 1f);
-                x += Mathf.Lerp(0.5f, 0.9f, (float)rng.NextDouble());
-                i++;
+                var slice = layer < buckets.Length ? LoadTrees(buckets[layer]) : new Sprite[0];
+                if (slice.Length == 0) slice = props;
+                if (slice.Length == 0) continue;
+                int sliceCursor = 0;
+                float t = layer / (float)(DepthLayers - 1);          // 0 = nearest, 1 = farthest
+                // EVERY band seats on the STANDING LINE — one straight row, no altitude drift and
+                // never on top of the backdrop band. Depth is carried by SIZE and FADE alone.
+                const float rise = 0f;
+                float baseS = Mathf.Lerp(0.72f, 0.20f, t);           // strong size falloff, all small
+                float alpha = Mathf.Lerp(1f,    0.28f, t);           // far bands fade well back
+                int   sort  = -4 - layer * 3;                        // -4..-16, all above ground(-20/-19)
+
+                // Farther bands are denser (smaller pieces, packed tighter) like a real horizon —
+                // but keep the gaps WIDE overall: the play area is only ~5 world units, so short
+                // gaps here put ~50 pieces on screen and the strip turned into visual soup.
+                float minGap = Mathf.Lerp(1.70f, 0.85f, t);
+                float maxGap = Mathf.Lerp(2.70f, 1.45f, t);
+
+                float x = MapBounds.MinX + 0.05f + (float)rng.NextDouble() * (0.30f + t * 0.5f);
+                while (x < MapBounds.MaxX - 0.1f)
+                {
+                    // Walk the slice in order (not random) so a piece only reappears after every
+                    // other piece in this band has been used — no side-by-side duplicates.
+                    var sprite = slice[sliceCursor % slice.Length];
+                    sliceCursor++;
+                    // The see-through bands carry NO hue — only shading — so they read as distance
+                    // haze instead of competing with the hero for the eye. The near bands keep
+                    // their colour but get pulled onto the map's palette.
+                    sprite = layer >= DepthLayers - 2
+                           ? Grayscale(sprite)
+                           : Harmonize(sprite, MapScenery.Phase(sceneName));
+                    float scale = baseS + ((float)rng.NextDouble() - 0.5f) * 0.10f * baseS;
+
+                    var go = new GameObject($"HubProp_L{layer}_{sprite.name}");
+                    var sr = go.AddComponent<SpriteRenderer>();
+                    sr.sprite       = sprite;
+                    sr.sortingOrder = sort;
+                    sr.color        = new Color(1f, 1f, 1f, alpha);
+
+                    go.transform.position = new Vector3(x, 0f, 0f);   // SeatOnGround keeps X, sets Y
+                    SeatOnGround(go.transform, sprite, g + rise, scale);
+                    x += Mathf.Lerp(minGap, maxGap, (float)rng.NextDouble());
+                }
             }
+        }
+
+        // Recoloured copies of a sprite, cached by (sprite, variant). CityDecor textures are
+        // imported readable (ZulfarakArtPostprocessor) so these are plain pixel copies — no extra
+        // shader to keep out of the build's strip list. Falls back to the original if it's locked.
+        static readonly Dictionary<(Sprite, int), Sprite> _tintCache =
+            new Dictionary<(Sprite, int), Sprite>();
+
+        // Hue anchor per phase, in degrees — the colour the whole map is built around.
+        // 1 forest sage-green, 2 canyon rust-tan, 3 swamp olive, 4 snow pale-blue.
+        static readonly float[] _phaseHue = { 100f, 100f, 25f, 90f, 205f };
+
+        // Strips hue entirely: the far bands read as shading only.
+        static Sprite Grayscale(Sprite src) => Recolour(src, 0, (h, s) => (h, 0f));
+
+        // Pulls every pixel toward the map's anchor hue and caps saturation, so no piece — least of
+        // all a bright-red mushroom or a neon slime — sits outside its scenario's palette. Value is
+        // untouched, so the art keeps its own shading and silhouette.
+        static Sprite Harmonize(Sprite src, int phase)
+        {
+            float anchor = _phaseHue[Mathf.Clamp(phase, 0, 4)];
+            return Recolour(src, phase + 1, (h, s) =>
+            {
+                // Shortest way round the wheel, so red (350) pulls toward 25 the short way.
+                float d = Mathf.Repeat(anchor - h + 180f, 360f) - 180f;
+                return (Mathf.Repeat(h + d * 0.55f, 360f), Mathf.Min(s, 0.42f));
+            });
+        }
+
+        static Sprite Recolour(Sprite src, int variant, System.Func<float, float, (float, float)> map)
+        {
+            if (src == null) return null;
+            var key = (src, variant);
+            if (_tintCache.TryGetValue(key, out var hit)) return hit;
+
+            Sprite result = src;
+            try
+            {
+                var r  = src.textureRect;
+                int w  = (int)r.width, h = (int)r.height;
+                var px = src.texture.GetPixels((int)r.x, (int)r.y, w, h);
+                for (int i = 0; i < px.Length; i++)
+                {
+                    if (px[i].a < 0.004f) continue;
+                    Color.RGBToHSV(px[i], out float hh, out float ss, out float vv);
+                    var (nh, ns) = map(hh * 360f, ss);
+                    var c = Color.HSVToRGB(nh / 360f, ns, vv);
+                    px[i] = new Color(c.r, c.g, c.b, px[i].a);
+                }
+                var tex = new Texture2D(w, h, TextureFormat.RGBA32, false)
+                    { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp };
+                tex.SetPixels(px);
+                tex.Apply();
+                result = Sprite.Create(tex, new Rect(0, 0, w, h), new Vector2(0.5f, 0.5f),
+                                       src.pixelsPerUnit);
+                result.name = src.name + "_v" + variant;
+            }
+            catch { /* not readable — keep the original rather than lose the prop */ }
+
+            _tintCache[key] = result;
+            return result;
+        }
+
+        // Places `t` so the sprite's VISIBLE (alpha-trimmed) bottom rests exactly on groundY at the
+        // given uniform scale. Using the raw sprite bounds instead leaves transparent padding under
+        // the art, which is what made pieces hover — or sink, when the padding was negative space
+        // the artist filled. Every scenery piece goes through here so they all touch the floor.
+        static void SeatOnGround(Transform t, Sprite sprite, float groundY, float scale)
+        {
+            var ab = SpriteAlphaBounds.Get(sprite);
+            t.localScale = new Vector3(scale, scale, 1f);
+            t.position   = new Vector3(t.position.x, groundY - ab.bottomFromBottom * scale, 0f);
         }
 
         // Swap a baked tree's sprite for `next`, preserving its visible height (different tree art has
@@ -207,6 +354,18 @@ namespace ZulfarakRPG
                 var   ls = sr.transform.localScale;
                 float sx = ls.x >= 0f ? 1f : -1f;
                 sr.transform.localScale = new Vector3(sx * k, k, ls.z);
+
+                // RE-SEAT after the swap. Matching the old on-screen HEIGHT is not enough: each
+                // piece of art has a different amount of transparent padding under it, so keeping
+                // the old transform left the new trunk hanging above the line or sunk into it
+                // ("árvores enterradas"). Drop it back onto the ground by its alpha-trimmed bottom.
+                var ab = SpriteAlphaBounds.Get(next);
+                var p  = sr.transform.position;
+                p.y = GroundAlignUtil.FindGroundTopY() - ab.bottomFromBottom * k;
+                sr.transform.position = p;
+
+                // Baked trees must also clear the floor's sorting, same as the scattered props.
+                if (sr.sortingOrder <= -19) sr.sortingOrder = -6;
             }
         }
 
@@ -240,16 +399,21 @@ namespace ZulfarakRPG
 
         // Gandalf-pack leftovers that neither the tree swap nor the statue pass catches —
         // torches, cooking spots, garden decor, ore piles, tall grass. The pack is retired;
-        // any baked sprite still using it is removed. (TraderTent/HayCart are OUR art and do
-        // not match these fragments.)
+        // any baked sprite still using it is removed. None of the current biome pieces match
+        // these fragments — check a new name against this list before adding it.
         static bool IsGandalfLeftover(string s)
         {
             if (string.IsNullOrEmpty(s)) return false;
             s = s.ToLowerInvariant();
+            // CAREFUL with bare Contains here — these run against EVERY sprite in the scene.
+            // "ores" used to be matched loosely and silently destroyed anything containing it,
+            // including "f-ores-t": the ground tiles (city_forest_body / dungeon_forest_body) and
+            // the ForestShrine prop vanished ~3 frames after GroundDressing built them. Match the
+            // Gandalf "Ores" prop at a name boundary instead.
             return s.Contains("largetent") || s.Contains("smalltent") || s.Contains("large tent")
                 || s.Contains("small tent") || s.Contains("torch") || s.Contains("cooking")
                 || s.Contains("garden") || s.Contains("tall grass") || s.Contains("tallgrass")
-                || s.Contains("ores");
+                || s == "ores" || s.StartsWith("ores") || s.Contains("_ores") || s.Contains(" ores");
         }
 
         static Sprite[] LoadTrees(string[] names)

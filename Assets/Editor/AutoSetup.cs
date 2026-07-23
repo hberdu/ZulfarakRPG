@@ -31,11 +31,9 @@ namespace ZulfarakRPG
 
             try
             {
-                ZulfarakSetupWizard.SetupAll();
                 PixelArtGenerator.GenerateAll();           // generate UI elements (UIFrame, UIButton)
                 CharacterSpriteImporter.ImportAll();       // import Wizard, Archer, Soldier from full pack
                 ZulfarakTextureImporter.ImportAll();       // copy & import GameAssets textures
-                SceneSetupWizard.SetupAllScenes();
 
                 File.WriteAllText(DoneFlag, System.DateTime.Now.ToString());
                 Debug.Log("[ZulfarakRPG] ✓ Setup completo! Abra a cena Bootstrap e aperte Play.");

@@ -21,10 +21,8 @@ namespace ZulfarakRPG
     // The overlay strip is tiny (~480×120), so the per-frame read-back is cheap.
     public class LayeredWindowRenderer : MonoBehaviour
     {
-        // Camera clear colour (RGB 255,0,255). Any pixel within a tolerance of this becomes a
-        // transparent hole; everything else stays fully opaque.
-        const byte MagentaRHi = 200, MagentaGLo = 60, MagentaBHi = 200;
-
+        // Camera clear colour is magenta (255,0,255); Present() below soft-keys it per pixel,
+        // recovering partial coverage so blended edges don't stay pink.
         IntPtr _hwnd, _screenDC, _memDC, _dib, _oldObj, _bits;
         Texture2D _tex;
         byte[] _out;
@@ -74,19 +72,27 @@ namespace ZulfarakRPG
                 for (int x = 0; x < w; x++)
                 {
                     int s = srcRow + x * 4;
-                    byte r = src[s], g = src[s + 1], b = src[s + 2];
+                    int r = src[s], g = src[s + 1], b = src[s + 2];
                     int d = dstRow + x * 4;
-                    if (r > MagentaRHi && g < MagentaGLo && b > MagentaBHi)
-                    {
-                        _out[d] = _out[d + 1] = _out[d + 2] = _out[d + 3] = 0;   // transparent hole
-                    }
-                    else
-                    {
-                        _out[d]     = b;     // BGRA, alpha 255 → already premultiplied
-                        _out[d + 1] = g;
-                        _out[d + 2] = r;
-                        _out[d + 3] = 255;
-                    }
+
+                    // SOFT magenta key. A hard "is it magenta?" test leaves every PARTIALLY blended
+                    // pixel pink — anti-aliased sprite/text edges and semi-transparent overlays
+                    // (damage backdrops, health bars, button outlines) are a mix of the art over the
+                    // (255,0,255) clear, so they never match and keep a pink tint.
+                    // The clear has max R and B and zero G, so the magenta contribution left in a
+                    // pixel is (min(R,B) - G): 255 on pure clear, <=0 on fully opaque art.
+                    int mag = r < b ? r : b;
+                    mag -= g;
+                    if (mag < 0) mag = 0; else if (mag > 255) mag = 255;
+
+                    // Remove that contribution → premultiplied colour (what AC_SRC_ALPHA wants),
+                    // and what's left of full coverage is the per-pixel alpha.
+                    int pr = r - mag; if (pr < 0) pr = 0;
+                    int pb = b - mag; if (pb < 0) pb = 0;
+                    _out[d]     = (byte)pb;          // B
+                    _out[d + 1] = (byte)g;           // G (the clear contributes none)
+                    _out[d + 2] = (byte)pr;          // R
+                    _out[d + 3] = (byte)(255 - mag); // A
                 }
             }
             Marshal.Copy(_out, 0, _bits, _out.Length);

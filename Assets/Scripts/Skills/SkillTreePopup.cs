@@ -389,6 +389,9 @@ namespace ZulfarakRPG
             // Done with the clipped content region.
             SelectClipRgn(hdc, IntPtr.Zero);
 
+            // ornate frame LAST so it rings the window over the content
+            NativeFrameImage.DrawWindowFrame(hdc, 0, 0, w, h);
+
             // Tooltip for the hovered skill (drawn over everything, unclipped).
             DrawTooltip(hdc, w, h);
 
