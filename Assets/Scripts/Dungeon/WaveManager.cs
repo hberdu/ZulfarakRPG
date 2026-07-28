@@ -165,6 +165,9 @@ namespace ZulfarakRPG
                 var prefab = i < normals ? skeletonPrefab : armoredSkeletonPrefab;
                 if (prefab == null) prefab = skeletonPrefab;
 
+                // The scene's authored spawn points. These work — do NOT move regular waves to a
+                // camera-relative spawn: doing that left part of the wave stranded out of reach,
+                // the wave never completed, and the whole party stood frozen waiting for it.
                 var sp  = spawnPoints != null && spawnPoints.Length > 0
                         ? spawnPoints[i % spawnPoints.Length].position
                         : new Vector3(40 + i * 2f, -1.5f, 0);
@@ -200,9 +203,11 @@ namespace ZulfarakRPG
             }
             if (prefab == null) yield break;
 
-            var sp = spawnPoints != null && spawnPoints.Length > 0
-                   ? spawnPoints[0].position
-                   : new Vector3(40, -1.5f, 0);
+            // The BOSS always enters from off-screen RIGHT and stalks in. The authored spawnPoints
+            // are fixed world spots that can sit left of (or on top of) a party that has walked
+            // right, which is why the boss kept appearing in front of the hero instead of at the
+            // right edge. Regular waves still use the authored points — only the boss overrides.
+            var sp = new Vector3(MapBounds.OffscreenRightX, GroundAlignUtil.FindGroundTopY(), 0f);
             var go = Instantiate(prefab, sp, Quaternion.identity);
             var boss = go.GetComponent<SkeletonEnemy>();
             if (boss)

@@ -339,7 +339,12 @@ namespace ZulfarakRPG
             player.healPower += player.lifeRegenPctBonus * player.maxHp;
 
             player.hp = Mathf.Min(player.hp, player.maxHp);
-            PlayerManager.Instance.Save();
+            // LOCAL save only. This runs on every kill result (ApplyServerState → here), and a
+            // server push here made the client PUT the character row while its own kill requests
+            // were updating it — every kill then lost the optimistic-concurrency race and was
+            // rejected, taking that monster's exp, gold and drops with it. Level/exp/gold are
+            // server-owned anyway, so there is nothing here worth pushing back.
+            PlayerManager.Instance.SaveLocalOnly();
         }
 
         // ── Rarity scaling ───────────────────────────────────────────────────
@@ -477,25 +482,41 @@ namespace ZulfarakRPG
                         SaveLocal();
                         return;
                     }
-                    Items = new List<InventoryItem>();
-                    Equipment = new Equipment();
+                    // 404 = the server has no inventory row for this character YET (fresh character,
+                    // or the row hasn't been created). That is NOT "the bag is empty" — wiping here
+                    // threw away every item the player had collected locally. Keep the local bag and
+                    // push it up so the server row gets created from it.
+                    Debug.LogWarning("[Inventory] Servidor sem inventário; mantendo a sacola local e enviando-a.");
+                    LoadLocal();
+                    PersistToServer();
                     return;
                 }
                 catch (Exception e)
                 {
+                    // Network/parse failure — the local bag is the best copy we have; never discard it.
                     Debug.LogWarning($"[Inventory] Remote load failed: {e.Message}");
-                    Items = new List<InventoryItem>();
-                    Equipment = new Equipment();
+                    LoadLocal();
                     return;
                 }
             }
 
+            LoadLocal();
+        }
+
+        // Reads the on-disk bag. Also the fallback whenever the server can't supply one, so an
+        // offline / 404 / failed load never costs the player their items.
+        private void LoadLocal()
+        {
             if (!File.Exists(SavePath)) return;
-            var data = JsonConvert.DeserializeAnonymousType(
-                File.ReadAllText(SavePath),
-                new { items = new List<InventoryItem>(), equipment = new Equipment() });
-            Items     = data.items ?? new List<InventoryItem>();
-            Equipment = data.equipment ?? new Equipment();
+            try
+            {
+                var data = JsonConvert.DeserializeAnonymousType(
+                    File.ReadAllText(SavePath),
+                    new { items = new List<InventoryItem>(), equipment = new Equipment() });
+                Items     = data.items ?? new List<InventoryItem>();
+                Equipment = data.equipment ?? new Equipment();
+            }
+            catch (Exception e) { Debug.LogWarning($"[Inventory] Load local falhou: {e.Message}"); }
         }
 
         // Pull the SERVER item catalog into the client ItemDatabase so dropped items (which the

@@ -153,11 +153,20 @@ namespace ZulfarakRPG
         IEnumerator EntranceRoutine()
         {
             _invulnerable = true;   // can't be hit until the whole entrance (portal → taunt → summon) ends
-            // Materialize on-screen out of a green portal instead of walking in.
+            // Materialize on-screen out of a green portal instead of walking in — at the RIGHT
+            // EDGE of the arena. The old spot (maxX - 0.9) was a fixed point that ignored where
+            // the hero actually was: after clearing four waves he is usually pinned against the
+            // right edge himself, so the boss rose up BEHIND him instead of in front.
+            float bossX = sceneBoundsMaxX - 0.35f;
             var pos = new Vector3(
-                Mathf.Clamp(sceneBoundsMaxX - 0.9f, sceneBoundsMinX, sceneBoundsMaxX),
+                Mathf.Clamp(bossX, sceneBoundsMinX, sceneBoundsMaxX),
                 transform.position.y, transform.position.z);
             transform.position = pos;
+
+            // Back the party off so the boss always rises IN FRONT of them. Without this the hero
+            // can be standing on the very spot the boss appears, and no entrance position can fix
+            // that — the arena simply has no room to its right.
+            _player?.AutoWalkToX(Mathf.Clamp(bossX - 1.8f, sceneBoundsMinX + 0.3f, sceneBoundsMaxX));
             _rb.linearVelocity = Vector2.zero;
             ReleaseFromSpawn();
             SetVisible(false);

@@ -185,7 +185,11 @@ namespace ZulfarakRPG
             Save();
         }
 
-        private void SaveLocalOnly()
+        // Writes ONLY the local file — no server push. Used by recomputations that the server
+        // already knows about (Inventory.RecalculateStats runs on every kill result): pushing
+        // those back up made the client fight its own kill requests for the character row's
+        // optimistic-concurrency token, and the server rejected the kills.
+        public void SaveLocalOnly()
         {
             if (Data == null) return;
             NormalizeData();

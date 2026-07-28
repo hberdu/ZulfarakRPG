@@ -335,9 +335,14 @@ namespace ZulfarakRPG
             if (!DrawForgeSceneArt(hdc, spx, sceneTop, spw, sceneH))
                 DrawForgeSceneFallback(hdc, spx, sceneTop, spw, sceneH);
 
-            // ── Selected item info ──
+            // ── The item ON the forge: an equipment-style slot (like the inventory paper-doll) ──
+            const int slotSz = 44;
+            int slotX = spx, slotY = sceneTop + sceneH + 4;
+            DrawForgeSlot(hdc, slotX, slotY, slotSz);
+
+            // Selected item info, to the RIGHT of the slot.
             SelectObject(hdc, _fRow); SetTextColor(hdc, Rpg ? RpgUiNative.InkDark : Bgr(0.9f, 0.9f, 0.95f));
-            var slotRc = new RECT { Left = spx, Top = sceneTop + sceneH + 4, Right = w - 8, Bottom = sceneTop + sceneH + 40 };
+            var slotRc = new RECT { Left = slotX + slotSz + 8, Top = slotY, Right = w - 8, Bottom = slotY + slotSz };
             string info = _sel >= 0 && _sel < _rows.Count
                 ? $"{_rows[_sel].name}  +{_rows[_sel].level}\nSucesso: {Mathf.RoundToInt(Chance(_rows[_sel].level) * 100f)}%"
                 : "Escolha um item";
@@ -412,6 +417,35 @@ namespace ZulfarakRPG
             var rc = new RECT { Left = x + 1, Top = y + 1, Right = x + cellW - 2, Bottom = y + 15 };
             SetTextColor(hdc, Bgr(1f, 0.90f, 0.20f));   // yellow
             DrawTextW(hdc, t, -1, ref rc, DT_RIGHT | DT_TOP | DT_SINGLELINE | DT_NOPREFIX);
+        }
+
+        // The item currently placed on the forge, drawn as an equipment-style slot — the same
+        // bevelled cell + quality border + "+N" badge the inventory's paper-doll slots use — so the
+        // selected item reads as "seated on the anvil", mirroring equipment selection. Empty = "?".
+        static void DrawForgeSlot(IntPtr hdc, int x, int y, int size)
+        {
+            NativeFrameImage.PixelBevel(hdc, x, y, size, size, _bOutline, _bBevLo, _bBevLo, _bSlot);
+            if (_sel >= 0 && _sel < _rows.Count)
+            {
+                var row = _rows[_sel];
+                if (!string.IsNullOrEmpty(row.iconPath))
+                {
+                    var img = IconLibrary.Gdi(row.iconPath);
+                    if (img != null && img.Ready) img.BlitAspect(hdc, x + 4, y + 4, size - 8, size - 8);
+                }
+                DrawQualityBorder(hdc, x, y, size, size, row.rarity);
+                DrawUpgradeBadge(hdc, x, y, size, row.level);
+            }
+            else
+            {
+                SelectObject(hdc, _fTag); SetTextColor(hdc, Bgr(0.45f, 0.45f, 0.50f));
+                var q = new RECT { Left = x, Top = y, Right = x + size, Bottom = y + size };
+                DrawTextW(hdc, "?", -1, ref q, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+            }
+            SelectObject(hdc, _fHint);
+            SetTextColor(hdc, Rpg ? RpgUiNative.InkMuted : Bgr(0.70f, 0.62f, 0.42f));
+            var lbl = new RECT { Left = x - 6, Top = y + size, Right = x + size + 6, Bottom = y + size + 12 };
+            DrawTextW(hdc, "Na forja", -1, ref lbl, DT_CENTER | DT_TOP | DT_SINGLELINE | DT_NOPREFIX);
         }
 
         static string TypeLabel(ItemType t) => t switch

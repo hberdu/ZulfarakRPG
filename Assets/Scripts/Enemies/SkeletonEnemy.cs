@@ -495,9 +495,21 @@ namespace ZulfarakRPG
 
             var result = task.Result;
             Debug.Log($"[SkeletonEnemy] Kill remoto OK enemy={result.enemyId} exp={result.expGained} gold={result.goldGained} drops={result.drops.Length}");
-            // Floating "+N" gold reward rising from where the monster fell.
+            // Gold falls on the floor as a spinning coin (MU-style), same as the item drops below,
+            // instead of a number floating off the corpse.
             if (result.goldGained > 0)
-                GoldPopup.Spawn(transform.position, result.goldGained);
+                ItemDropWorld.SpawnGold(transform.position, result.goldGained);
+
+            // MU-style ground loot: every item the server granted pops out of the corpse with its
+            // rarity-coloured name tag. The items are already in the bag (the server put them
+            // there) — this is the on-screen half so the player SEES what dropped.
+            if (result.drops != null)
+            {
+                var corpse = transform.position;
+                foreach (var d in result.drops)
+                    if (d != null) ItemDropWorld.Spawn(corpse, d.itemId, d.quantity);
+            }
+
             if (result.character != null)
             {
                 PlayerManager.Instance?.ApplyServerCharacter(result.character, saveLocal: false, preserveCurrentHp: true);

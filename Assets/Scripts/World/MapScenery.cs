@@ -273,7 +273,10 @@ namespace ZulfarakRPG
             if (MapBounds.IsDungeonScene(sceneName))
             {
                 scroller = new GameObject("DungeonSceneryScroller").AddComponent<DungeonSceneryScroller>();
-                scroller.Configure(MapBounds.MinX, MapBounds.MaxX);
+                // Recycle across the DRESSED band, not the play clamp: wrapping at MaxX+1 put the
+                // hand-off inside the visible window, so pieces popped in beside the party and the
+                // field looked like it was closing in as the march went on.
+                scroller.Configure(MapBounds.DressMinX, MapBounds.DressMaxX);
             }
 
             for (int layer = 0; layer < DepthLayers; layer++)
@@ -298,8 +301,10 @@ namespace ZulfarakRPG
                 float minGap = Mathf.Lerp(1.70f, 0.85f, t);
                 float maxGap = Mathf.Lerp(2.70f, 1.45f, t);
 
-                float x = MapBounds.MinX + 0.05f + (float)rng.NextDouble() * (0.30f + t * 0.5f);
-                while (x < MapBounds.MaxX - 0.1f)
+                // Scatter across the whole visible band, not just the play clamp — the camera is
+                // wider than the clamp, so stopping at MaxX left the right of the screen bare.
+                float x = MapBounds.DressMinX + (float)rng.NextDouble() * (0.30f + t * 0.5f);
+                while (x < MapBounds.DressMaxX)
                 {
                     // Walk the slice in order (not random) so a piece only reappears after every
                     // other piece in this band has been used — no side-by-side duplicates.

@@ -16,7 +16,8 @@ public class ZulfarakArtPostprocessor : AssetPostprocessor
         bool camp   = p.StartsWith("Assets/Resources/Campfire/");   // animated campfire strip
         bool horse  = p.StartsWith("Assets/Resources/horse");       // horse_gallop / horse_idle sheets
         bool master = p.StartsWith("Assets/Resources/Masters/");     // pixel-edited class-master sheets
-        if (!decor && !ground && !ui && !camp && !horse && !master) return;
+        bool chest  = p.StartsWith("Assets/Resources/Chest/");        // loot chest open/close strip
+        if (!decor && !ground && !ui && !camp && !horse && !master && !chest) return;
 
         var ti = (TextureImporter)assetImporter;
         ti.textureType         = TextureImporterType.Sprite;

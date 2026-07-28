@@ -80,6 +80,9 @@ namespace ZulfarakRPG
             // re-toggle). Cap the wait so a heroless scene can't spin forever.
             for (int i = 0; i < 240 && Object.FindAnyObjectByType<PlayerController2D>() == null; i++)
                 yield return null;
+            // The cooldown HUD is an unparented scene object (it positions itself in world space),
+            // so the scene load destroyed it — clear the guard so Rebind re-attaches a fresh one.
+            _cdHud = false;
             Rebind();
             SnapToParty();
         }
@@ -110,10 +113,31 @@ namespace ZulfarakRPG
             // visible pixels, and a still-null sprite makes it early-out leaving the huge default
             // bar width — that's why the bot's HP bar looked oversized/disproportional.
             if (_sr != null && _idle != null && _idle.Length > 0) _sr.sprite = _idle[0];
-            _hpBar?.AttachAbove(_sr, fillColor: new Color(0.42f, 0.62f, 1f, 1f), widthMultiplier: 0.6f);   // blue = allied bot
+            // Same call/geometry the hero and remote partners use (only the fill colour differs),
+            // so every party member's HP bar is the same art at the same size.
+            _hpBar?.AttachAbove(_sr, fillColor: new Color(0.42f, 0.62f, 1f, 1f));   // blue = allied bot
             _hpBar?.SetHealth(_hp, _maxHp);
             _hpBar?.SetName(PlayerName);
             _locked = false; _curKey = ""; SwitchAnim("idle", true);
+
+            // Skill cooldown bars in the SAME art as the hero's (see SkillCooldownHUD), driven by
+            // this bot's own cast cadence. Attached once, after the bar exists to anchor to.
+            if (!_cdHud) { _cdHud = true; SkillCooldownHUD.AttachTo(this, "SkillCooldownHUD_Bot", CooldownFills); }
+        }
+
+        bool _cdHud;
+
+        // One fill per equipped spell (0 = just cast, 1 = ready) — the shape SkillCooldownHUD wants.
+        // The bot alternates its two spells off a single _castTimer, so the NEXT one to fire charges
+        // while the other stays ready.
+        readonly List<float> _cdFills = new List<float>(2);
+        List<float> CooldownFills()
+        {
+            const float cadence = 2.2f;   // matches the _castTimer reset in Update
+            _cdFills.Clear();
+            for (int i = 0; i < BotSkills.Length; i++)
+                _cdFills.Add(i == _skillIdx ? Mathf.Clamp01(1f - _castTimer / cadence) : 1f);
+            return _cdFills;
         }
 
         void SnapToParty()
@@ -126,7 +150,9 @@ namespace ZulfarakRPG
         // later slot sits one step behind. (Enemies enter from +x, so "front" = +x.)
         float SlotOffsetX(PlayerController2D lp)
         {
-            const float spacing = 0.7f;
+            // Party members march shoulder-to-shoulder — a tight step so they read as one line,
+            // not scattered across the arena. ponytail: nudge if sprites overlap or drift apart.
+            const float spacing = 0.38f;
             int botIdx = PartyOrder.IndexOf(BotId);
             int myIdx  = PartyOrder.IndexOf(SteamIntegration.Instance?.SteamId);
             if (botIdx < 0) botIdx = 1;
@@ -147,18 +173,10 @@ namespace ZulfarakRPG
             else PlayOneShot(_hurt, 14f, hold: false);
         }
 
-        // Seat the bot's VISIBLE feet on the ground line (bottom-centre pivot), so it never floats —
-        // copying the hero's Y misaligned because the mage sprite's feet sit at a different frame row.
-        void GroundSeat()
-        {
-            float g = GroundAlignUtil.FindGroundTopY();
-            float scale = Mathf.Abs(transform.lossyScale.y);
-            // Seat by the actual FEET (feetFromBottom), like the hero's GroundAlignUtil — using the
-            // lowest visible pixel (bottomFromBottom) sat any shadow/aura on the ground and left the
-            // feet floating a bit ABOVE the line.
-            float feet = (_sr != null && _sr.sprite != null) ? SpriteAlphaBounds.Get(_sr.sprite).feetFromBottom * scale : 0f;
-            transform.position = new Vector3(transform.position.x, g - feet, transform.position.z);
-        }
+        // Seat the bot on the ground through the SAME helper the hero uses, so the party stands on
+        // one line. The old hand-rolled version assumed a bottom-centre pivot and skipped the
+        // pivot-relative correction, so the bot sat at a slightly different height than the hero.
+        void GroundSeat() => GroundAlignUtil.SeatCharacterOnGround(transform, _sr);
 
         void Update()
         {

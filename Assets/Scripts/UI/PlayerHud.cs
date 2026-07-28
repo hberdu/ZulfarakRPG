@@ -59,6 +59,15 @@ namespace ZulfarakRPG
         static Vector2 RailSlot(int slot) =>
             new Vector2(ButtonColumnX + slot * (SIZE + GAP), ButtonColumnBottomY);
 
+        // The loot chest parks on the first free stop after the bot toggle (slot 5), so it reads
+        // as one more item on the same rail and matches the buttons' size.
+        public const int ChestRailSlot = 6;
+        public static Vector2 ChestSlotPos() => RailSlot(ChestRailSlot);
+
+        // The HUD canvas, so the loot chest can live on it (correct layering next to the buttons
+        // and pixel-exact sizing) instead of being a world sprite guessing at screen space.
+        public static Canvas HudCanvas => _instance != null ? _instance._canvas : null;
+
         // Width the close/minimise pair reserves at the bottom-RIGHT, so the right-edge
         // rail (dungeon portal button) starts clear of them instead of underneath.
         public const float WindowButtonsWidth = 2f * (WinBtn + 3f) + 3f;
@@ -205,8 +214,7 @@ namespace ZulfarakRPG
             var glyphGO = new GameObject("Glyph", typeof(RectTransform));
             glyphGO.transform.SetParent(coverGO.transform, false);
             var grt = (RectTransform)glyphGO.transform;
-            grt.anchorMin = Vector2.zero; grt.anchorMax = Vector2.one;
-            grt.offsetMin = new Vector2( 1f,  1f); grt.offsetMax = new Vector2(-1f, -1f);
+            SnapGlyph(grt, RepeatSprite(), SIZE - 8f);
             var gi = glyphGO.AddComponent<Image>();
             gi.sprite         = RepeatSprite();
             gi.preserveAspect = true;
@@ -322,13 +330,11 @@ namespace ZulfarakRPG
             // Menu buttons register their cover so Update can paint it purple while the popup is open.
             if (isOpen != null && _instance != null) _instance._menuIndicators.Add((cover, isOpen));
 
-            // Our glyph centred on the cover.
+            // Our glyph centred on the cover, snapped to a whole-texel size (see SnapGlyph).
             var glyphGO = new GameObject("Glyph", typeof(RectTransform));
             glyphGO.transform.SetParent(coverGO.transform, false);
             var grt = (RectTransform)glyphGO.transform;
-            grt.anchorMin = Vector2.zero; grt.anchorMax = Vector2.one;
-            grt.offsetMin = new Vector2( 1f,  1f);
-            grt.offsetMax = new Vector2(-1f, -1f);
+            SnapGlyph(grt, glyph, SIZE - 8f);
             var gi = glyphGO.AddComponent<Image>();
             gi.sprite         = glyph;
             gi.color          = new Color(1f, 0.94f, 0.78f, 1f);
@@ -403,9 +409,7 @@ namespace ZulfarakRPG
             var gGO = new GameObject("Glyph", typeof(RectTransform));
             gGO.transform.SetParent(innerGO.transform, false);
             var grt = (RectTransform)gGO.transform;
-            grt.anchorMin = Vector2.zero; grt.anchorMax = Vector2.one;
-            grt.offsetMin = new Vector2( 2f,  2f);
-            grt.offsetMax = new Vector2(-2f, -2f);
+            SnapGlyph(grt, glyph, WinBtn - 3f);
             var gImg = gGO.AddComponent<Image>();
             gImg.sprite = glyph;
             gImg.color = new Color(1f, 0.95f, 0.85f, 1f);
@@ -414,6 +418,26 @@ namespace ZulfarakRPG
             var btn = go.AddComponent<Button>();
             btn.targetGraphic = bg;
             btn.onClick.AddListener(onClick);
+        }
+
+        // Sizes a glyph to a WHOLE-TEXEL fraction of its source texture, centred in its box.
+        // The glyphs were previously stretched to fill the box (a 32 px icon squeezed into 14 px):
+        // a fractional Point-filtered downscale drops texels irregularly, which is what made the
+        // icons look soft and ragged. Picking the largest exact divisor that fits (32→16, 16→8)
+        // maps every source texel identically, so the art stays pixel-crisp.
+        static void SnapGlyph(RectTransform grt, Sprite glyph, float boxPx)
+        {
+            int src  = (glyph != null && glyph.texture != null) ? glyph.texture.width : 16;
+            int size = Mathf.Max(1, Mathf.FloorToInt(boxPx));
+            for (int d = 1; d <= src; d++)
+            {
+                int cand = src / d;
+                if (cand * d != src) continue;         // not an exact divisor — would resample
+                if (cand <= size) { size = cand; break; }
+            }
+            grt.anchorMin = grt.anchorMax = grt.pivot = new Vector2(0.5f, 0.5f);
+            grt.sizeDelta        = new Vector2(size, size);
+            grt.anchoredPosition = Vector2.zero;
         }
 
         static void Plot(Texture2D t, int x, int y)

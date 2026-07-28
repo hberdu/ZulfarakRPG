@@ -265,9 +265,10 @@ namespace ZulfarakRPG
             PixelBanner.Show("PORTAL RANK A", new Color(0.95f, 0.20f, 0.16f));
             yield return new WaitForSeconds(1.5f);
 
-            // Spawn on the far side of the arena so the boss visibly stalks in.
+            // Spawn OFF-SCREEN to the right so the boss visibly stalks in (MaxX is inside the
+            // visible window once the hero has walked right — it used to land on top of him).
             float groundY = GroundAlignUtil.FindGroundTopY();
-            var spawn = new Vector3(MapBounds.MaxX - 0.3f, groundY, 0f);   // seating handles the rest
+            var spawn = new Vector3(MapBounds.OffscreenRightX, groundY, 0f);   // seating handles the rest
             MinotaurBoss.Spawn(spawn);
 
             Destroy(gameObject, 0.4f);   // the challenge is claimed — remove the spent portal

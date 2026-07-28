@@ -49,7 +49,10 @@ namespace ZulfarakRPG
             _root.anchoredPosition = new Vector2(6f, -6f);
         }
 
-        const float RowH = 28f, RowW = 126f, Gap = 3f;
+        // Whole frame scaled to 70% (30% smaller in both width and height) — every offset, font and
+        // bar below is derived from S so the layout shrinks as one piece.
+        const float S    = 0.70f;
+        const float RowH = 28f * S, RowW = 126f * S, Gap = 3f * S;
 
         void Update()
         {
@@ -81,34 +84,35 @@ namespace ZulfarakRPG
 
             AddImage(rt, "Bg", new Color(0.05f, 0.04f, 0.06f, 0.74f), Vector2.zero, new Vector2(RowW, RowH));
 
-            float pf = RowH - 4f;
+            float pf  = RowH - 4f * S;
+            float in1 = 2f * S, in2 = 4f * S, badge = 10f * S;
             AddImage(rt, "PortraitFrame", leader ? new Color(0.95f, 0.78f, 0.30f, 1f) : new Color(0.48f, 0.48f, 0.54f, 1f),
-                     new Vector2(2, -2), new Vector2(pf, pf));
-            AddImage(rt, "PortraitBg", new Color(0.03f, 0.03f, 0.04f, 1f), new Vector2(4, -4), new Vector2(pf - 4, pf - 4));
-            row.portrait = AddImage(rt, "Portrait", Color.white, new Vector2(4, -4), new Vector2(pf - 4, pf - 4));
+                     new Vector2(in1, -in1), new Vector2(pf, pf));
+            AddImage(rt, "PortraitBg", new Color(0.03f, 0.03f, 0.04f, 1f), new Vector2(in2, -in2), new Vector2(pf - in2, pf - in2));
+            row.portrait = AddImage(rt, "Portrait", Color.white, new Vector2(in2, -in2), new Vector2(pf - in2, pf - in2));
             row.portrait.sprite = null; row.portrait.preserveAspect = true;
 
             // Aggro-order number (1..N) badge on the portrait's top-left corner.
-            AddImage(rt, "NumBg", new Color(0f, 0f, 0f, 0.72f), new Vector2(2, -2), new Vector2(10, 10))
+            AddImage(rt, "NumBg", new Color(0f, 0f, 0f, 0.72f), new Vector2(in1, -in1), new Vector2(badge, badge))
                 .raycastTarget = false;
-            var numRT = NewRect("Num", rt, new Vector2(2, -2), new Vector2(10, 10));
+            var numRT = NewRect("Num", rt, new Vector2(in1, -in1), new Vector2(badge, badge));
             var num = numRT.gameObject.AddComponent<TextMeshProUGUI>();
             num.text = (index + 1).ToString();
-            num.fontSize = 8; num.fontStyle = FontStyles.Bold;
+            num.fontSize = 8f * S; num.fontStyle = FontStyles.Bold;
             num.color = new Color(1f, 0.92f, 0.42f, 1f);
             num.alignment = TextAlignmentOptions.Center;
             num.raycastTarget = false;
 
-            float textX = pf + 5f;
-            var nameRT = NewRect("Name", rt, new Vector2(textX, -2), new Vector2(RowW - textX - 3, 12));
+            float textX = pf + 5f * S;
+            var nameRT = NewRect("Name", rt, new Vector2(textX, -in1), new Vector2(RowW - textX - 3f * S, 12f * S));
             row.name = nameRT.gameObject.AddComponent<TextMeshProUGUI>();
-            row.name.fontSize = 10; row.name.fontStyle = FontStyles.Bold;
-            row.name.color = leader ? new Color(1f, 0.9f, 0.55f) : Color.white;
+            row.name.fontSize = 10f * S; row.name.fontStyle = FontStyles.Bold;
+            row.name.color = Color.white;   // the party frame is the only place names appear now
             row.name.enableWordWrapping = false; row.name.overflowMode = TextOverflowModes.Ellipsis;
             row.name.alignment = TextAlignmentOptions.Left;
 
-            // Thin minimalist HP bar sat just under the name.
-            float barX = textX, barW = (RowW - textX - 4), barH = 4f, barY = -18f;
+            // Thin minimalist HP bar sat just under the name (name stays ABOVE the health).
+            float barX = textX, barW = (RowW - textX - 4f * S), barH = 4f * S, barY = -18f * S;
             AddImage(rt, "HpBg", new Color(0.14f, 0.03f, 0.03f, 1f), new Vector2(barX, barY), new Vector2(barW, barH));
             row.hpFill = AddImage(rt, "HpFill", new Color(0.28f, 0.82f, 0.30f, 1f), new Vector2(barX, barY), new Vector2(barW, barH));
             row.hpFill.type = Image.Type.Filled; row.hpFill.fillMethod = Image.FillMethod.Horizontal;
@@ -164,7 +168,7 @@ namespace ZulfarakRPG
         void UpdateRow(Row row)
         {
             string myId = SteamIntegration.Instance?.SteamId;
-            string nm; ClassType cls; float hp; Sprite portrait;
+            string nm; ClassType cls; float hp;
 
             if (row.steamId == myId)
             {
@@ -173,67 +177,26 @@ namespace ZulfarakRPG
                 nm  = !string.IsNullOrEmpty(d?.playerName) ? d.playerName : (SteamIntegration.Instance?.SteamName ?? "Você");
                 cls = d?.classType ?? ClassType.Warrior;
                 hp  = pc != null ? pc.HealthFraction : 1f;
-                portrait = pc != null ? (pc.PortraitSprite ?? pc.IdleSpriteForClass(cls)) : null;
             }
             else
             {
                 var rp  = MultiplayerSync.Instance?.GetRemote(row.steamId);
                 var bot = BotPlayer.Get(row.steamId);
-                var pc  = Object.FindAnyObjectByType<PlayerController2D>();
-                if (rp != null)
-                {
-                    nm = rp.PlayerName; cls = rp.ClassType; hp = rp.HpFraction;
-                    portrait = rp.PortraitSprite ?? (pc != null ? pc.IdleSpriteForClass(cls) : null);
-                }
-                else if (bot != null)
-                {
-                    nm = bot.PlayerName; cls = bot.ClassType; hp = bot.HpFraction;
-                    portrait = bot.PortraitSprite ?? (pc != null ? pc.IdleSpriteForClass(cls) : null);
-                }
-                else { nm = "Aliado"; cls = ClassType.Warrior; hp = 1f; portrait = pc != null ? pc.IdleSpriteForClass(cls) : null; }
+                if (rp != null)       { nm = rp.PlayerName;  cls = rp.ClassType;  hp = rp.HpFraction;  }
+                else if (bot != null) { nm = bot.PlayerName; cls = bot.ClassType; hp = bot.HpFraction; }
+                else                  { nm = "Aliado";       cls = ClassType.Warrior; hp = 1f;         }
             }
 
             if (row.name != null) row.name.text = nm;
             if (row.hpFill != null) row.hpFill.fillAmount = Mathf.Clamp01(hp);
             if (row.portrait != null)
             {
-                var face = HeadPortrait(portrait);
-                if (row.portrait.sprite != face) row.portrait.sprite = face;
-                row.portrait.enabled = face != null;
+                // CLASS emblem, not the character's own sprite — the frame says what each member
+                // brings to the party (mage / archer / warrior), and stays crisp at any row size.
+                var emblem = ClassEmblem.For(cls);
+                if (row.portrait.sprite != emblem) row.portrait.sprite = emblem;
+                row.portrait.enabled = emblem != null;
             }
-        }
-
-        // ── Head-crop portrait (the character's face) ─────────────────────────
-        static readonly Dictionary<Sprite, Sprite> _headCache = new Dictionary<Sprite, Sprite>();
-        static Sprite HeadPortrait(Sprite src)
-        {
-            if (src == null) return null;
-            if (_headCache.TryGetValue(src, out var cached)) return cached;
-
-            Sprite result = src;
-            var tex = src.texture;
-            if (tex != null && tex.isReadable)
-            {
-                var ab  = SpriteAlphaBounds.Get(src);
-                float ppu = Mathf.Max(1f, src.pixelsPerUnit);
-                var r = src.textureRect;
-                float topPx = ab.topFromBottom * ppu, botPx = ab.bottomFromBottom * ppu;
-                float visH  = topPx - botPx;
-                if (visH > 6f)
-                {
-                    float headH = visH * 0.82f;                     // head + torso — show MORE of the character
-                    float headW = Mathf.Min(ab.width * ppu * 1.25f, headH);
-                    float cx    = ab.centerXFromLeft * ppu;
-                    float x = Mathf.Clamp(r.x + cx - headW * 0.5f, r.x, r.x + r.width - 1f);
-                    float y = Mathf.Clamp(r.y + topPx - headH,     r.y, r.y + r.height - 1f);
-                    float w = Mathf.Min(headW, r.x + r.width  - x);
-                    float h = Mathf.Min(headH, r.y + r.height - y);
-                    if (w > 2f && h > 2f)
-                        result = Sprite.Create(tex, new Rect(x, y, w, h), new Vector2(0.5f, 0.5f), ppu);
-                }
-            }
-            _headCache[src] = result;
-            return result;
         }
 
         // ── UI helpers ────────────────────────────────────────────────────────

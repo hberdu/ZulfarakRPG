@@ -14,6 +14,7 @@ namespace ZulfarakRPG
         [DllImport("user32.dll")] static extern int    GetWindowLong(IntPtr h, int n);
         [DllImport("user32.dll")] static extern int    SetWindowLong(IntPtr h, int n, int v);
         [DllImport("user32.dll")] static extern bool   SetWindowPos(IntPtr h, IntPtr z, int x, int y, int cx, int cy, uint f);
+        [DllImport("user32.dll")] static extern bool   ShowWindow(IntPtr h, int nCmdShow);
         [DllImport("user32.dll")] static extern bool   GetCursorPos(out POINT p);
         [DllImport("user32.dll")] static extern bool   SetLayeredWindowAttributes(IntPtr h, uint key, byte alpha, uint flags);
         [DllImport("user32.dll")] static extern int    SetWindowCompositionAttribute(IntPtr h, ref WindowCompositionAttributeData data);
@@ -239,6 +240,10 @@ namespace ZulfarakRPG
             // NOTE: do NOT route the camera to an offscreen RenderTexture here — that stops anything
             // reaching the swapchain and, if the push fails, the window renders BLANK (game "won't
             // load"). Tried 2026-07-23, reverted.
+            // NOTE: do NOT swap TOOLWINDOW for WS_EX_APPWINDOW to get a taskbar button, and do NOT
+            // toggle ShowWindow(HIDE→SHOW) to make the shell create it: that re-created the layered
+            // surface and UpdateLayeredWindow stopped applying per-pixel alpha, so the whole overlay
+            // rendered as the solid magenta clear. Tried 2026-07-27, reverted.
             int ex = GetWindowLong(_hwnd, GWL_EXSTYLE);
             ex |= WS_EX_TOOLWINDOW | WS_EX_LAYERED;
             SetWindowLong(_hwnd, GWL_EXSTYLE, ex);
@@ -277,8 +282,7 @@ namespace ZulfarakRPG
 #endif
         }
 
-        [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr h, int nCmdShow);
-        const int SW_MINIMIZE = 6;
+        const int SW_MINIMIZE = 6;   // ShowWindow declared once near the top of the class
 
         // Minimize the overlay to the taskbar (used by the HUD's minimize button).
         public static void Minimize()

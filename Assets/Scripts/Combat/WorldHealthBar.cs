@@ -1,5 +1,4 @@
 using UnityEngine;
-using TMPro;
 
 namespace ZulfarakRPG
 {
@@ -13,17 +12,17 @@ namespace ZulfarakRPG
         public float barWidth  = 0.70f;
         public float barHeight = 0.0333f;
 
+        // Where the bar sits, as a fraction of the sprite's frame height. Now that the name label
+        // is gone the stack is just bar + cooldown row, so it rides close to the head again.
+        // ponytail: one knob — raise it to lift every character's stack, lower to drop it.
+        const float HeadAnchorFrac = 0.64f;
+
         private Transform      _bgT;
         private Transform      _fillT;
         private Transform      _outlineT;
         private SpriteRenderer _fillSr;
         private float          _maxWidth;
 
-        // Optional small name label — rendered BELOW the character's feet (player +
-        // remote players + named NPCs). Created lazily by SetName, positioned in LateUpdate.
-        private TextMeshPro    _nameLabel;
-        // Target sprite (from AttachAbove) so the name can track the visible feet.
-        private SpriteRenderer _targetSr;
 
         // Saved by AttachAbove so SetStaggerOffset() can re-apply without re-running
         // the alpha scan. Local-space (parent of this bar).
@@ -52,13 +51,15 @@ namespace ZulfarakRPG
         // cached); bar Y is ANCHORED to the parent's Collider2D.bounds.max.y — since the
         // wizard sizes the collider to match the visible character footprint, this puts
         // the bar exactly at the head top regardless of sprite frame padding.
+        // widthMultiplier 0.52 (was 0.67): a narrower bar that hugs the character instead of
+        // overhanging its shoulders. EVERY character — hero, bot, remote partner, enemies — goes
+        // through here, so they all share one bar art/format.
         public void AttachAbove(SpriteRenderer target,
                                 float padding         = 0.005f,
                                 Color? fillColor      = null,
-                                float widthMultiplier = 0.67f)
+                                float widthMultiplier = 0.52f)
         {
             if (target == null || target.sprite == null || transform.parent == null) return;
-            _targetSr = target;
 
             var ab     = SpriteAlphaBounds.Get(target.sprite);
             Vector3 parentScale = transform.parent.lossyScale;
@@ -71,22 +72,15 @@ namespace ZulfarakRPG
             float visibleWidthLocal = visibleWidthWorld / parentScaleX;
             barWidth = Mathf.Max(0.05f, visibleWidthLocal * widthMultiplier);
 
-            // Anchor: parent's collider TOP (= visible head top by design).
-            // Fallback to sprite bounds 60% if the parent has no collider.
-            var parentCol = transform.parent.GetComponent<Collider2D>();
-            float worldHeadY;
-            float worldCenterX;
-            if (parentCol != null)
-            {
-                worldHeadY   = parentCol.bounds.max.y;
-                worldCenterX = parentCol.bounds.center.x;
-            }
-            else
-            {
-                var b = target.bounds;
-                worldHeadY   = b.min.y + b.size.y * 0.60f;
-                worldCenterX = b.center.x;
-            }
+            // Anchor: ONE rule for every character — a fraction of the sprite's own bounds.
+            // This used to branch on Collider2D: the hero has one (the small FOOT collider at
+            // offset 0.5), so its bar anchored to that collider's top — mid-torso — while the bot
+            // and remote partners, which have no collider, took the sprite path and sat properly
+            // above the head. Same widget, two different heights. The sprite rule is the one that
+            // reads right, so everyone uses it now.
+            var b = target.bounds;
+            float worldHeadY   = b.min.y + b.size.y * HeadAnchorFrac;
+            float worldCenterX = b.center.x;
             float worldBarY  = worldHeadY + padding + (barHeight * 0.5f * parentScaleY);
             Vector3 localPos = transform.parent.InverseTransformPoint(
                 new Vector3(worldCenterX, worldBarY, 0f));
@@ -123,47 +117,10 @@ namespace ZulfarakRPG
             transform.localPosition = _baseLocalPos + new Vector3(0f, _staggerY, 0f);
         }
 
-        // Renders a small bold label BELOW the character's feet (player + remote players +
-        // named NPCs). Pass null/empty to hide it. Positioned each LateUpdate.
-        public void SetName(string label)
-        {
-            if (string.IsNullOrEmpty(label))
-            {
-                if (_nameLabel != null) _nameLabel.gameObject.SetActive(false);
-                return;
-            }
-            if (_nameLabel == null)
-            {
-                var go = new GameObject("Name");
-                // Parent to the CHARACTER (this bar's parent), not the bar (which sits at
-                // the head), so the name lives near the feet; final pos set in LateUpdate.
-                go.transform.SetParent(transform.parent != null ? transform.parent : transform, false);
-                _nameLabel              = go.AddComponent<TextMeshPro>();
-                _nameLabel.fontSize     = 0.32f;
-                _nameLabel.alignment    = TextAlignmentOptions.Center;
-                _nameLabel.color        = new Color(0.98f, 0.94f, 0.80f, 1f);
-                _nameLabel.fontStyle    = FontStyles.Bold;
-                _nameLabel.enableWordWrapping = false;
-                if (GameFont.Tmp != null) _nameLabel.font = GameFont.Tmp;
-                var nmat = _nameLabel.fontMaterial;
-                nmat.SetFloat(ShaderUtilities.ID_OutlineWidth, 0.3f);
-                nmat.SetColor(ShaderUtilities.ID_OutlineColor, Color.black);
-                _nameLabel.UpdateMeshPadding();
-                var mr = go.GetComponent<MeshRenderer>();
-                if (mr != null) mr.sortingOrder = 10;
-            }
-            _nameLabel.text = label;
-            _nameLabel.gameObject.SetActive(true);
-        }
-
-        // Keeps the name label just below the character's visible feet.
-        void LateUpdate()
-        {
-            if (_nameLabel == null || !_nameLabel.gameObject.activeSelf) return;
-            if (_targetSr == null || _targetSr.sprite == null) return;
-            var b = _targetSr.bounds;
-            _nameLabel.transform.position = new Vector3(b.center.x, b.min.y - 0.10f, b.center.z - 0.1f);
-        }
+        // Character names are NOT drawn in the world any more — the party frame is the one place
+        // that names people. Kept as a no-op so the existing callers (hero, bot, remote partner)
+        // don't all need touching.
+        public void SetName(string label) { }
 
         // Visible bounds (width + head Y) are pixel-scanned and cached by
         // SpriteAlphaBounds; AttachAbove just consumes the result.
@@ -173,6 +130,12 @@ namespace ZulfarakRPG
         public float BarWorldWidth  => _bgT != null ? _bgT.lossyScale.x : barWidth;
         public float BarWorldHeight => _bgT != null ? _bgT.lossyScale.y : barHeight;
         public Vector3 BarWorldPos  => _bgT != null ? _bgT.position : transform.position;
+
+        // Top edge of the HP bar itself — the baseline the cooldown row stacks on.
+        public float BarTopWorldY => BarWorldPos.y + BarWorldHeight * 0.5f;
+
+        // Minimal breathing room between the HP bar and the cooldown row.
+        public const float LineGap = 0.012f;
 
         public void SetHealth(float current, float max)
         {

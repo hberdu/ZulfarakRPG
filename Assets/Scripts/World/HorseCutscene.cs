@@ -65,9 +65,30 @@ namespace ZulfarakRPG
             // (invisible) or huge (fills the screen). ponytail: visual knobs — nudge if it reads off.
             float horseWorldH = Mathf.Clamp(playerH * 0.85f, 0.5f, 0.85f);
             float horseScale  = horseWorldH / horseFrameWorldH;
-            // Rider sits DOWN on the horse's back — legs overlap the body, upper body above — like the
-            // Lancer's mounted pose, instead of standing tall on top with a gap under it.
-            float backY = horseWorldH * 0.35f;
+
+            // Seat the horse's VISIBLE feet on the ground line (bottom-centre pivot) instead of the
+            // hero's transform Y — the hero's pivot sits above his feet, which sank the horse to the
+            // bottom of the screen. Centres it on the ground like the grazing horse.
+            float groundY    = GroundAlignUtil.FindGroundTopY();
+            var   horseAb    = SpriteAlphaBounds.Get(frames[0]);
+            float horseBaseY = groundY - horseAb.bottomFromBottom * horseScale;
+            // Rider sits DOWN on the horse's back. Seat him by his own alpha-scanned FEET (exactly
+            // like GroundAlignUtil seats characters on the ground) instead of by his transform Y:
+            // the hero's pivot sits well above his feet, so "horse.y + a fraction of the height"
+            // left him floating in the air above the saddle. Feet land on the horse's back line,
+            // then sink a little so the legs overlap the body rather than resting on top of it.
+            float horseVisH    = (horseAb.topFromBottom - horseAb.bottomFromBottom) * horseScale;
+            float saddleLocalY = horseAb.bottomFromBottom * horseScale + horseVisH * 0.62f;
+            float riderFeetOff = 0f;   // world-Y of the feet relative to the hero's transform
+            if (psr != null && psr.sprite != null)
+            {
+                var rsp = psr.sprite;
+                var rab = SpriteAlphaBounds.Get(rsp);
+                float rppu = Mathf.Max(1f, rsp.pixelsPerUnit);
+                float rsc  = Mathf.Abs(player.transform.lossyScale.y);
+                riderFeetOff = (rab.feetFromBottom - rsp.pivot.y / rppu) * rsc;
+            }
+            float backY = saddleLocalY - riderFeetOff - horseVisH * 0.12f;
 
             var cam = Camera.main;
             float halfW = cam != null ? cam.orthographicSize * cam.aspect : 4f;
@@ -85,7 +106,7 @@ namespace ZulfarakRPG
             sr.enabled = true;
             sr.sprite  = frames[0];
             sr.flipX   = true;                             // art faces RIGHT; flip to gallop LEFT toward the hero
-            horse.transform.position   = new Vector3(rightX, ppos.y, 0f);
+            horse.transform.position   = new Vector3(rightX, horseBaseY, 0f);
             horse.transform.localScale = Vector3.one * horseScale;
 
             int fi = 0; float animT = 0f, bobT = 0f;
@@ -106,7 +127,7 @@ namespace ZulfarakRPG
                 bobT += Time.deltaTime * 14f;
                 var p = horse.transform.position;
                 p.x -= inSpeed * Time.deltaTime;
-                p.y  = ppos.y + Mathf.Abs(Mathf.Sin(bobT)) * 0.08f;   // gallop bob
+                p.y  = horseBaseY + Mathf.Abs(Mathf.Sin(bobT)) * 0.08f;   // gallop bob
                 horse.transform.position = p;
                 animT += Time.deltaTime;
                 if (animT >= 0.07f) { animT = 0f; fi = (fi + 1) % frames.Length; sr.sprite = frames[fi]; }
@@ -140,7 +161,7 @@ namespace ZulfarakRPG
                 bobT  += Time.deltaTime * 14f;
                 var hp = horse.transform.position;
                 hp.x -= rideSpeed * Time.deltaTime;
-                hp.y  = ppos.y + Mathf.Abs(Mathf.Sin(bobT)) * 0.09f;
+                hp.y  = horseBaseY + Mathf.Abs(Mathf.Sin(bobT)) * 0.09f;
                 horse.transform.position = hp;
                 if (player != null)
                     player.transform.position = new Vector3(hp.x - 0.06f, hp.y + backY, hp.z);

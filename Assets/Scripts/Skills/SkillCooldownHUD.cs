@@ -10,10 +10,10 @@ namespace ZulfarakRPG
     // player instantly sees a skill is ready.
     public class SkillCooldownHUD : MonoBehaviour
     {
-        // Each bar is 1/3 of the HP bar width; the two bars are laid out side-by-side
-        // (centered under the character) with a small gap between them.
-        const float BarFrac = 1f / 3f;
-        const float GapFrac = 0.06f;
+        // Each bar is HALF the HP bar's width, so the two of them side by side span exactly the
+        // same width as the HP bar and read as one more line of the same widget.
+        const float BarFrac = 0.5f;
+        const float GapFrac = 0.04f;
 
         static readonly Color ChargingColor = new Color(0.82f, 0.82f, 0.86f, 1f);   // light gray
         static readonly Color ReadyColor    = new Color(1.00f, 0.86f, 0.28f, 1f);   // warm yellow
@@ -48,11 +48,19 @@ namespace ZulfarakRPG
         public static void AttachRemote(RemotePlayer rp)
         {
             if (rp == null) return;
-            var go = new GameObject("SkillCooldownHUD_Remote");
+            AttachTo(rp, "SkillCooldownHUD_Remote", () => rp.CooldownFractions);
+        }
+
+        // Any other party member that tracks its own cooldowns (the local test bot). Same bars,
+        // same geometry as the hero's — every party member reads identically.
+        public static void AttachTo(Component owner, string name, System.Func<List<float>> fills)
+        {
+            if (owner == null || fills == null) return;
+            var go = new GameObject(name);
             var hud = go.AddComponent<SkillCooldownHUD>();
-            hud._fills    = () => rp.CooldownFractions;
-            hud._playerSr = rp.GetComponent<SpriteRenderer>();
-            hud._hpBar    = rp.GetComponentInChildren<WorldHealthBar>(true);
+            hud._fills    = fills;
+            hud._playerSr = owner.GetComponent<SpriteRenderer>();
+            hud._hpBar    = owner.GetComponentInChildren<WorldHealthBar>(true);
             hud.Build();
         }
 
@@ -78,18 +86,17 @@ namespace ZulfarakRPG
             if (n == 0 || _hpBar == null) { HideAll(); return; }
 
             float W = _hpBar.BarWorldWidth;
-            float hpH = _hpBar.BarWorldHeight;
-            if (W <= 0.001f) { W = _playerSr != null ? _playerSr.bounds.size.x * 0.5f : 0.5f; hpH = 0.04f; }
+            if (W <= 0.001f) W = _playerSr != null ? _playerSr.bounds.size.x * 0.5f : 0.5f;
             Vector3 c = _hpBar.BarWorldPos;
 
-            // Two vertical bars, each 1/3 of the HP bar width, centered under the character,
-            // and TALLER than wide so the cooldown reads as it rises.
-            float barW   = W * BarFrac;
+            // One thin LINE directly above the HP bar: two bars, each half the HP bar's width, as
+            // thick as the HP bar itself. Together they span the HP bar exactly, so bar / cooldowns
+            // / name stack as three tight rows of the same widget.
             float gap    = W * GapFrac;
-            float barH   = barW * 0.5f;                     // 1/3 of the previous height
-            float y      = c.y + hpH * 0.5f + 0.03f + barH * 0.5f;   // just above the HP bar
-            float totalW = 2f * barW + gap;
-            float left   = c.x - totalW * 0.5f;
+            float barW   = (W - gap) * BarFrac;
+            float barH   = Mathf.Max(0.012f, _hpBar.BarWorldHeight);
+            float y      = _hpBar.BarTopWorldY + WorldHealthBar.LineGap + barH * 0.5f;
+            float left   = c.x - W * 0.5f;
 
             for (int i = 0; i < _bars.Length; i++)
             {
@@ -100,14 +107,15 @@ namespace ZulfarakRPG
                 float bx = left + i * (barW + gap) + barW * 0.5f;
                 bar.root.transform.position = new Vector3(bx, y, -0.15f);
 
-                bar.outline.localScale = new Vector3(barW + barW * 0.22f, barH + barW * 0.22f, 1f);
+                bar.outline.localScale = new Vector3(barW + 0.012f, barH + 0.010f, 1f);
                 bar.bg.localScale      = new Vector3(barW, barH, 1f);
 
-                // Fill fraction: 0 right after a cast, 1 when ready. Grows BOTTOM → TOP.
+                // Fill fraction: 0 right after a cast, 1 when ready. Now that the bar is a thin
+                // row it fills LEFT → RIGHT like the HP bar, instead of rising bottom → top.
                 float ready = Mathf.Clamp01(fills[i]);
-                float fh = barH * ready;
-                bar.fill.localScale    = new Vector3(barW * 0.78f, fh, 1f);
-                bar.fill.localPosition = new Vector3(0f, (fh - barH) * 0.5f, -0.01f);   // anchored at bottom
+                float fw = barW * ready;
+                bar.fill.localScale    = new Vector3(fw, barH * 0.62f, 1f);
+                bar.fill.localPosition = new Vector3((fw - barW) * 0.5f, 0f, -0.01f);   // anchored left
                 bar.fillSr.color = ready >= 0.999f ? ReadyColor : ChargingColor;
             }
         }

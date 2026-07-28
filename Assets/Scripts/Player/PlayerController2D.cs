@@ -219,10 +219,10 @@ namespace ZulfarakRPG
             attackRange = (_classType == ClassType.Archer || _classType == ClassType.Mage) ? 3.5f : 1.1f;
 
             // Tight GREEN HP bar: width and Y both auto-detected from the sprite alpha.
-            _hpBar?.AttachAbove(_sr,
-                                padding:         0.005f,
-                                fillColor:       new Color(0.25f, 0.85f, 0.30f, 1f),
-                                widthMultiplier: 0.67f);
+            // Same call/geometry as the bot and remote partners (only the fill colour differs) —
+            // the hero used to override widthMultiplier to 0.67, which is why its bar was a
+            // different width from everyone else's.
+            _hpBar?.AttachAbove(_sr, fillColor: new Color(0.25f, 0.85f, 0.30f, 1f));
             _hpBar?.SetHealth(_hp, maxHealth);
             // Show the player's character name above the bar (tiny bold label).
             string displayName = PlayerManager.Instance?.Data?.playerName;
